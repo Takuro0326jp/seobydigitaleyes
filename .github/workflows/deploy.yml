@@ -1,0 +1,45 @@
+# main ブランチへの push で SSH デプロイ
+# 必要な GitHub Secrets:
+#   DEPLOY_HOST    - サーバーのホスト名 or IP
+#   DEPLOY_USER    - SSH ユーザー名
+#   DEPLOY_SSH_KEY - 秘密鍵（全文）
+#   DEPLOY_PATH    - デプロイ先パス（任意・デフォルト: ~/seoscan）
+#   DEPLOY_PORT    - SSH ポート（任意・デフォルト: 22）
+# 事前: サーバーで git clone し、.env を配置、pm2 をインストール
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ secrets.DEPLOY_PORT || 22 }}
+          script: |
+            set -e
+            cd ${{ secrets.DEPLOY_PATH || '~/seoscan' }}
+            git fetch origin main && git reset --hard origin/main
+            npm ci --omit=dev
+            pm2 restart seoscan 2>/dev/null || pm2 start server.js --name seoscan
+            pm2 save
