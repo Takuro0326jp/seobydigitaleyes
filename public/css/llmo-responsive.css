@@ -1,0 +1,53 @@
+/* llmo-responsive.css - LLMO Analysis ページ用 */
+
+@media (max-width: 1024px) {
+    table, thead, tbody, tr, td {
+        display: block !important;
+        width: 100% !important;
+    }
+
+    thead { display: none !important; }
+
+    #llmoTableBody tr {
+        background: white !important;
+        border: 1px solid #e2e8f0 !important;
+        border-radius: 12px !important;
+        margin-bottom: 16px !important;
+        padding: 16px !important;
+        position: relative !important;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    }
+
+    #llmoTableBody td {
+        display: flex !important;
+        justify-content: space-between;
+        align-items: center;
+        padding: 8px 0 !important;
+        border: none !important;
+        text-align: left !important;
+    }
+
+    #llmoTableBody td:first-child {
+        display: block !important;
+        border-bottom: 1px solid #f1f5f9;
+        margin-bottom: 8px;
+        padding-bottom: 12px !important;
+    }
+
+    #llmoTableBody td[data-label]::before {
+        content: attr(data-label);
+        font-size: 10px;
+        font-weight: 800;
+        color: #94a3b8;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+
+    #llmoTableBody td:last-child {
+        position: absolute !important;
+        top: 12px;
+        right: 12px;
+        width: auto !important;
+        padding: 0 !important;
+    }
+}

@@ -1,0 +1,652 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SEO Scan | SEO & Structure Analysis</title>
+
+<link rel="stylesheet" href="/css/style.css">
+<link href="/css/tailwind.css" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/xlsx-js-style/dist/xlsx.bundle.js"></script>
+<style>body{font-family:Inter,sans-serif}</style>
+</head>
+
+<body class="antialiased bg-slate-50">
+
+<div id="header-container"></div>
+
+<main class="relative max-w-[1600px] mx-auto p-8 space-y-8">
+
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-12" id="stats-container">
+
+        <!-- ========================= -->
+        <!-- 総ページ数 -->
+        <!-- ========================= -->
+        <div class="bg-white p-8 rounded-2xl border border-slate-100 shadow-sm relative">
+            <div class="flex justify-between items-start mb-4">
+                <p class="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em]">総ページ数</p>
+
+                <div class="relative flex items-center group">
+                    <span class="text-slate-300 hover:text-slate-600 cursor-help transition-colors">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                                stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+                        </svg>
+                    </span>
+
+                    <div class="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 p-3 bg-slate-900 text-white text-[10px] leading-relaxed rounded-xl opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity z-[100] shadow-xl">
+                        今回のスキャンで検知されたURLの総数です。サイトの規模を網羅的に診断しています。
+                        <div class="absolute top-full left-1/2 -translate-x-1/2 border-8 border-transparent border-t-slate-900"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="flex items-baseline gap-2">
+                <span id="stat-pages" class="text-4xl font-black text-slate-900">--</span>
+                <span class="text-xs font-bold text-slate-400 uppercase">pages</span>
+            </div>
+
+            <div class="mt-4 flex items-center gap-2 text-[10px] font-bold text-emerald-500 bg-emerald-50 px-3 py-1 rounded-full w-fit">
+                <span>● スキャン完了</span>
+            </div>
+        </div>
+
+        <!-- ========================= -->
+        <!-- 平均SEOスコア -->
+        <!-- ========================= -->
+        <div class="bg-white p-8 rounded-2xl border border-slate-100 shadow-sm relative border-l-4 border-l-blue-500">
+            <div class="flex justify-between items-start mb-4">
+                <p class="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em]">平均SEOスコア</p>
+
+                <div class="relative flex items-center group">
+                    <span class="text-slate-300 hover:text-slate-600 cursor-help transition-colors">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                                stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+                        </svg>
+                    </span>
+
+                    <div class="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 p-3 bg-slate-900 text-white text-[10px] leading-relaxed rounded-xl opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity z-[100] shadow-xl">
+                        コンテンツ品質、技術的要素、AI親和性を統合した平均値です。80点以上が理想的です。
+                        <div class="absolute top-full left-1/2 -translate-x-1/2 border-8 border-transparent border-t-slate-900"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="flex items-baseline gap-2">
+                <span id="stat-score" class="text-4xl font-black text-slate-900">--</span>
+                <span class="text-xs font-bold text-slate-400 uppercase">avg</span>
+            </div>
+
+            <p class="mt-4 text-[10px] text-slate-400 font-bold">健康状態の総合インデックス</p>
+        </div>
+
+        <!-- ========================= -->
+        <!-- 構造的損失率 -->
+        <!-- ========================= -->
+        <div class="bg-white p-8 rounded-2xl border border-slate-100 shadow-sm relative">
+            <div class="flex justify-between items-start mb-4">
+                <p class="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em]">構造的損失率</p>
+
+                <div class="relative flex items-center group">
+                    <span class="text-slate-300 hover:text-slate-600 cursor-help transition-colors">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                                stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+                        </svg>
+                    </span>
+
+                    <div class="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 p-3 bg-slate-900 text-white text-[10px] leading-relaxed rounded-xl opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity z-[100] shadow-xl">
+                        深い階層（L4以降）や内部リンクが少ない孤立ページによる「情報の伝わりにくさ」を数値化しています。
+                        <div class="absolute top-full left-1/2 -translate-x-1/2 border-8 border-transparent border-t-slate-900"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="flex items-baseline gap-2 text-orange-500">
+                <span id="stat-loss" class="text-4xl font-black">--</span>
+                <span class="text-xs font-bold uppercase">% loss</span>
+            </div>
+
+            <p class="mt-4 text-[10px] text-slate-400 font-bold">設計ミスによる露出機会の損失</p>
+        </div>
+
+        <!-- ========================= -->
+        <!-- 重大アラート -->
+        <!-- ========================= -->
+        <div id="criticalIssuesCard"
+             class="group bg-white p-8 rounded-2xl border border-slate-100 shadow-sm relative cursor-pointer hover:border-red-500 hover:shadow-md transition-all active:scale-[0.98]">
+
+            <div class="flex justify-between items-start mb-4">
+
+                <p class="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em]">
+                    重大なアラート
+                </p>
+
+                <div class="relative flex items-center group">
+
+                    <span class="text-slate-300 hover:text-slate-600 cursor-help transition-colors">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path
+                                d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                                stroke-width="2"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                            ></path>
+                        </svg>
+                    </span>
+
+                    <div class="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 p-3 bg-slate-900 text-white text-[10px] leading-relaxed rounded-xl opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity z-[100] shadow-xl">
+                        404エラー、noindex、見出し(H1)未設定など、
+                        検索エンジンやAIが情報を処理できない致命的な不備の総数です。
+                        <div class="absolute top-full left-1/2 -translate-x-1/2 border-8 border-transparent border-t-slate-900"></div>
+                    </div>
+
+                </div>
+            </div>
+
+            <div class="flex items-baseline gap-2 text-red-500">
+                <span id="stat-alerts" class="text-4xl font-black">--</span>
+                <span class="text-xs font-bold uppercase">issues</span>
+            </div>
+            
+            <div id="criticalFilterBadge"
+            class="hidden mt-2 text-[10px] font-bold text-red-600 bg-red-50 px-2 py-1 rounded-full w-fit">
+            ● フィルター中
+            </div>
+            
+            <div id="alert-status-bg"
+                 class="mt-4 flex items-center gap-2 text-[10px] font-bold px-3 py-1 rounded-full w-fit">
+                <span id="alert-status-text">--</span>
+            </div>
+
+            <p class="absolute bottom-4 right-8 text-[9px] font-bold text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity">
+                クリックで絞り込み ❯
+            </p>
+
+        </div>
+
+        <!-- ========================= -->
+        <!-- Indexable Pages -->
+        <!-- ========================= -->
+        <div class="bg-white p-8 rounded-2xl border border-slate-100 shadow-sm relative">
+            <div class="flex justify-between items-start mb-4">
+                <p class="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em]">インデックス可能ページ</p>
+
+                <div class="relative flex items-center group">
+                    <span class="text-slate-300 hover:text-slate-600 cursor-help transition-colors">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                                stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+                        </svg>
+                    </span>
+
+                    <div class="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 p-3 bg-slate-900 text-white text-[10px] leading-relaxed rounded-xl opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity z-[100] shadow-xl">
+                        検索エンジンがインデックス可能なページ数です。
+                        noindexなどが設定されていない正常なページ数を示します。
+                        <div class="absolute top-full left-1/2 -translate-x-1/2 border-8 border-transparent border-t-slate-900"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="flex items-baseline gap-2">
+                <span id="stat-indexable" class="text-4xl font-black text-slate-900">--</span>
+                <span class="text-xs font-bold text-slate-400 uppercase">pages</span>
+            </div>
+
+            <p class="mt-4 text-[10px] text-slate-400 font-bold">検索対象として認識されるページ</p>
+        </div>
+
+        <!-- ========================= -->
+        <!-- Noindex Pages -->
+        <!-- ========================= -->
+        <div class="bg-white p-8 rounded-2xl border border-slate-100 shadow-sm relative">
+            <div class="flex justify-between items-start mb-4">
+                <p class="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em]">noindexページ</p>
+
+                <div class="relative flex items-center group">
+                    <span class="text-slate-300 hover:text-slate-600 cursor-help transition-colors">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                                stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+                        </svg>
+                    </span>
+
+                    <div class="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 p-3 bg-slate-900 text-white text-[10px] leading-relaxed rounded-xl opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity z-[100] shadow-xl">
+                        meta robots の noindex 指定により検索結果に表示されないページ数です。
+                        不要な設定がある場合はSEO機会を失う可能性があります。
+                        <div class="absolute top-full left-1/2 -translate-x-1/2 border-8 border-transparent border-t-slate-900"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="flex items-baseline gap-2 text-slate-700">
+                <span id="stat-noindex" class="text-4xl font-black">--</span>
+                <span class="text-xs font-bold uppercase">pages</span>
+            </div>
+
+            <p class="mt-4 text-[10px] text-slate-400 font-bold">検索結果に表示されないページ</p>
+        </div>
+
+        <!-- ========================= -->
+        <!-- タイトル重複 -->
+        <!-- ========================= -->
+        <div class="bg-white p-8 rounded-2xl border border-slate-100 shadow-sm relative">
+            <div class="flex justify-between items-start mb-4">
+                <p class="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em]">タイトル重複</p>
+
+                <div class="relative flex items-center group">
+                    <span class="text-slate-300 hover:text-slate-600 cursor-help transition-colors">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                                stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+                        </svg>
+                    </span>
+
+                    <div class="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 p-3 bg-slate-900 text-white text-[10px] leading-relaxed rounded-xl opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity z-[100] shadow-xl">
+                        titleタグが複数ページで重複している数です。
+                        検索順位評価が分散する可能性があります。
+                        <div class="absolute top-full left-1/2 -translate-x-1/2 border-8 border-transparent border-t-slate-900"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="flex items-baseline gap-2 text-orange-500">
+                <span id="stat-duplicate-title" class="text-4xl font-black">--</span>
+                <span class="text-xs font-bold uppercase">pages</span>
+            </div>
+
+            <p class="mt-4 text-[10px] text-slate-400 font-bold">検索評価が分散する可能性</p>
+        </div>
+
+        <!-- ========================= -->
+        <!-- 孤立ページ -->
+        <!-- ========================= -->
+        <div class="bg-white p-8 rounded-2xl border border-slate-100 shadow-sm relative">
+            <div class="flex justify-between items-start mb-4">
+                <p class="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em]">孤立ページ</p>
+
+                <div class="relative flex items-center group">
+                    <span class="text-slate-300 hover:text-slate-600 cursor-help transition-colors">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                                stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+                        </svg>
+                    </span>
+
+                    <div class="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 p-3 bg-slate-900 text-white text-[10px] leading-relaxed rounded-xl opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity z-[100] shadow-xl">
+                        内部リンクが存在しない孤立ページです。
+                        検索エンジンやユーザーが発見できない可能性があります。
+                        <div class="absolute top-full left-1/2 -translate-x-1/2 border-8 border-transparent border-t-slate-900"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="flex items-baseline gap-2 text-red-500">
+                <span id="stat-orphan" class="text-4xl font-black">--</span>
+                <span class="text-xs font-bold uppercase">pages</span>
+            </div>
+
+            <p class="mt-4 text-[10px] text-slate-400 font-bold">内部リンクが無いページ</p>
+        </div>
+
+    </div>
+    <!-- カードここまで -->
+
+    <!-- AIサマリー -->
+    <div class="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm shadow-blue-50/50">
+        <div class="flex flex-col md:flex-row">
+            <div class="bg-slate-50 border-r border-slate-100 p-6 flex flex-col justify-center items-center w-full md:w-48 gap-2">
+                <div class="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center text-white shadow-lg shadow-blue-100">AI</div>
+                <span class="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] text-center">AI Insights</span>
+            </div>
+            <div class="p-6 flex-grow bg-gradient-to-r from-transparent to-blue-50/30">
+                <h3 class="text-sm font-extrabold text-slate-800 tracking-tight mb-2">エグゼクティブ・サマリー</h3>
+                <p class="text-[13px] text-slate-600 leading-relaxed font-medium" id="aiSummary">
+                解析データを読み込んでいます...
+                </p>
+            </div>
+        </div>
+    </div>
+    <!-- AIサマリーここまで -->
+
+    <!-- ========================= -->
+    <!-- Directory Health -->
+    <!-- ========================= -->
+    
+    <!-- タイトル -->
+<div class="flex justify-between items-end border-b border-slate-100 pb-4 px-6 pt-6">
+    <div>
+        <h2 class="text-xl font-bold text-slate-900">ディレクトリ構造 × SEO健全性</h2>
+        <p class="text-sm text-slate-400 font-medium">ディレクトリ単位でページ品質とSEO問題を分析</p>
+    </div>
+<input
+id="dirHealthSearch"
+type="text"
+placeholder="ディレクトリ検索..."
+class="text-sm border border-slate-200 rounded-lg px-4 py-2 w-56
+focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+>
+</div>
+<div class="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+<div style="height:450px;overflow-y:auto;" class="scroll-area">
+<table class="w-full text-xs table-fixed">
+<thead class="bg-slate-50 text-slate-400 border-b border-slate-200 sticky top-0 z-10">
+                    <tr>
+                        <th class="bg-slate-50 px-6 py-3 text-left font-bold w-[50%]">Directory</th>
+                        <th class="bg-slate-50 px-4 py-3 text-center font-bold w-[10%]">Pages</th>
+                        <th class="bg-slate-50 px-4 py-3 text-center font-bold w-[13%]">Score</th>
+                        <th class="bg-slate-50 px-4 py-3 text-center font-bold w-[13%]">Issues</th>
+                        <th class="bg-slate-50 px-4 py-3 text-center font-bold w-[14%]">Index</th>
+                    </tr>
+                </thead>
+                <tbody
+                    id="directory-health-body"
+                    class="divide-y divide-slate-100 text-slate-700 bg-white"
+                >
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+<!-- legend -->
+<div class="flex flex-wrap gap-6 text-[11px] text-slate-400 p-4 border-t border-slate-100 bg-slate-50">
+    <div class="flex items-center gap-2">
+        <span class="font-semibold text-slate-500">Score</span>
+        <span>= ページSEOスコア平均</span>
+    </div>
+
+    <div class="flex items-center gap-2">
+        <span class="font-semibold text-slate-500">Issues</span>
+        <span>= SEO問題ページ数</span>
+    </div>
+
+    <div class="flex items-center gap-2">
+        <span class="font-semibold text-slate-500">Index</span>
+        <span>= index可能ページ割合</span>
+    </div>
+</div>
+
+<!-- Excel button -->
+<div class="flex justify-end pt-4 pb-10">
+    <button id="exportDirectoryExcelBtn"
+        class="bg-emerald-600 text-white font-bold py-2.5 px-6 rounded-lg text-xs hover:bg-emerald-700 transition shadow-lg flex items-center gap-2">
+
+        <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/>
+        </svg>
+
+        ディレクトリエクセル出力 (.xlsx)
+
+    </button>
+</div>
+
+    </div>
+
+
+    <!-- Directory Healthここまで -->
+
+    <div class="flex flex-col md:flex-row md:items-end md:justify-between gap-4 border-b border-slate-100 pb-4">
+        <div>
+            <h2 class="text-xl font-bold text-slate-900">サイト構造 × ページ品質</h2>
+            <p class="text-sm text-slate-400 font-medium">全ページの構造とSEO品質を統合評価</p>
+        </div>
+
+        <div class="flex gap-2 items-center">
+            <div class="relative inline-block text-left w-[280px]" id="dirFilterContainer">
+                <button type="button" id="toggleDirMenuBtn" class="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs font-bold text-slate-600 flex justify-between items-center hover:border-blue-400 transition shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20">
+                    <span class="truncate">すべてのディレクトリ</span>
+                    <svg class="w-4 h-4 text-slate-400 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path d="M19 9l-7 7-7-7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+                    </svg>
+                </button>
+
+                <div id="dirDropdownMenu" class="hidden absolute left-0 mt-2 w-full bg-white border border-slate-200 rounded-xl shadow-xl z-50">
+                    <div class="p-2 border-b border-slate-50 bg-slate-50/50">
+                        <input type="text" id="dirSearchInput"placeholder="ディレクトリを絞り込む..." class="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 font-medium">
+                    </div>
+                    <div id="dirOptionsList" class="max-h-[300px] overflow-y-auto py-1"></div>
+                </div>
+            </div>
+
+            <input type="hidden" id="directoryFilter" value="all">
+
+            <input type="text" id="searchInput"placeholder="URLやタイトルで検索..." class="text-sm border border-slate-200 rounded-lg px-4 py-2 w-64 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition">
+        </div>
+    </div>
+
+    <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+        <div class="table-container scrollbar-thin scroll-area" style="height:450px;overflow-y:auto;">
+            <table class="w-full text-left border-collapse table-fixed">
+                <thead class="bg-slate-50 shadow-sm sticky top-0 z-10">
+                    <tr class="text-[10px] uppercase tracking-wider text-slate-400 border-b border-slate-200">
+                        <th class="py-4 px-2 font-bold text-center w-[50px]">No.</th>
+                        <th class="py-4 px-4 font-bold text-left w-[300px] truncate">URL</th>
+                        <th class="py-4 px-2 font-bold text-center w-[60px]">階層</th>
+                        <th class="py-4 px-2 font-bold text-center w-[70px]">Status</th>
+                        <th class="py-4 px-2 font-bold text-center w-[60px]">Index</th>
+                        <th class="py-4 px-4 font-bold text-left w-[350px] truncate">タイトル内容</th>
+                        <th class="py-4 px-2 font-bold text-center w-[60px]">文字数</th>
+                        <th class="py-4 px-2 font-bold text-center w-[60px]">H1</th>
+                        <th class="py-4 px-2 font-bold text-center w-[70px]">内リンク</th>
+                        <th class="py-4 px-2 font-bold text-center w-[70px]">Score</th>
+                        <th class="py-4 px-4 font-bold text-center w-[100px]">優先度</th>
+                        <th class="py-4 px-2 font-bold text-center w-[50px]">詳細</th>
+                    </tr>
+                </thead>
+                <tbody id="tableBody" class="text-[12px] text-slate-600 divide-y divide-slate-100 bg-white">
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="flex justify-end gap-3 pb-10">
+    
+    <button
+id="submitSitemapBtn"
+class="bg-indigo-600 text-white font-bold py-2.5 px-6 rounded-lg text-xs hover:bg-indigo-700 transition shadow-lg flex items-center gap-2">
+sitemap送信（Google / Bing）
+</button>
+    <div class="text-xs text-slate-500">
+    最終送信：
+    <span id="last-sitemap-date">--</span>
+    </div>
+    
+   　　<button id="exportSitemapBtn"
+class="bg-blue-600 text-white font-bold py-2.5 px-6 rounded-lg text-xs hover:bg-blue-700 transition shadow-lg flex items-center gap-2">
+   
+   <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+   <path d="M3 13h2v-2H3v2zm4 0h14v-2H7v2zM3 17h2v-2H3v2zm4 0h14v-2H7v2zM3 9h2V7H3v2zm4 0h14V7H7v2z"/>
+   </svg>
+   sitemap.xml生成
+   </button>
+
+<button id="exportExcelBtn"
+class="bg-emerald-600 text-white font-bold py-2.5 px-6 rounded-lg text-xs hover:bg-emerald-700 transition shadow-lg flex items-center gap-2">
+
+<svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+<path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/>
+</svg>
+
+エクセル出力 (.xlsx)
+
+</button>
+
+
+<button id="rescanBtn"
+class="bg-slate-900 text-white font-bold py-2.5 px-8 rounded-lg text-xs hover:bg-blue-700 transition">
+再診断を開始する
+</button>
+    </div>
+    
+</div>
+
+    <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-8 mt-12">
+        <div class="flex justify-between items-center mb-8">
+
+            <div>
+                <h3 class="text-lg font-bold text-slate-900">Historical Trends</h3>
+                <p class="text-xs text-slate-400 font-medium">過去の診断スコアとアラート数の推移</p>
+            </div>
+
+           <div class="flex flex-col gap-1">
+
+    <div class="flex items-center gap-2 text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+        <span>初回診断</span>
+        <span id="first-scan-time" class="text-slate-600">--. --. --. --. --. --</span>
+    </div>
+
+    <div class="flex items-center gap-2 text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+        <span>最終診断</span>
+        <span id="last-update-time" class="text-slate-600">--. --. --. --. --. --</span>
+    </div>
+
+</div>
+
+            <div class="flex items-center gap-3">
+              <select id="trendsMetricSelect" class="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20">
+                <option value="score">SEOスコア</option>
+                <option value="pages">ページ数</option>
+                <option value="issues">エラー数</option>
+              </select>
+              <span id="trendsDiff" class="text-xs font-bold text-slate-500 min-w-[4rem]"></span>
+              <button id="openScheduleModalBtn" class="flex items-center gap-2 bg-slate-50 hover:bg-slate-100 px-4 py-2 rounded-lg border border-slate-200 transition-all group">
+                    <svg class="w-4 h-4 text-slate-400 group-hover:text-blue-500 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+                    </svg>
+                    <span id="current-schedule-label" class="text-[10px] font-black text-slate-500 uppercase">更新頻度: 手動のみ</span>
+                </button>
+            </div>
+        </div>
+
+        <div class="h-[300px] w-full relative">
+            <canvas id="historyChart"></canvas>
+        </div>
+    </div>
+
+    <div class="mt-2 text-right">
+        <a href="#" id="showHistoryModalBtn" class="text-[11px] text-blue-600 hover:text-blue-800 font-bold decoration-blue-300 underline underline-offset-4">
+            診断履歴を表示
+        </a>
+    </div>
+
+    <div id="historyModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[250] hidden flex items-center justify-center p-4">
+        <div class="bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
+            <div class="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                <h3 class="text-sm font-black text-slate-800">診断履歴一覧</h3>
+                <button id="closeHistoryModalBtn" class="text-slate-400 hover:text-slate-600">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12" stroke-width="2" stroke-linecap="round"></path></svg>
+                </button>
+            </div>
+<div style="max-height:180px;overflow-y:auto;">
+<table class="w-full text-xs">
+                    <thead class="text-[10px] uppercase tracking-wider text-slate-400 border-b">
+                        <tr>
+                            <th class="pb-2 font-medium">診断日時</th>
+                            <th class="pb-2 font-medium text-right">平均スコア</th>
+                            <th class="pb-2 font-medium text-right">アラート</th>
+                        </tr>
+                    </thead>
+                    <tbody id="history-list-body" class="text-xs">
+                    </tbody>
+                </table>
+            </div>
+            <div class="p-4 bg-slate-50 border-t border-slate-100 text-center">
+                <button id="closeHistoryModalBtn2" class="text-[11px] font-bold text-slate-500 hover:text-slate-800">閉じる</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="scheduleModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] hidden flex items-center justify-center p-4">
+        <div class="bg-white w-full max-w-sm rounded-2xl shadow-2xl p-8">
+            <div class="text-center mb-6">
+                <div class="w-12 h-12 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <svg class="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+                    </svg>
+                </div>
+                <h4 class="text-lg font-bold text-slate-900">自動計測スケジュール</h4>
+                <p class="text-xs text-slate-400 mt-1">計測頻度を選択してください</p>
+            </div>
+
+            <div class="space-y-3">
+                <select id="scheduleSelect" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20">
+                    <option value="manual">手動のみ（自動計測なし）</option>
+                    <option value="1day">毎日 (Every Day)</option>
+                    <option value="3days">3日おき (Every 3 Days)</option>
+                    <option value="1week">1週間おき (Weekly)</option>
+                    <option value="1month">1ヶ月おき (Monthly)</option>
+                </select>
+
+                <button id="saveScheduleBtn" class="w-full bg-slate-900 text-white font-bold py-3 rounded-xl hover:bg-blue-600 transition-colors shadow-lg shadow-slate-200">設定を保存</button>
+                <button id="closeScheduleModalBtn" class="w-full text-slate-400 text-xs font-bold py-2">キャンセル</button>
+            </div>
+        </div>
+    </div>
+
+</main>
+
+<div id="modalOverlay"
+     class="fixed inset-0 z-50 hidden flex items-center justify-center
+            bg-black/50 backdrop-blur-sm
+            opacity-0 transition-opacity duration-300">
+
+    <div id="modalPanel"
+         class="relative w-full max-w-2xl
+                bg-white rounded-3xl shadow-2xl
+                transform scale-95 translate-y-4 opacity-0
+                transition-all duration-300
+                overflow-hidden">
+
+        <div class="h-2 bg-gradient-to-r from-indigo-500 to-purple-500"></div>
+
+        <div class="p-10">
+            <div id="modalBody"></div>
+        </div>
+
+    </div>
+</div>
+
+<div id="loadingOverlay" class="fixed inset-0 bg-slate-900/80 backdrop-blur-md z-[200] hidden flex flex-col items-center justify-center">
+    <div class="relative">
+        <div class="w-24 h-24 border-4 border-blue-500/20 border-t-blue-500 rounded-full animate-spin"></div>
+        <div class="absolute inset-0 flex items-center justify-center">
+            <svg class="w-10 h-10 text-blue-500 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04a11.357 11.357 0 00-1.573 1.806A11.915 11.915 0 003 12c0 1.62.32 3.166.901 4.575a11.332 11.332 0 001.573 2.806A11.955 11.955 0 0012 21.056a11.955 11.955 0 008.618-3.04c.58-.469 1.112-1.01 1.573-1.606A11.915 11.915 0 0021 12c0-1.62-.32-3.166-.901-4.575a11.332 11.332 0 00-1.573-2.806z" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+            </svg>
+        </div>
+    </div>
+    <div class="mt-8 text-center">
+        <h3 class="text-white text-xl font-black tracking-widest uppercase mb-2">Analyzing...</h3>
+        <p id="loadingStatus" class="text-blue-400 text-xs font-bold font-mono">SEO Score & Structure Analysis</p>
+    </div>
+    <div class="w-64 h-1 bg-white/10 rounded-full mt-6 overflow-hidden">
+        <div class="h-full bg-blue-500 animate-[loading_2s_ease-in-out_infinite]" style="width: 50%;"></div>
+    </div>
+</div>
+
+<button id="backToTop"
+class="fixed bottom-8 right-8 w-12 h-12 bg-slate-900 text-white rounded-full shadow-2xl flex items-center justify-center opacity-0 transition-opacity z-[200]">
+    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M5 15l7-7 7 7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+</button>
+
+<style>
+@keyframes loading {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(200%); }
+}
+</style>
+
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="/js/result/result-ai.js"></script>
+<script src="/js/result/result-core.js"></script>
+<script src="/js/result/result-chart.js"></script>
+<script src="/js/result/result-table.js"></script>
+<script src="/js/result/result-rescan.js"></script>
+<script src="/js/header.js"></script>
+<script src="/js/result/export-excel.js"></script>
+<script src="/js/result/ui.js"></script>
+</body>
+</html>

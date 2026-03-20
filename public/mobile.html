@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>モバイルフレンドリー診断 | SEO Scan</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <link rel="stylesheet" href="/css/seo-mobile.css">
+    <link href="/css/tailwind.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <style>
+        body{font-family:'Inter',sans-serif;background-color:#f8fafc}
+        .metric-tooltip{opacity:0;pointer-events:none;transition:opacity .15s}
+        .metric-tooltip-wrap:hover .metric-tooltip{opacity:1;pointer-events:auto}
+    </style>
+</head>
+<body class="min-h-screen flex flex-col bg-slate-50/30">
+
+    <div id="header-container"></div>
+
+    <main class="flex-grow p-8 max-w-[1600px] mx-auto w-full">
+        <section class="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-8">
+            <div>
+                <div class="flex items-center gap-3 mb-2">
+                    <span class="px-3 py-1 bg-blue-100 text-blue-700 text-[10px] font-black rounded-md uppercase tracking-widest">Mobile Device Audit</span>
+                    <h1 id="displayDomain" class="text-2xl font-black tracking-tight text-slate-900">Loading...</h1>
+                </div>
+                <p id="displayUrl" class="text-xs text-slate-400 font-mono italic">---</p>
+            </div>
+            <button onclick="window.downloadMobileCSV && window.downloadMobileCSV()" class="flex items-center gap-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-6 rounded-xl text-[10px] tracking-widest uppercase transition-all shadow-lg shadow-emerald-100">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                Excelレポート出力 (.xlsx)
+            </button>
+        </section>
+
+        <section class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-10">
+            <div class="p-6 bg-white border border-slate-200 rounded-2xl shadow-sm">
+                <div class="flex justify-between items-center mb-3">
+                    <span class="text-[9px] font-black text-slate-400 uppercase tracking-widest">Viewport</span>
+                    <div class="metric-tooltip-wrap relative">
+                        <div class="text-slate-300 cursor-help"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+                        <div class="metric-tooltip absolute bottom-full left-1/2 -translate-x-1/2 mb-2 p-2 bg-slate-900 text-white text-[10px] rounded shadow-lg w-48 z-30">表示領域の制御設定。欠如するとスマホで極小表示されます。</div>
+                    </div>
+                </div>
+                <div id="v-score" class="text-3xl font-black text-slate-900">--</div>
+                <p id="v-note" class="text-[10px] text-slate-400 mt-1 uppercase font-bold tracking-tighter">判定待ち...</p>
+            </div>
+
+            <div class="p-6 bg-white border border-slate-200 rounded-2xl shadow-sm">
+                <div class="flex justify-between items-center mb-3">
+                    <span class="text-[9px] font-black text-slate-400 uppercase tracking-widest">Font Size</span>
+                    <div class="metric-tooltip-wrap relative">
+                        <div class="text-slate-300 cursor-help"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+                        <div class="metric-tooltip absolute bottom-full left-1/2 -translate-x-1/2 mb-2 p-2 bg-slate-900 text-white text-[10px] rounded shadow-lg w-48 z-30">16px未満の文字。モバイルでの可読性に影響します。</div>
+                    </div>
+                </div>
+                <div id="f-score" class="text-3xl font-black text-slate-900">--</div>
+                <p id="f-note" class="text-[10px] text-slate-400 mt-1 uppercase font-bold tracking-tighter">判定待ち...</p>
+            </div>
+
+            <div class="p-6 bg-white border border-slate-200 rounded-2xl shadow-sm">
+                <div class="flex justify-between items-center mb-3">
+                    <span class="text-[9px] font-black text-slate-400 uppercase tracking-widest">Image Opt</span>
+                    <div class="metric-tooltip-wrap relative">
+                        <div class="text-slate-300 cursor-help"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+                        <div class="metric-tooltip absolute bottom-full left-1/2 -translate-x-1/2 mb-2 p-2 bg-slate-900 text-white text-[10px] rounded shadow-lg w-48 z-30">画像のLazy-load設定や適切なサイズ圧縮を確認します。</div>
+                    </div>
+                </div>
+                <div id="i-score" class="text-3xl font-black text-slate-900">--</div>
+                <p id="i-note" class="text-[10px] text-slate-400 mt-1 uppercase font-bold tracking-tighter">判定待ち...</p>
+            </div>
+
+            <div class="p-6 bg-white border border-slate-200 rounded-2xl shadow-sm">
+                <div class="flex justify-between items-center mb-3">
+                    <span class="text-[9px] font-black text-slate-400 uppercase tracking-widest">Tap Targets</span>
+                    <div class="metric-tooltip-wrap relative">
+                        <div class="text-slate-300 cursor-help"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+                        <div class="metric-tooltip absolute bottom-full left-1/2 -translate-x-1/2 mb-2 p-2 bg-slate-900 text-white text-[10px] rounded shadow-lg w-48 z-30">ボタンの間隔。近すぎると誤タップを招きます。</div>
+                    </div>
+                </div>
+                <div id="l-score" class="text-3xl font-black text-slate-900">--</div>
+                <p id="l-note" class="text-[10px] text-slate-400 mt-1 uppercase font-bold tracking-tighter">判定待ち...</p>
+            </div>
+        </section>
+
+        <section id="ai-review-section" class="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm mb-8">
+            <div class="flex flex-col md:flex-row">
+                <div class="ai-review-icon-area bg-slate-50 border-r border-slate-100 p-6 flex flex-col justify-center items-center shrink-0 gap-2 text-blue-600">
+                    <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                    <span class="text-[9px] font-black uppercase text-slate-400">AI Review</span>
+                </div>
+                <div class="p-6 flex-grow">
+                    <h3 class="text-[11px] font-black text-slate-900 uppercase tracking-widest mb-2">AI Mobile Optimization</h3>
+                    <p id="aiMobileReview" class="text-[13px] text-slate-600 leading-relaxed font-medium italic">URLを選択して詳細を表示してください。</p>
+                </div>
+            </div>
+        </section>
+
+        <section class="flex flex-col lg:flex-row gap-8 items-start relative">
+            <div class="w-full lg:w-[350px] shrink-0 lg:sticky lg:top-24 flex justify-center lg:justify-start">
+                <div class="mobile-preview-wrapper relative mx-auto" style="flex-shrink:0">
+                    <div class="mobile-preview relative overflow-hidden" style="width:320px;height:680px;min-width:320px;min-height:680px">
+                        <div class="phone-notch"></div>
+                        <iframe id="previewFrame" src="about:blank" class="w-full h-full border-0 block" title="モバイルプレビュー"></iframe>
+                    </div>
+                </div>
+                <p class="text-[10px] text-slate-400 text-center mt-2 font-medium">モバイル表示プレビュー</p>
+            </div>
+
+            <div class="w-full flex-grow min-w-0 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
+                <div class="overflow-y-auto overflow-x-auto mobile-list-scroll">
+                    <table id="siteListTable" class="w-full text-left" style="table-layout:fixed">
+                        <colgroup>
+                            <col style="width:4rem">
+                            <col>
+                            <col style="width:5rem">
+                            <col style="width:4rem">
+                        </colgroup>
+                        <thead class="bg-slate-50 text-[10px] font-black text-slate-400 uppercase border-b border-slate-100 sticky top-0 z-10">
+                            <tr>
+                                <th class="px-3 py-3 text-center">Depth</th>
+                                <th class="px-3 py-3">URL & Title</th>
+                                <th class="px-3 py-3 text-center">Score</th>
+                                <th class="px-3 py-3 text-center">Detail</th>
+                            </tr>
+                        </thead>
+                        <tbody id="urlTableBody" class="text-[11px] divide-y divide-slate-50"></tbody>
+                    </table>
+                </div>
+                <div class="flex justify-end p-6 border-t border-slate-50 bg-slate-50/30">
+                    <button onclick="window.downloadMobileCSV && window.downloadMobileCSV()" class="flex items-center gap-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-6 rounded-xl text-[10px] tracking-widest uppercase transition-all shadow-lg shadow-emerald-100/50">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                        Excelレポート出力 (.xlsx)
+                    </button>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <div id="noteModal" class="hidden fixed inset-0 z-[200] flex items-center justify-center p-4">
+        <div class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm" onclick="window.closeNoteModal && window.closeNoteModal()"></div>
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md relative z-10 overflow-hidden border border-slate-200">
+            <div class="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                <h3 class="text-[10px] font-black text-slate-900 uppercase tracking-widest">Detail Note</h3>
+                <button onclick="window.closeNoteModal && window.closeNoteModal()" class="text-slate-400 hover:text-slate-600" aria-label="Close">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </button>
+            </div>
+            <div class="p-6 max-h-[60vh] overflow-y-auto">
+                <div id="modalNoteContent" class="text-[13px] text-slate-600 leading-relaxed"></div>
+            </div>
+            <div class="px-6 py-4 bg-slate-50 border-t border-slate-100 text-right">
+                <button onclick="window.closeNoteModal && window.closeNoteModal()" class="px-5 py-2 bg-slate-900 text-white text-[10px] font-black uppercase tracking-widest rounded-lg">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/js/header.js"></script>
+    <script src="/js/mobile.js"></script>
+</body>
+</html>

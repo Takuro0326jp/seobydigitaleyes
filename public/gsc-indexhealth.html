@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Index Health | SEO Scan</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <link href="/css/tailwind.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&family=JetBrains+Mono&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .font-mono { font-family: 'JetBrains Mono', monospace; }
+        .scrollbar-thin::-webkit-scrollbar { width: 6px; }
+        .scrollbar-thin::-webkit-scrollbar-track { background: #f1f5f9; }
+        .scrollbar-thin::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+    </style>
+</head>
+<body class="text-slate-900 antialiased bg-slate-50/30 min-h-screen flex flex-col">
+
+    <div id="header-container"></div>
+
+    <main class="flex-grow max-w-[1400px] mx-auto w-full px-4 sm:px-6 lg:px-8 py-6 lg:py-8 space-y-8">
+        <!-- ナビゲーション -->
+        <div class="overflow-x-auto -mx-4 sm:mx-0 scrollbar-thin">
+            <div class="flex items-center gap-6 sm:gap-8 border-b border-slate-200 pb-0 min-w-max sm:min-w-0 px-4 sm:px-0">
+                <a href="gsc.html" id="nav-performance" class="nav-item pb-4 text-xs sm:text-sm font-black tracking-widest uppercase transition-all text-slate-400 hover:text-slate-600 border-b-2 border-transparent shrink-0">
+                    Performance
+                </a>
+                <a href="gsc-indexhealth.html" id="nav-indexHealth" class="nav-item pb-4 text-xs sm:text-sm font-black tracking-widest uppercase transition-all border-b-2 border-indigo-600 text-indigo-600 shrink-0">
+                    Index Health
+                </a>
+                <a href="gsc-technical.html" id="nav-technical" class="nav-item pb-4 text-xs sm:text-sm font-black tracking-widest uppercase transition-all text-slate-400 hover:text-slate-600 border-b-2 border-transparent shrink-0">
+                    Technical
+                </a>
+                <a href="gsc-monitoring.html" id="nav-monitoring" class="nav-item pb-4 text-xs sm:text-sm font-black tracking-widest uppercase transition-all text-slate-400 hover:text-slate-600 border-b-2 border-transparent shrink-0">
+                    Monitoring
+                </a>
+            </div>
+        </div>
+
+        <!-- サマリーカード -->
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
+            <div class="bg-white p-5 sm:p-6 rounded-2xl sm:rounded-[32px] border border-slate-200 shadow-sm">
+                <p class="text-[10px] sm:text-[11px] font-black text-indigo-500 uppercase tracking-widest mb-2">Index Score</p>
+                <p id="indexHealthScore" class="text-3xl sm:text-4xl font-black text-slate-900 tracking-tighter">--</p>
+                <p class="text-[9px] sm:text-[10px] text-slate-400 font-bold mt-3 uppercase tracking-tighter italic">Overall Trust</p>
+            </div>
+            <div class="bg-white p-5 sm:p-6 rounded-2xl sm:rounded-[32px] border border-slate-200 shadow-sm">
+                <p class="text-[10px] sm:text-[11px] font-black text-orange-500 uppercase tracking-widest mb-2">Duplicate</p>
+                <p id="duplicateCount" class="text-3xl sm:text-4xl font-black text-slate-900 tracking-tighter">--</p>
+                <p class="text-[9px] sm:text-[10px] text-slate-400 font-bold mt-3 uppercase tracking-tighter italic">Needs Canonical</p>
+            </div>
+            <div class="bg-white p-5 sm:p-6 rounded-2xl sm:rounded-[32px] border border-slate-200 shadow-sm">
+                <p class="text-[10px] sm:text-[11px] font-black text-blue-500 uppercase tracking-widest mb-2">Excluded</p>
+                <p id="unindexedCount" class="text-3xl sm:text-4xl font-black text-slate-900 tracking-tighter">--</p>
+                <p class="text-[9px] sm:text-[10px] text-slate-400 font-bold mt-3 uppercase tracking-tighter italic">Quality Issue</p>
+            </div>
+            <div class="bg-white p-5 sm:p-6 rounded-2xl sm:rounded-[32px] border border-slate-200 shadow-sm">
+                <p class="text-[10px] sm:text-[11px] font-black text-red-500 uppercase tracking-widest mb-2">Critical Error</p>
+                <p id="errorCount" class="text-3xl sm:text-4xl font-black text-slate-900 tracking-tighter">--</p>
+                <p class="text-[9px] sm:text-[10px] text-slate-400 font-bold mt-3 uppercase tracking-tighter italic">404 / 5xx Status</p>
+            </div>
+        </div>
+
+        <!-- AI 総評パネル -->
+        <div class="bg-white border border-slate-200 rounded-2xl sm:rounded-[32px] overflow-hidden shadow-sm">
+            <div class="flex flex-col md:flex-row">
+                <div class="bg-slate-50 border-b md:border-b-0 md:border-r border-slate-100 p-5 md:p-6 flex flex-row md:flex-col justify-center items-center gap-4 md:gap-2 w-full md:w-48 shrink-0">
+                    <div class="w-10 h-10 md:w-12 md:h-12 bg-indigo-600 rounded-xl md:rounded-2xl flex items-center justify-center text-white shadow-lg shrink-0">
+                        <svg class="w-5 h-5 md:w-6 md:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                    </div>
+                    <span id="gscCountDisplay" class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Analyzing...</span>
+                </div>
+                <div class="p-5 md:p-8 flex-grow">
+                    <h3 class="text-sm md:text-base font-black text-slate-900 mb-2">インデックス分析総評</h3>
+                    <p id="aiTrafficReview" class="text-[13px] md:text-[14px] text-slate-500 leading-relaxed font-medium italic">データの分析結果に基づき、具体的な不備の傾向をここに表示します。</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- 課題カード -->
+        <div class="space-y-4 sm:space-y-6">
+            <h2 class="text-base sm:text-xl font-black text-slate-900 tracking-tight uppercase font-mono">Indexing Issues & Mitigation</h2>
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
+                <div class="bg-white p-5 sm:p-6 rounded-2xl sm:rounded-[32px] border border-slate-200 shadow-sm space-y-3">
+                    <div class="space-y-1">
+                        <h4 class="text-sm font-black text-slate-900">見つかりませんでした (404)</h4>
+                        <p id="card-count-404" class="text-[10px] sm:text-[11px] text-slate-400 font-bold uppercase tracking-wider italic">対象: -- ページ</p>
+                    </div>
+                    <p class="text-[11px] sm:text-[12px] text-slate-600 leading-relaxed font-medium">ページが存在せずクローラーが行き止まりになっています。</p>
+                    <div class="pt-3 border-t border-slate-100">
+                        <p class="text-[9px] sm:text-[10px] font-black text-indigo-600 uppercase tracking-widest mb-1">💡 Action</p>
+                        <p class="text-[10px] sm:text-[11px] text-slate-700 font-bold italic">リダイレクト設定またはリンク修正</p>
+                    </div>
+                </div>
+                <div class="bg-white p-5 sm:p-6 rounded-2xl sm:rounded-[32px] border border-slate-200 shadow-sm space-y-3">
+                    <div class="space-y-1">
+                        <h4 class="text-sm font-black text-slate-900">noindex タグによる除外</h4>
+                        <p id="card-count-noindex" class="text-[10px] sm:text-[11px] text-slate-400 font-bold uppercase tracking-wider italic">対象: -- ページ</p>
+                    </div>
+                    <p class="text-[11px] sm:text-[12px] text-slate-600 leading-relaxed font-medium">HTML指示で検索結果から除外されています。</p>
+                    <div class="pt-3 border-t border-slate-100">
+                        <p class="text-[9px] sm:text-[10px] font-black text-indigo-600 uppercase tracking-widest mb-1">💡 Action</p>
+                        <p class="text-[10px] sm:text-[11px] text-slate-700 font-bold italic">meta robotsタグの確認・削除</p>
+                    </div>
+                </div>
+                <div class="bg-white p-5 sm:p-6 rounded-2xl sm:rounded-[32px] border border-slate-200 shadow-sm space-y-3">
+                    <div class="space-y-1">
+                        <h4 class="text-sm font-black text-slate-900">ページにリダイレクトがあります</h4>
+                        <p id="card-count-redirect" class="text-[10px] sm:text-[11px] text-slate-400 font-bold uppercase tracking-wider italic">対象: -- ページ</p>
+                    </div>
+                    <p class="text-[11px] sm:text-[12px] text-slate-600 leading-relaxed font-medium">URLが別の場所に転送されています。</p>
+                    <div class="pt-3 border-t border-slate-100">
+                        <p class="text-[9px] sm:text-[10px] font-black text-indigo-600 uppercase tracking-widest mb-1">💡 Action</p>
+                        <p class="text-[10px] sm:text-[11px] text-slate-700 font-bold italic">内部リンクを転送先へ書き換え</p>
+                    </div>
+                </div>
+                <div class="bg-indigo-50 p-5 sm:p-6 rounded-2xl sm:rounded-[32px] border border-indigo-100 shadow-sm space-y-3 sm:col-span-1">
+                    <div class="space-y-1">
+                        <h4 class="text-sm font-black text-indigo-900">品質・優先度による未登録</h4>
+                        <p id="card-count-unindexed" class="text-[10px] sm:text-[11px] text-indigo-400 font-bold uppercase tracking-wider italic">対象: -- ページ</p>
+                    </div>
+                    <p class="text-[11px] sm:text-[12px] text-indigo-700 leading-relaxed font-medium">Googleが登録を見送っている状態です。</p>
+                    <div class="pt-3 border-t border-indigo-100">
+                        <p class="text-[9px] sm:text-[10px] font-black text-indigo-600 uppercase tracking-widest mb-1">💡 Action</p>
+                        <p class="text-[10px] sm:text-[11px] text-indigo-800 font-bold italic">コンテンツ拡充と内部リンク追加</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- テーブル + 詳細パネル -->
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-start">
+            <div class="lg:col-span-8 bg-white rounded-2xl sm:rounded-[32px] shadow-sm border border-slate-200 overflow-hidden">
+                <div class="p-4 sm:p-6 border-b border-slate-100 bg-slate-50/50">
+                    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                        <div class="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-6">
+                            <h2 class="text-[10px] sm:text-[11px] font-black text-slate-400 uppercase tracking-widest">URL Pathway Analysis</h2>
+                            <div class="flex bg-slate-100 p-1 rounded-xl w-fit">
+                                <button onclick="window.switchTableTab && window.switchTableTab('all')" id="tab-all" class="px-3 sm:px-4 py-1.5 rounded-lg text-[9px] sm:text-[10px] font-black transition-all bg-white text-indigo-600 shadow-sm">ALL ISSUES</button>
+                                <button onclick="window.switchTableTab && window.switchTableTab('duplicate')" id="tab-duplicate" class="px-3 sm:px-4 py-1.5 rounded-lg text-[9px] sm:text-[10px] font-black transition-all text-slate-400 hover:text-slate-600">DUPLICATES</button>
+                            </div>
+                        </div>
+                        <input type="text" id="gscSearchInput" oninput="window.filterIndexTable && window.filterIndexTable()" placeholder="URL Search..." class="w-full sm:w-48 bg-white border border-slate-200 rounded-xl px-4 py-2 text-[11px] font-bold outline-none shadow-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+                    </div>
+                </div>
+                <div class="overflow-x-auto max-h-[500px] lg:max-h-[600px] scrollbar-thin">
+                    <table class="w-full text-left min-w-[500px]">
+                        <thead class="sticky top-0 bg-white/95 backdrop-blur-sm z-10 border-b border-slate-200">
+                            <tr class="text-[9px] sm:text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                                <th class="p-4 sm:p-6">URL Pathway</th>
+                                <th class="p-4 sm:p-6">Reason</th>
+                                <th class="p-4 sm:p-6 text-center">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="indexHealthTableBody" class="divide-y divide-slate-100 text-[11px] sm:text-[12px] font-bold text-slate-600 italic"></tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="lg:col-span-4 lg:sticky lg:top-8">
+                <div id="queryDetailPanel" class="bg-white rounded-2xl sm:rounded-[32px] border border-indigo-100 shadow-xl shadow-indigo-50/50 p-5 sm:p-6 overflow-hidden relative min-h-[380px] lg:min-h-[450px]">
+                    <div id="panelPlaceholder" class="absolute inset-0 flex flex-col items-center justify-center p-6 sm:p-8 text-center bg-white z-10">
+                        <div class="w-14 h-14 sm:w-16 sm:h-16 bg-slate-50 rounded-full flex items-center justify-center mb-3 sm:mb-4 text-slate-300">
+                            <svg class="w-7 h-7 sm:w-8 sm:h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5"/></svg>
+                        </div>
+                        <p class="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-widest">Select a URL</p>
+                        <p class="text-[10px] sm:text-[11px] text-slate-300 mt-2 italic">行を選択して詳細を表示</p>
+                    </div>
+                    <div id="panelContent" class="hidden">
+                        <h3 id="detailQueryName" class="text-base sm:text-lg font-black text-slate-900 mb-4 tracking-tight leading-tight break-all"></h3>
+                        <div class="space-y-4">
+                            <div>
+                                <h4 class="text-[9px] sm:text-[10px] font-black text-indigo-500 uppercase tracking-widest mb-2 flex items-center gap-2">
+                                    <span class="w-1.5 h-1.5 bg-indigo-500 rounded-full shrink-0"></span> 評価・分析
+                                </h4>
+                                <p id="analysisText" class="text-[12px] sm:text-[13px] text-slate-600 leading-relaxed font-medium bg-slate-50 p-4 rounded-xl italic"></p>
+                            </div>
+                            <div>
+                                <h4 class="text-[9px] sm:text-[10px] font-black text-red-500 uppercase tracking-widest mb-2 flex items-center gap-2">
+                                    <span class="w-1.5 h-1.5 bg-red-500 rounded-full shrink-0"></span> 推奨アクション
+                                </h4>
+                                <div id="actionList" class="text-[11px] sm:text-[12px] text-slate-700 font-bold"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Excel 出力ボタン -->
+        <div class="flex justify-center pt-6 sm:pt-8 pb-12 sm:pb-16">
+            <button id="gscExcelBtn" onclick="window.downloadGSCExcel && window.downloadGSCExcel()" class="flex items-center gap-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 sm:py-4 px-8 sm:px-10 rounded-2xl text-[11px] sm:text-[12px] tracking-widest uppercase transition-all shadow-xl shadow-emerald-100 hover:-translate-y-0.5 active:scale-95">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+                分析レポートをエクセルで書き出す (.xlsx)
+            </button>
+        </div>
+    </main>
+
+    <script src="/js/header.js"></script>
+    <script src="/js/gsc-indexhealth.js"></script>
+</body>
+</html>

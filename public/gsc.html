@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Search Console | SEO Scan</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <link href="/css/tailwind.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <style>
+        body{font-family:'Inter',sans-serif}
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+        .active-tab { border-bottom-width: 2px; border-color: rgb(79 70 229); color: rgb(79 70 229); }
+        .scrollbar-thin::-webkit-scrollbar { width: 6px; }
+        .scrollbar-thin::-webkit-scrollbar-track { background: #f1f5f9; }
+        .scrollbar-thin::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+    </style>
+</head>
+<body class="text-slate-900 antialiased bg-slate-50/30 min-h-screen flex flex-col">
+
+    <div id="header-container"></div>
+
+    <main class="flex-grow max-w-[1400px] mx-auto w-full px-4 sm:px-6 lg:px-8 py-6 lg:py-8 space-y-8">
+        <!-- ナビゲーション -->
+        <div class="overflow-x-auto -mx-4 sm:mx-0 scrollbar-thin">
+            <div class="flex items-center gap-6 sm:gap-8 border-b border-slate-200 pb-0 min-w-max sm:min-w-0 px-4 sm:px-0">
+                <a href="gsc.html" id="nav-performance" class="nav-item pb-4 text-xs sm:text-sm font-black tracking-widest uppercase transition-all border-b-2 border-indigo-600 text-indigo-600 shrink-0">
+                    Performance
+                </a>
+                <a href="gsc-indexhealth.html" id="nav-indexHealth" class="nav-item pb-4 text-xs sm:text-sm font-black tracking-widest uppercase transition-all text-slate-400 hover:text-slate-600 border-b-2 border-transparent shrink-0">
+                    Index Health
+                </a>
+                <a href="gsc-technical.html" id="nav-technical" class="nav-item pb-4 text-xs sm:text-sm font-black tracking-widest uppercase transition-all text-slate-400 hover:text-slate-600 border-b-2 border-transparent shrink-0">
+                    Technical
+                </a>
+                <a href="gsc-monitoring.html" id="nav-monitoring" class="nav-item pb-4 text-xs sm:text-sm font-black tracking-widest uppercase transition-all text-slate-400 hover:text-slate-600 border-b-2 border-transparent shrink-0">
+                    Monitoring
+                </a>
+            </div>
+        </div>
+
+        <div id="content-performance" class="tab-content active space-y-8">
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                <div class="bg-white p-6 rounded-[32px] border border-slate-200 shadow-sm">
+                    <p class="text-[10px] font-black text-slate-400 uppercase mb-1 tracking-widest">合計クリック数</p>
+                    <p id="totalClicks" class="text-4xl font-black text-slate-800">--</p>
+                    <p class="text-[10px] text-slate-400 font-bold mt-1 uppercase">GSC 接続時に表示</p>
+                </div>
+                <div class="bg-white p-6 rounded-[32px] border border-slate-200 shadow-sm">
+                    <p class="text-[10px] font-black text-slate-400 uppercase mb-1 tracking-widest">合計表示回数</p>
+                    <p id="totalImpressions" class="text-4xl font-black text-slate-800">--</p>
+                    <p class="text-[10px] text-slate-400 font-bold mt-1 uppercase">GSC 接続時に表示</p>
+                </div>
+                <div class="bg-white p-6 rounded-[32px] border border-slate-200 shadow-sm">
+                    <p class="text-[10px] font-black text-slate-400 uppercase mb-1 tracking-widest">平均 CTR</p>
+                    <p id="avgCtr" class="text-4xl font-black text-slate-800">--</p>
+                    <p class="text-[10px] text-slate-400 font-medium mt-1 italic">※ 全取得URLの平均</p>
+                </div>
+                <div class="bg-white p-6 rounded-[32px] border border-slate-200 shadow-sm">
+                    <p class="text-[10px] font-black text-slate-400 uppercase mb-1 tracking-widest">平均 掲載順位</p>
+                    <p id="avgPosition" class="text-4xl font-black text-slate-800">--</p>
+                    <p class="text-[10px] text-slate-400 font-medium mt-1 italic">※ スコアから算出</p>
+                </div>
+            </div>
+
+            <div class="bg-white border border-slate-200 rounded-[32px] overflow-hidden shadow-sm">
+                <div class="flex flex-col md:flex-row">
+                    <div class="bg-slate-50 border-r border-slate-100 p-6 flex flex-col justify-center items-center w-full md:w-48 shrink-0 gap-2 font-black text-indigo-600">
+                        <div class="w-10 h-10 bg-indigo-600 rounded-lg flex items-center justify-center text-white shadow-lg shadow-indigo-100 text-xs">AI</div>
+                        <span class="text-[10px] uppercase tracking-[0.2em] text-slate-400">TRAFFIC INSIGHT</span>
+                    </div>
+                    <div class="p-8 flex-grow">
+                        <div class="flex items-center gap-3 mb-3">
+                            <h3 class="text-sm font-extrabold text-slate-800 tracking-tight">検索パフォーマンス総評</h3>
+                            <span class="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded uppercase">GSC</span>
+                        </div>
+                        <p id="aiTrafficReview" class="text-[13px] text-slate-600 leading-relaxed font-medium italic">読み込み中...</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="flex flex-col lg:flex-row lg:items-end justify-between gap-6 pt-4">
+                <div class="space-y-2">
+                    <h2 class="text-xl font-black text-slate-800 tracking-tight flex items-center gap-2">
+                        インデックスURL × 改善優先度
+                        <span id="gscCountDisplay" class="text-xs font-bold text-indigo-500 bg-indigo-50 px-2 py-1 rounded">-- 件</span>
+                    </h2>
+                    <div class="flex flex-wrap items-center gap-x-6 gap-y-2">
+                        <p class="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+                            Initial: <span id="first-fetch-date" class="text-slate-600">-</span>
+                        </p>
+                        <p class="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+                            Last Update: <span id="last-update-date" class="text-slate-600">-</span>
+                        </p>
+                    </div>
+                </div>
+                <div class="flex flex-wrap items-center gap-3">
+                    <button id="refresh-btn" onclick="window.refreshGSCData && window.refreshGSCData()" class="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 text-white rounded-xl text-[13px] font-black hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100 active:scale-95">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                        </svg>
+                        最新データに更新
+                    </button>
+                    <select id="priorityFilter" onchange="window.filterGSCTable && window.filterGSCTable()" class="px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-[13px] font-bold text-slate-600 outline-none shadow-sm focus:ring-2 focus:ring-indigo-500">
+                        <option value="">すべての優先度</option>
+                        <option value="HIGH">HIGH (最優先)</option>
+                        <option value="MID">MID (中)</option>
+                        <option value="LOW">LOW (低)</option>
+                    </select>
+                    <input type="text" id="gscSearchInput" oninput="window.filterGSCTable && window.filterGSCTable()" placeholder="URLで絞り込み..." class="w-64 px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-[13px] font-bold text-slate-700 outline-none shadow-sm focus:ring-2 focus:ring-indigo-500">
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+                <div class="lg:col-span-8 bg-white rounded-[32px] shadow-sm border border-slate-200 overflow-hidden">
+                    <div class="overflow-x-auto overflow-y-auto" style="max-height: 600px;">
+                        <table class="w-full text-left border-collapse">
+                            <thead class="sticky top-0 bg-slate-50/95 backdrop-blur-sm z-10 border-b border-slate-200 font-black text-[10px] text-slate-400 uppercase tracking-widest">
+                                <tr>
+                                    <th class="p-4 w-12 text-center">No</th>
+                                    <th class="p-4">URL (Page)</th>
+                                    <th class="p-4 text-center">クリック</th>
+                                    <th class="p-4 text-center">表示回数</th>
+                                    <th class="p-4 text-center">CTR</th>
+                                    <th class="p-4 text-center">順位</th>
+                                    <th class="p-4 text-center">優先度</th>
+                                </tr>
+                            </thead>
+                            <tbody id="gscTableBody" class="text-[13px] text-slate-600 divide-y divide-slate-100 font-medium"></tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="lg:col-span-4 sticky top-8">
+                    <div id="queryDetailPanel" class="bg-white rounded-[32px] border border-indigo-100 shadow-xl shadow-indigo-50/50 p-6 overflow-hidden relative min-h-[450px]">
+                        <div id="panelPlaceholder" class="absolute inset-0 flex flex-col items-center justify-center p-8 text-center bg-white z-10">
+                            <div class="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mb-4 text-slate-300">
+                                <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5"/></svg>
+                            </div>
+                            <p class="text-xs font-bold text-slate-400 uppercase tracking-widest">Select a URL</p>
+                            <p class="text-[11px] text-slate-300 mt-2 italic">行を選択してAI改善レポートを表示</p>
+                        </div>
+                        <div id="panelContent" class="hidden">
+                            <div class="flex items-center gap-2 mb-4">
+                                <span id="detailDeviceTag"></span>
+                                <span id="detailPriorityTag"></span>
+                            </div>
+                            <h3 id="detailQueryName" class="text-lg font-black text-slate-900 mb-6 tracking-tight leading-tight break-all"></h3>
+                            <div class="space-y-6">
+                                <div>
+                                    <h4 class="text-[10px] font-black text-indigo-500 uppercase tracking-widest mb-2 flex items-center gap-2">
+                                        <span class="w-1.5 h-1.5 bg-indigo-500 rounded-full"></span> 現時点の評価
+                                    </h4>
+                                    <p id="analysisText" class="text-[13px] text-slate-600 leading-relaxed font-medium bg-slate-50 p-4 rounded-xl italic"></p>
+                                </div>
+                                <div>
+                                    <h4 class="text-[10px] font-black text-red-500 uppercase tracking-widest mb-2 flex items-center gap-2">
+                                        <span class="w-1.5 h-1.5 bg-red-500 rounded-full"></span> 課題と改善ポイント
+                                    </h4>
+                                    <ul id="actionList" class="space-y-3 text-[12px] text-slate-700 font-bold"></ul>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="flex justify-center pt-8 pb-12">
+            <button onclick="window.downloadGSCExcel && window.downloadGSCExcel()" class="flex items-center gap-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-4 px-10 rounded-2xl text-[12px] tracking-widest uppercase transition-all shadow-xl shadow-emerald-100 hover:-translate-y-1">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+                分析レポートをエクセルで書き出す (.xlsx)
+            </button>
+        </div>
+    </main>
+
+    <script src="/js/header.js"></script>
+    <script src="/js/gsc.js"></script>
+</body>
+</html>

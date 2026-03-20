@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SEO Monitoring | SEO Scan</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <link href="/css/tailwind.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&family=JetBrains+Mono&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .font-mono { font-family: 'JetBrains Mono', monospace; }
+        .scrollbar-thin::-webkit-scrollbar { width: 6px; }
+        .scrollbar-thin::-webkit-scrollbar-track { background: #f1f5f9; }
+        .scrollbar-thin::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+    </style>
+</head>
+<body class="text-slate-900 antialiased bg-slate-50/30 min-h-screen flex flex-col">
+
+    <div id="header-container"></div>
+
+    <main class="flex-grow max-w-[1400px] mx-auto w-full px-4 sm:px-6 lg:px-8 py-6 lg:py-8 space-y-8">
+        <!-- ナビゲーション -->
+        <div class="overflow-x-auto -mx-4 sm:mx-0 scrollbar-thin">
+            <div class="flex items-center gap-6 sm:gap-8 border-b border-slate-200 pb-0 min-w-max sm:min-w-0 px-4 sm:px-0">
+                <a href="gsc.html" id="nav-performance" class="nav-item pb-4 text-xs sm:text-sm font-black tracking-widest uppercase transition-all text-slate-400 hover:text-slate-600 border-b-2 border-transparent shrink-0">
+                    Performance
+                </a>
+                <a href="gsc-indexhealth.html" id="nav-indexHealth" class="nav-item pb-4 text-xs sm:text-sm font-black tracking-widest uppercase transition-all text-slate-400 hover:text-slate-600 border-b-2 border-transparent shrink-0">
+                    Index Health
+                </a>
+                <a href="gsc-technical.html" id="nav-technical" class="nav-item pb-4 text-xs sm:text-sm font-black tracking-widest uppercase transition-all text-slate-400 hover:text-slate-600 border-b-2 border-transparent shrink-0">
+                    Technical
+                </a>
+                <a href="gsc-monitoring.html" id="nav-monitoring" class="nav-item pb-4 text-xs sm:text-sm font-black tracking-widest uppercase transition-all border-b-2 border-indigo-600 text-indigo-600 shrink-0">
+                    Monitoring
+                </a>
+            </div>
+        </div>
+
+        <!-- サマリーカード -->
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
+            <div class="bg-white p-5 sm:p-6 rounded-2xl sm:rounded-[32px] border border-slate-200 shadow-sm">
+                <p class="text-[10px] sm:text-[11px] font-black text-indigo-500 uppercase tracking-widest mb-2">30D Clicks</p>
+                <div class="flex items-baseline gap-2 sm:gap-3">
+                    <p id="totalClicks" class="text-3xl sm:text-4xl font-black text-slate-900 tracking-tighter">--</p>
+                    <span id="clickDiff" class="text-[10px] sm:text-xs font-bold text-emerald-500">--</span>
+                </div>
+            </div>
+            <div class="bg-white p-5 sm:p-6 rounded-2xl sm:rounded-[32px] border border-slate-200 shadow-sm">
+                <p class="text-[10px] sm:text-[11px] font-black text-blue-500 uppercase tracking-widest mb-2">30D Impressions</p>
+                <div class="flex items-baseline gap-2 sm:gap-3">
+                    <p id="totalImpressions" class="text-3xl sm:text-4xl font-black text-slate-900 tracking-tighter">--</p>
+                    <span id="impDiff" class="text-[10px] sm:text-xs font-bold text-emerald-500">--</span>
+                </div>
+            </div>
+            <div class="bg-white p-5 sm:p-6 rounded-2xl sm:rounded-[32px] border border-slate-200 shadow-sm">
+                <p class="text-[10px] sm:text-[11px] font-black text-amber-500 uppercase tracking-widest mb-2">Avg. CTR</p>
+                <p id="avgCtr" class="text-3xl sm:text-4xl font-black text-slate-900 tracking-tighter">--</p>
+            </div>
+            <div class="bg-white p-5 sm:p-6 rounded-2xl sm:rounded-[32px] border border-slate-200 shadow-sm">
+                <p class="text-[10px] sm:text-[11px] font-black text-emerald-500 uppercase tracking-widest mb-2">Avg. Position</p>
+                <div class="flex items-baseline gap-2 sm:gap-3">
+                    <p id="avgPosition" class="text-3xl sm:text-4xl font-black text-slate-900 tracking-tighter">--</p>
+                    <span id="posDiff" class="text-[10px] sm:text-xs font-bold text-slate-400">--</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- パフォーマンス推移チャート -->
+        <div class="bg-white p-6 sm:p-10 rounded-2xl sm:rounded-[32px] lg:rounded-[48px] border border-slate-200 shadow-sm space-y-6 sm:space-y-8">
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                <div>
+                    <h2 class="text-lg sm:text-2xl font-black text-slate-900 tracking-tight">パフォーマンス推移</h2>
+                    <p class="text-[11px] sm:text-[12px] text-slate-400 font-bold uppercase tracking-widest mt-1">Clicks vs Impressions (Past 30 Days)</p>
+                </div>
+                <div class="flex bg-slate-100 p-1 rounded-xl sm:rounded-2xl w-fit">
+                    <button id="btn-30d" class="px-4 sm:px-6 py-2 bg-white rounded-lg sm:rounded-xl shadow-sm text-[10px] sm:text-xs font-black uppercase tracking-tighter">30 Days</button>
+                    <button id="btn-90d" class="px-4 sm:px-6 py-2 text-slate-400 text-[10px] sm:text-xs font-black uppercase tracking-tighter hover:text-slate-600 transition-colors">90 Days</button>
+                </div>
+            </div>
+            <div class="h-[300px] sm:h-[400px] w-full">
+                <canvas id="performanceChart"></canvas>
+            </div>
+        </div>
+
+        <!-- AI トレンド分析 -->
+        <div class="bg-white border border-slate-200 rounded-2xl sm:rounded-[32px] overflow-hidden shadow-sm">
+            <div class="flex flex-col md:flex-row">
+                <div class="bg-slate-50 border-b md:border-b-0 md:border-r border-slate-100 p-5 md:p-6 flex flex-row md:flex-col justify-center items-center gap-4 md:gap-2 w-full md:w-48 shrink-0">
+                    <svg class="w-8 h-8 md:w-10 md:h-10 text-indigo-600 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z"/></svg>
+                    <span class="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Growth Insight</span>
+                </div>
+                <div class="p-5 md:px-12 md:py-8 flex-grow">
+                    <h3 class="text-sm md:text-base font-black text-slate-900 mb-2">トレンド分析</h3>
+                    <p id="aiMonitorReview" class="text-[13px] md:text-[14px] text-slate-500 leading-relaxed font-medium italic">
+                        直近のデータ変動を解析中... 検索順位の変動とクリック率の相関をチェックしています。
+                    </p>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script src="/js/header.js"></script>
+    <script src="/js/gsc-monitoring.js"></script>
+</body>
+</html>

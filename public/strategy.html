@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SEO Strategy | SEO Scan</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <link href="/css/tailwind.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+    </style>
+</head>
+<body class="text-slate-900 antialiased bg-slate-50/30 min-h-screen flex flex-col">
+
+    <div id="header-container"></div>
+
+    <main class="flex-grow max-w-[1400px] mx-auto w-full px-4 sm:px-6 lg:px-8 py-6 lg:py-8 space-y-8">
+        <section class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div>
+                <span class="px-3 py-1 bg-indigo-100 text-indigo-700 text-[10px] font-black rounded-md uppercase tracking-widest">Keyword Strategy</span>
+                <h1 class="text-2xl sm:text-3xl font-black tracking-tight text-slate-900 mt-2">SEO Strategy</h1>
+                <p class="text-[11px] sm:text-xs text-slate-400 font-bold uppercase tracking-widest mt-2">キーワード戦略管理・AI提案</p>
+            </div>
+            <div class="flex gap-2">
+                <button id="btnAiProposals" class="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-[10px] font-black rounded-xl hover:bg-indigo-700 transition shadow-sm">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>
+                    AI提案を取得
+                </button>
+                <button id="btnAddKeyword" class="flex items-center gap-2 px-6 py-2.5 bg-slate-900 text-white text-[10px] font-black rounded-xl hover:bg-slate-800 transition shadow-sm whitespace-nowrap shrink-0">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 4v16m8-8H4" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                    手動で追加
+                </button>
+            </div>
+        </section>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
+            <div class="bg-white p-5 sm:p-6 rounded-2xl sm:rounded-[32px] shadow-sm border border-slate-200">
+                <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">戦略適合度</p>
+                <h3 class="text-3xl font-bold text-blue-600" id="avgRelevance">--</h3>
+                <p class="text-[11px] text-orange-500 mt-2 font-bold">accepted の平均 relevance</p>
+            </div>
+            <div class="bg-white p-5 sm:p-6 rounded-2xl sm:rounded-[32px] shadow-sm border border-slate-200">
+                <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">採用KW数 / 提案数</p>
+                <h3 class="text-3xl font-bold text-slate-900" id="kwCountDisplay">-- / --</h3>
+                <p class="text-[11px] text-slate-400 mt-2">戦略ターゲット管理状況</p>
+            </div>
+            <div class="bg-white p-5 sm:p-6 rounded-2xl sm:rounded-[32px] shadow-sm border border-slate-200">
+                <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">意図カバー率</p>
+                <h3 class="text-3xl font-bold text-slate-900" id="intentCoverage">--%</h3>
+                <p class="text-[11px] text-green-500 mt-2 font-bold">intent 種類のカバー率</p>
+            </div>
+            <div class="bg-white p-5 sm:p-6 rounded-2xl sm:rounded-[32px] shadow-sm border border-slate-200">
+                <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">圏外キーワード数</p>
+                <h3 class="text-3xl font-bold text-red-500" id="outOfRank">--</h3>
+                <p class="text-[11px] text-red-400 mt-2 font-bold">rank == 0 or > 50</p>
+            </div>
+        </div>
+
+        <div class="bg-white rounded-2xl sm:rounded-[32px] shadow-sm border border-slate-200 overflow-hidden">
+            <div class="p-5 sm:p-6 border-b border-slate-100 flex flex-col md:flex-row justify-between items-start md:items-center bg-slate-50/30 gap-4">
+                <div>
+                    <h2 class="text-sm font-bold text-slate-800">キーワード × 戦略ステータス</h2>
+                    <p class="text-[10px] text-slate-400 font-medium mt-1">AI提案を承認することで、正式なモニタリング対象に追加されます。</p>
+                </div>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-left min-w-[600px]">
+                    <thead class="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 bg-slate-50/50">
+                        <tr>
+                            <th class="p-4 sm:p-6 cursor-pointer" id="thKeyword">キーワード</th>
+                            <th class="p-4 sm:p-6 w-32">検索意図</th>
+                            <th class="p-4 sm:p-6 w-28 text-center cursor-pointer" id="thRelevance">適合度</th>
+                            <th class="p-4 sm:p-6 w-24 text-center cursor-pointer" id="thRank">順位</th>
+                            <th class="p-4 sm:p-6 w-36 text-center">ステータス / 操作</th>
+                            <th class="p-4 sm:p-6 w-16 text-center">詳細</th>
+                        </tr>
+                    </thead>
+                    <tbody id="strategyTableBody" class="text-[13px] divide-y divide-slate-50"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6 pb-10">
+            <div class="bg-blue-50/50 p-5 sm:p-6 rounded-2xl border border-blue-100">
+                <p class="text-[10px] font-black text-blue-600 uppercase mb-3 tracking-tighter">AI提案の傾向</p>
+                <p id="aiTrend" class="text-sm font-bold text-slate-700 leading-relaxed">GSC データを取得すると、impression > 100 かつ rank > 10 のクエリを AI 提案として登録できます。</p>
+            </div>
+            <div class="bg-indigo-50/50 p-5 sm:p-6 rounded-2xl border border-indigo-100">
+                <p class="text-[10px] font-black text-indigo-600 uppercase mb-3 tracking-tighter">最適化のヒント</p>
+                <p id="aiHint" class="text-sm font-bold text-slate-700 leading-relaxed">承認済みキーワードの平均適合度を確認し、80%以上を目指しましょう。</p>
+            </div>
+            <div class="bg-emerald-50/50 p-5 sm:p-6 rounded-2xl border border-emerald-100">
+                <p class="text-[10px] font-black text-emerald-600 uppercase mb-3 tracking-tighter">最優先アクション</p>
+                <p id="aiAction" class="text-sm font-bold text-slate-700 leading-relaxed">圏外キーワードに対し、専用のLPを割り当ててください。</p>
+            </div>
+        </div>
+    </main>
+
+    <div id="modalOverlay" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div id="modalContent" class="bg-white w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden relative p-8 sm:p-10">
+            <div id="modalBody"></div>
+            <button id="modalCloseBtn" class="absolute top-6 right-6 text-slate-400 hover:text-slate-900 transition" aria-label="Close">✕</button>
+        </div>
+    </div>
+
+    <script src="/js/header.js"></script>
+    <script src="/js/strategy.js"></script>
+</body>
+</html>

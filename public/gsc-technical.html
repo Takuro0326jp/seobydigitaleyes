@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Technical Audit | SEO Scan</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <link href="/css/tailwind.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&family=JetBrains+Mono&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .font-mono { font-family: 'JetBrains Mono', monospace; }
+        .scrollbar-thin::-webkit-scrollbar { width: 6px; }
+        .scrollbar-thin::-webkit-scrollbar-track { background: #f1f5f9; }
+        .scrollbar-thin::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+    </style>
+</head>
+<body class="text-slate-900 antialiased bg-slate-50/30 min-h-screen flex flex-col">
+
+    <div id="header-container"></div>
+
+    <main class="flex-grow max-w-[1400px] mx-auto w-full px-4 sm:px-6 lg:px-8 py-6 lg:py-8 space-y-8">
+        <!-- ナビゲーション -->
+        <div class="overflow-x-auto -mx-4 sm:mx-0 scrollbar-thin">
+            <div class="flex items-center gap-6 sm:gap-8 border-b border-slate-200 pb-0 min-w-max sm:min-w-0 px-4 sm:px-0">
+                <a href="gsc.html" id="nav-performance" class="nav-item pb-4 text-xs sm:text-sm font-black tracking-widest uppercase transition-all text-slate-400 hover:text-slate-600 border-b-2 border-transparent shrink-0">
+                    Performance
+                </a>
+                <a href="gsc-indexhealth.html" id="nav-indexHealth" class="nav-item pb-4 text-xs sm:text-sm font-black tracking-widest uppercase transition-all text-slate-400 hover:text-slate-600 border-b-2 border-transparent shrink-0">
+                    Index Health
+                </a>
+                <a href="gsc-technical.html" id="nav-technical" class="nav-item pb-4 text-xs sm:text-sm font-black tracking-widest uppercase transition-all border-b-2 border-indigo-600 text-indigo-600 shrink-0">
+                    Technical
+                </a>
+                <a href="gsc-monitoring.html" id="nav-monitoring" class="nav-item pb-4 text-xs sm:text-sm font-black tracking-widest uppercase transition-all text-slate-400 hover:text-slate-600 border-b-2 border-transparent shrink-0">
+                    Monitoring
+                </a>
+            </div>
+        </div>
+
+        <!-- サマリーカード -->
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
+            <div class="bg-white p-5 sm:p-6 rounded-2xl sm:rounded-[32px] border border-slate-200 shadow-sm">
+                <p class="text-[10px] sm:text-[11px] font-black text-indigo-500 uppercase tracking-widest mb-2">Tech Score</p>
+                <p id="technicalHealthScore" class="text-3xl sm:text-4xl font-black text-slate-800">--</p>
+                <p class="text-[9px] sm:text-[10px] text-slate-400 leading-tight font-medium mt-2">サイトの技術的完成度。速度や構造化データから算出します。</p>
+            </div>
+            <div class="bg-white p-5 sm:p-6 rounded-2xl sm:rounded-[32px] border border-slate-200 shadow-sm">
+                <p class="text-[10px] sm:text-[11px] font-black text-emerald-500 uppercase tracking-widest mb-2">Core Web Vitals</p>
+                <p id="cwvPassRate" class="text-3xl sm:text-4xl font-black text-slate-800">--</p>
+                <p class="text-[9px] sm:text-[10px] text-slate-400 leading-tight font-medium mt-2">「良好」判定のURL割合。読み込み速度と安定性の指標です。</p>
+            </div>
+            <div class="bg-white p-5 sm:p-6 rounded-2xl sm:rounded-[32px] border border-slate-200 shadow-sm">
+                <p class="text-[10px] sm:text-[11px] font-black text-orange-500 uppercase tracking-widest mb-2">Mobile Usability</p>
+                <p id="mobileFriendlyRate" class="text-3xl sm:text-4xl font-black text-slate-800">--</p>
+                <p class="text-[9px] sm:text-[10px] text-slate-400 leading-tight font-medium mt-2">モバイル最適化エラーがないURLの割合を表示します。</p>
+            </div>
+            <div class="bg-white p-5 sm:p-6 rounded-2xl sm:rounded-[32px] border border-slate-200 shadow-sm">
+                <p class="text-[10px] sm:text-[11px] font-black text-blue-500 uppercase tracking-widest mb-2">Rich Results</p>
+                <p id="schemaCount" class="text-3xl sm:text-4xl font-black text-slate-800">--</p>
+                <p class="text-[9px] sm:text-[10px] text-slate-400 leading-tight font-medium mt-2">正常に検出された構造化データ（FAQ、商品等）の総数です。</p>
+            </div>
+        </div>
+
+        <!-- AI 総評パネル -->
+        <div class="bg-white border border-slate-200 rounded-2xl sm:rounded-[32px] overflow-hidden shadow-sm">
+            <div class="flex flex-col md:flex-row">
+                <div class="bg-slate-50 border-b md:border-b-0 md:border-r border-slate-100 p-5 md:p-6 flex flex-row md:flex-col justify-center items-center gap-4 md:gap-2 w-full md:w-48 shrink-0">
+                    <div class="w-10 h-10 md:w-12 md:h-12 bg-indigo-600 rounded-xl md:rounded-2xl flex items-center justify-center text-white shadow-lg shrink-0">
+                        <svg class="w-5 h-5 md:w-6 md:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                    </div>
+                    <span class="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">TECH INSIGHT</span>
+                </div>
+                <div class="p-5 md:p-8 flex-grow">
+                    <div class="flex items-center gap-3 mb-2">
+                        <h3 class="text-sm md:text-base font-black text-slate-900">テクニカルSEO総評</h3>
+                        <span class="px-2 py-0.5 bg-indigo-50 text-indigo-600 text-[9px] sm:text-[10px] font-black rounded uppercase">Audit</span>
+                    </div>
+                    <p id="aiTechReview" class="text-[13px] md:text-[14px] text-slate-500 leading-relaxed font-medium italic">
+                        読み込み中... URLごとの表示速度やモバイルフレンドリー状況を分析しています。
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <!-- テーブルヘッダー -->
+        <div class="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 pt-2">
+            <div>
+                <div class="flex items-center gap-3 mb-1">
+                    <h2 class="text-lg sm:text-2xl font-black text-slate-900 tracking-tight">ページエクスペリエンス詳細</h2>
+                    <span id="techCountDisplay" class="px-3 py-1 bg-indigo-50 text-indigo-600 text-[10px] sm:text-[11px] font-black rounded-full uppercase tracking-tighter">分析中</span>
+                </div>
+                <p class="text-[11px] sm:text-[12px] text-slate-400 font-bold uppercase tracking-widest">コアウェブバイタルとリッチリザルトの検出状況</p>
+            </div>
+            <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 sm:gap-4">
+                <select id="techFilter" onchange="window.filterTechTable && window.filterTechTable()" class="h-12 sm:h-14 px-4 sm:px-6 bg-white border border-slate-200 rounded-xl sm:rounded-2xl text-[12px] sm:text-[13px] font-bold text-slate-600 outline-none shadow-sm focus:ring-2 focus:ring-indigo-500 min-w-0 sm:min-w-[200px]">
+                    <option value="">すべてのステータス</option>
+                    <option value="POOR">POOR (改善必須)</option>
+                    <option value="IMPROVE">Needs Improvement</option>
+                    <option value="GOOD">GOOD (良好)</option>
+                </select>
+                <input type="text" id="techSearchInput" oninput="window.filterTechTable && window.filterTechTable()" placeholder="URL検索..." class="h-12 sm:h-14 w-full sm:w-80 px-4 sm:px-6 bg-white border border-slate-200 rounded-xl sm:rounded-2xl text-[12px] sm:text-[13px] font-bold text-slate-700 outline-none shadow-sm focus:ring-2 focus:ring-indigo-500">
+            </div>
+        </div>
+
+        <!-- テーブル + 詳細パネル -->
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-start">
+            <div class="lg:col-span-8 bg-white rounded-2xl sm:rounded-[32px] shadow-sm border border-slate-200 overflow-hidden">
+                <div class="overflow-x-auto max-h-[500px] lg:max-h-[700px] scrollbar-thin">
+                    <table class="w-full text-left min-w-[500px] border-collapse">
+                        <thead class="sticky top-0 bg-slate-50/95 backdrop-blur-sm z-10 border-b border-slate-200">
+                            <tr>
+                                <th class="p-4 sm:p-6 text-[9px] sm:text-[10px] font-black text-slate-400 uppercase tracking-widest">URL Pathway</th>
+                                <th class="p-4 sm:p-6 text-center text-[9px] sm:text-[10px] font-black text-slate-400 uppercase tracking-widest">Speed (CWV)</th>
+                                <th class="p-4 sm:p-6 text-center text-[9px] sm:text-[10px] font-black text-slate-400 uppercase tracking-widest">Mobile</th>
+                                <th class="p-4 sm:p-6 text-center text-[9px] sm:text-[10px] font-black text-slate-400 uppercase tracking-widest">Schemas</th>
+                            </tr>
+                        </thead>
+                        <tbody id="techTableBody" class="divide-y divide-slate-100 text-[12px] sm:text-[13px] text-slate-600 italic"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="lg:col-span-4 lg:sticky lg:top-8">
+                <div id="queryDetailPanel" class="bg-white rounded-2xl sm:rounded-[32px] border border-indigo-100 shadow-xl shadow-indigo-50/50 p-5 sm:p-6 overflow-hidden relative min-h-[380px] lg:min-h-[500px]">
+                    <div id="panelPlaceholder" class="absolute inset-0 flex flex-col items-center justify-center p-6 sm:p-8 text-center bg-white z-10">
+                        <div class="w-14 h-14 sm:w-20 sm:h-20 bg-slate-50 rounded-full flex items-center justify-center mb-4 sm:mb-6 text-slate-300">
+                            <svg class="w-7 h-7 sm:w-10 sm:h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5"/></svg>
+                        </div>
+                        <p class="text-[10px] sm:text-xs font-black text-slate-400 uppercase tracking-widest">Select a URL</p>
+                        <p class="text-[10px] sm:text-[12px] text-slate-300 mt-2 sm:mt-3 font-medium italic">URLを選択すると技術的な改善詳細が表示されます</p>
+                    </div>
+                    <div id="panelContent" class="hidden">
+                        <h3 id="detailQueryName" class="text-base sm:text-xl font-black text-slate-900 mb-6 sm:mb-8 tracking-tight leading-tight break-all"></h3>
+                        <div class="space-y-6 sm:space-y-8 text-slate-600">
+                            <div>
+                                <h4 class="text-[9px] sm:text-[10px] font-black text-indigo-500 uppercase tracking-widest mb-2 sm:mb-3 flex items-center gap-2">
+                                    <span class="w-1.5 h-1.5 bg-indigo-500 rounded-full shrink-0"></span> 現時点の評価
+                                </h4>
+                                <p id="analysisText" class="text-[12px] sm:text-[14px] leading-relaxed font-medium italic bg-slate-50 p-4 sm:p-5 rounded-xl sm:rounded-2xl"></p>
+                            </div>
+                            <div>
+                                <h4 class="text-[9px] sm:text-[10px] font-black text-red-500 uppercase tracking-widest mb-2 sm:mb-3 flex items-center gap-2">
+                                    <span class="w-1.5 h-1.5 bg-red-500 rounded-full shrink-0"></span> 改善アクション
+                                </h4>
+                                <ul id="actionList" class="space-y-3 sm:space-y-4 text-[12px] sm:text-[13px] font-bold"></ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Excel 出力ボタン -->
+        <div class="flex justify-center pt-6 sm:pt-8 pb-12 sm:pb-16">
+            <button id="gscTechExcelBtn" onclick="window.downloadTechExcel && window.downloadTechExcel()" class="flex items-center gap-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 sm:py-5 px-8 sm:px-12 rounded-2xl sm:rounded-[24px] text-[11px] sm:text-[13px] tracking-widest uppercase transition-all shadow-xl shadow-emerald-100 hover:-translate-y-0.5 active:scale-95">
+                <svg class="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+                テクニカルレポートをエクセルで書き出す (.xlsx)
+            </button>
+        </div>
+    </main>
+
+    <script src="/js/header.js"></script>
+    <script src="/js/gsc-technical.js"></script>
+</body>
+</html>

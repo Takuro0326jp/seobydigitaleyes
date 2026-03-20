@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>セキュリティ診断 | SEO Scan</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <link href="/css/tailwind.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&family=JetBrains+Mono&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #f8fafc; }
+        .font-mono { font-family: 'JetBrains Mono', monospace; }
+        .security-table th { white-space: nowrap; }
+        .security-table td { vertical-align: top; }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col bg-slate-50/30">
+
+    <div id="header-container"></div>
+
+    <main class="flex-grow p-8 max-w-[1400px] mx-auto w-full">
+        <!-- Hero -->
+        <section class="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-8">
+            <div>
+                <div class="flex items-center gap-3 mb-2">
+                    <span class="px-3 py-1 bg-blue-100 text-blue-700 text-[10px] font-black rounded-md uppercase tracking-widest">Security Audit</span>
+                    <h1 id="displayDomain" class="text-2xl font-black tracking-tight text-slate-900">Loading...</h1>
+                </div>
+                <p id="displayUrl" class="text-xs text-slate-400 font-mono italic mb-2">---</p>
+                <p class="text-sm text-slate-600 leading-relaxed max-w-2xl">
+                    この画面は、サイト外部から確認できる範囲に限定して、SSL/TLS、セキュリティヘッダ、
+                    Cookie属性、混在コンテンツ、公開ファイル、JSライブラリ露出などを評価します。
+                </p>
+            </div>
+            <div class="flex flex-wrap gap-3 shrink-0">
+                <span id="analysisDate" class="px-4 py-2 bg-white border border-slate-200 rounded-xl text-[10px] font-bold text-slate-600 shadow-sm">最終診断: --</span>
+                <span class="px-4 py-2 bg-white border border-slate-200 rounded-xl text-[10px] font-bold text-slate-600 shadow-sm">取得元: 外部公開情報のみ</span>
+            </div>
+        </section>
+
+        <!-- Score & Stats -->
+        <section class="grid grid-cols-1 lg:grid-cols-5 gap-6 mb-10">
+            <div class="lg:col-span-2 p-6 bg-white border border-slate-200 rounded-2xl shadow-sm">
+                <p class="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">Security Score</p>
+                <div class="flex items-baseline gap-2">
+                    <span id="js-main-score" class="text-5xl font-black text-slate-900">74</span>
+                    <span class="text-lg font-bold text-slate-400">/ 100</span>
+                </div>
+                <p id="js-score-badge" class="mt-3 inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold bg-amber-50 text-amber-700 border border-amber-200">要改善ポイントあり</p>
+            </div>
+            <div class="lg:col-span-3 grid grid-cols-2 lg:grid-cols-4 gap-4">
+                <div class="p-5 bg-white border border-slate-200 rounded-2xl shadow-sm">
+                    <p class="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">High Risk</p>
+                    <p id="stat-high" class="text-2xl font-black text-red-600">2</p>
+                    <p class="text-[11px] text-slate-500 mt-2 leading-relaxed">即時対応が望ましい項目</p>
+                </div>
+                <div class="p-5 bg-white border border-slate-200 rounded-2xl shadow-sm">
+                    <p class="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">Medium Risk</p>
+                    <p id="stat-medium" class="text-2xl font-black text-orange-500">5</p>
+                    <p class="text-[11px] text-slate-500 mt-2 leading-relaxed">整備優先度は高め</p>
+                </div>
+                <div class="p-5 bg-white border border-slate-200 rounded-2xl shadow-sm">
+                    <p class="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">Passed</p>
+                    <p id="stat-passed" class="text-2xl font-black text-emerald-600">9</p>
+                    <p class="text-[11px] text-slate-500 mt-2 leading-relaxed">外部確認上は問題なし</p>
+                </div>
+                <div class="p-5 bg-white border border-slate-200 rounded-2xl shadow-sm">
+                    <p class="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">Check Scope</p>
+                    <p id="stat-scope" class="text-2xl font-black text-slate-900">13</p>
+                    <p class="text-[11px] text-slate-500 mt-2 leading-relaxed">公開URL・レスポンスをもとに判定</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Summary -->
+        <section class="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden mb-8">
+            <div class="px-6 py-4 border-b border-slate-100 bg-slate-50/50">
+                <h2 class="text-sm font-black text-slate-800 uppercase tracking-wider">サマリー</h2>
+            </div>
+            <div class="p-6">
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div class="p-5 rounded-xl border border-slate-100 bg-slate-50/30">
+                        <p class="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">HTTPS / TLS</p>
+                        <p class="text-lg font-black text-emerald-600">良好</p>
+                        <p class="text-xs text-slate-500 mt-2 leading-relaxed">HTTPSで配信。証明書・TLS利用は外部確認上問題なし。</p>
+                    </div>
+                    <div class="p-5 rounded-xl border border-slate-100 bg-slate-50/30">
+                        <p class="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">Security Headers</p>
+                        <p class="text-lg font-black text-amber-600">一部不足</p>
+                        <p class="text-xs text-slate-500 mt-2 leading-relaxed">X-Frame-Options / CSP / Referrer-Policy などの不足を想定。</p>
+                    </div>
+                    <div class="p-5 rounded-xl border border-slate-100 bg-slate-50/30">
+                        <p class="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">Cookie Security</p>
+                        <p class="text-lg font-black text-red-600">要確認</p>
+                        <p class="text-xs text-slate-500 mt-2 leading-relaxed">Secure / HttpOnly / SameSite 属性不足の可能性。</p>
+                    </div>
+                    <div class="p-5 rounded-xl border border-slate-100 bg-slate-50/30">
+                        <p class="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">Public Exposure</p>
+                        <p class="text-lg font-black text-orange-500">中程度</p>
+                        <p class="text-xs text-slate-500 mt-2 leading-relaxed">不要公開ファイル、ディレクトリ一覧、ライブラリ露出を点検。</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
+            <!-- Priority Risks -->
+            <section class="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+                <div class="px-6 py-4 border-b border-slate-100 bg-slate-50/50">
+                    <h2 class="text-sm font-black text-slate-800 uppercase tracking-wider">優先対応リスク</h2>
+                </div>
+                <div class="p-6">
+                    <div id="js-risk-list" class="space-y-4">
+                        <div class="flex gap-4 p-4 rounded-xl border border-red-100 bg-red-50/30">
+                            <span class="shrink-0 px-3 py-1 rounded-full text-[10px] font-black uppercase bg-red-100 text-red-700">High</span>
+                            <div class="min-w-0">
+                                <p class="font-bold text-slate-900">X-Frame-Options 未設定</p>
+                                <p class="text-xs text-slate-600 mt-1 leading-relaxed">iframe埋め込み制御が見当たらないため、クリックジャッキング対策が弱い状態を想定。</p>
+                            </div>
+                        </div>
+                        <div class="flex gap-4 p-4 rounded-xl border border-red-100 bg-red-50/30">
+                            <span class="shrink-0 px-3 py-1 rounded-full text-[10px] font-black uppercase bg-red-100 text-red-700">High</span>
+                            <div class="min-w-0">
+                                <p class="font-bold text-slate-900">Set-Cookie に HttpOnly / SameSite 不足</p>
+                                <p class="text-xs text-slate-600 mt-1 leading-relaxed">セッションCookieがJavaScriptから参照可能、またはクロスサイト送信制御が弱い可能性。</p>
+                            </div>
+                        </div>
+                        <div class="flex gap-4 p-4 rounded-xl border border-amber-100 bg-amber-50/30">
+                            <span class="shrink-0 px-3 py-1 rounded-full text-[10px] font-black uppercase bg-amber-100 text-amber-700">Medium</span>
+                            <div class="min-w-0">
+                                <p class="font-bold text-slate-900">Content-Security-Policy が未設定</p>
+                                <p class="text-xs text-slate-600 mt-1 leading-relaxed">XSSや第三者スクリプト制御に関するブラウザ側ガードが不足している想定。</p>
+                            </div>
+                        </div>
+                        <div class="flex gap-4 p-4 rounded-xl border border-amber-100 bg-amber-50/30">
+                            <span class="shrink-0 px-3 py-1 rounded-full text-[10px] font-black uppercase bg-amber-100 text-amber-700">Medium</span>
+                            <div class="min-w-0">
+                                <p class="font-bold text-slate-900">Server / X-Powered-By 情報露出</p>
+                                <p class="text-xs text-slate-600 mt-1 leading-relaxed">利用技術が推測しやすく、脆弱性探索の足掛かりになりやすい状態。</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Category Scores -->
+            <section class="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+                <div class="px-6 py-4 border-b border-slate-100 bg-slate-50/50">
+                    <h2 class="text-sm font-black text-slate-800 uppercase tracking-wider">カテゴリ別スコア</h2>
+                </div>
+                <div class="p-6">
+                    <div class="space-y-4">
+                        <div>
+                            <div class="flex justify-between text-xs font-bold mb-1">
+                                <span>HTTPS / TLS</span>
+                                <span class="text-slate-500">23 / 25</span>
+                            </div>
+                            <div class="h-2 bg-slate-100 rounded-full overflow-hidden"><div class="h-full bg-emerald-500 rounded-full" style="width:92%"></div></div>
+                        </div>
+                        <div>
+                            <div class="flex justify-between text-xs font-bold mb-1">
+                                <span>Security Headers</span>
+                                <span class="text-slate-500">16 / 30</span>
+                            </div>
+                            <div class="h-2 bg-slate-100 rounded-full overflow-hidden"><div class="h-full bg-amber-500 rounded-full" style="width:54%"></div></div>
+                        </div>
+                        <div>
+                            <div class="flex justify-between text-xs font-bold mb-1">
+                                <span>Cookie Attributes</span>
+                                <span class="text-slate-500">9 / 20</span>
+                            </div>
+                            <div class="h-2 bg-slate-100 rounded-full overflow-hidden"><div class="h-full bg-red-400 rounded-full" style="width:45%"></div></div>
+                        </div>
+                        <div>
+                            <div class="flex justify-between text-xs font-bold mb-1">
+                                <span>Public Exposure</span>
+                                <span class="text-slate-500">18 / 25</span>
+                            </div>
+                            <div class="h-2 bg-slate-100 rounded-full overflow-hidden"><div class="h-full bg-blue-400 rounded-full" style="width:72%"></div></div>
+                        </div>
+                        <div>
+                            <div class="flex justify-between text-xs font-bold mb-1">
+                                <span>Form / Mixed Content</span>
+                                <span class="text-slate-500">8 / 10</span>
+                            </div>
+                            <div class="h-2 bg-slate-100 rounded-full overflow-hidden"><div class="h-full bg-emerald-400 rounded-full" style="width:80%"></div></div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </div>
+
+        <!-- Check Table -->
+        <section class="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden mb-8">
+            <div class="px-6 py-4 border-b border-slate-100 bg-slate-50/50">
+                <h2 class="text-sm font-black text-slate-800 uppercase tracking-wider">外部確認チェック一覧</h2>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="security-table w-full text-left min-w-[900px] text-sm">
+                    <thead class="bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-wider border-b border-slate-100">
+                        <tr>
+                            <th class="px-4 py-3">項目</th>
+                            <th class="px-4 py-3">状態</th>
+                            <th class="px-4 py-3">リスク</th>
+                            <th class="px-4 py-3">確認内容</th>
+                            <th class="px-4 py-3">外部から見える影響</th>
+                            <th class="px-4 py-3">推奨対応</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-50">
+                        <tr class="hover:bg-slate-50/50"><td class="px-4 py-3 font-bold">HTTPS配信</td><td class="px-4 py-3"><span class="px-2 py-1 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700">OK</span></td><td class="px-4 py-3"><span class="px-2 py-1 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700">Low</span></td><td class="px-4 py-3 text-slate-600">トップページ・主要ページが HTTPS 応答</td><td class="px-4 py-3 text-slate-600">通信の平文露出リスクは低い</td><td class="px-4 py-3 text-slate-600">常時HTTPS維持、HTTPは301で統一</td></tr>
+                        <tr class="hover:bg-slate-50/50"><td class="px-4 py-3 font-bold">TLS利用状況</td><td class="px-4 py-3"><span class="px-2 py-1 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700">OK</span></td><td class="px-4 py-3"><span class="px-2 py-1 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700">Low</span></td><td class="px-4 py-3 text-slate-600">証明書応答とTLS接続を確認</td><td class="px-4 py-3 text-slate-600">接続時の基本的な保護は担保されやすい</td><td class="px-4 py-3 text-slate-600">古いTLSバージョンは段階的に停止</td></tr>
+                        <tr class="hover:bg-slate-50/50"><td class="px-4 py-3 font-bold">HSTS</td><td class="px-4 py-3"><span class="px-2 py-1 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700">一部</span></td><td class="px-4 py-3"><span class="px-2 py-1 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700">Medium</span></td><td class="px-4 py-3 text-slate-600">Strict-Transport-Security の設定が弱い</td><td class="px-4 py-3 text-slate-600">初回HTTP接続時のダウングレード余地</td><td class="px-4 py-3 text-slate-600">max-age を十分に取り HSTS を有効化</td></tr>
+                        <tr class="hover:bg-slate-50/50"><td class="px-4 py-3 font-bold">X-Frame-Options</td><td class="px-4 py-3"><span class="px-2 py-1 rounded-full text-[10px] font-bold bg-red-50 text-red-700">NG</span></td><td class="px-4 py-3"><span class="px-2 py-1 rounded-full text-[10px] font-bold bg-red-50 text-red-700">High</span></td><td class="px-4 py-3 text-slate-600">レスポンスヘッダ未確認</td><td class="px-4 py-3 text-slate-600">外部サイトに iframe 埋め込みされる可能性</td><td class="px-4 py-3 text-slate-600">DENY または SAMEORIGIN を付与</td></tr>
+                        <tr class="hover:bg-slate-50/50"><td class="px-4 py-3 font-bold">Content-Security-Policy</td><td class="px-4 py-3"><span class="px-2 py-1 rounded-full text-[10px] font-bold bg-red-50 text-red-700">NG</span></td><td class="px-4 py-3"><span class="px-2 py-1 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700">Medium</span></td><td class="px-4 py-3 text-slate-600">CSP ヘッダ未確認</td><td class="px-4 py-3 text-slate-600">読み込むスクリプトや外部リソースの制御が弱い</td><td class="px-4 py-3 text-slate-600">default-src 等を定義し段階導入</td></tr>
+                        <tr class="hover:bg-slate-50/50"><td class="px-4 py-3 font-bold">X-Content-Type-Options</td><td class="px-4 py-3"><span class="px-2 py-1 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700">OK</span></td><td class="px-4 py-3"><span class="px-2 py-1 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700">Low</span></td><td class="px-4 py-3 text-slate-600">nosniff を確認</td><td class="px-4 py-3 text-slate-600">MIME推測リスクを抑制</td><td class="px-4 py-3 text-slate-600">全レスポンスで一貫付与</td></tr>
+                        <tr class="hover:bg-slate-50/50"><td class="px-4 py-3 font-bold">Referrer-Policy</td><td class="px-4 py-3"><span class="px-2 py-1 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700">一部</span></td><td class="px-4 py-3"><span class="px-2 py-1 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700">Medium</span></td><td class="px-4 py-3 text-slate-600">適切なPolicyが見当たらない</td><td class="px-4 py-3 text-slate-600">参照元情報が外部へ過剰送信される可能性</td><td class="px-4 py-3 text-slate-600">strict-origin-when-cross-origin などへ調整</td></tr>
+                        <tr class="hover:bg-slate-50/50"><td class="px-4 py-3 font-bold">Cookie Secure属性</td><td class="px-4 py-3"><span class="px-2 py-1 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700">不足</span></td><td class="px-4 py-3"><span class="px-2 py-1 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700">Medium</span></td><td class="px-4 py-3 text-slate-600">一部 Set-Cookie に Secure 属性なし</td><td class="px-4 py-3 text-slate-600">HTTPで送信される余地が残る</td><td class="px-4 py-3 text-slate-600">セッション系Cookieへ Secure を付与</td></tr>
+                        <tr class="hover:bg-slate-50/50"><td class="px-4 py-3 font-bold">Cookie HttpOnly属性</td><td class="px-4 py-3"><span class="px-2 py-1 rounded-full text-[10px] font-bold bg-red-50 text-red-700">NG</span></td><td class="px-4 py-3"><span class="px-2 py-1 rounded-full text-[10px] font-bold bg-red-50 text-red-700">High</span></td><td class="px-4 py-3 text-slate-600">JavaScript参照可能なCookieを想定</td><td class="px-4 py-3 text-slate-600">XSS発生時にセッション悪用余地</td><td class="px-4 py-3 text-slate-600">認証系Cookieへ HttpOnly を付与</td></tr>
+                        <tr class="hover:bg-slate-50/50"><td class="px-4 py-3 font-bold">Cookie SameSite属性</td><td class="px-4 py-3"><span class="px-2 py-1 rounded-full text-[10px] font-bold bg-red-50 text-red-700">NG</span></td><td class="px-4 py-3"><span class="px-2 py-1 rounded-full text-[10px] font-bold bg-red-50 text-red-700">High</span></td><td class="px-4 py-3 text-slate-600">SameSite 未付与または緩い設定</td><td class="px-4 py-3 text-slate-600">CSRF耐性が下がる</td><td class="px-4 py-3 text-slate-600">Lax または Strict を基本に設計</td></tr>
+                        <tr class="hover:bg-slate-50/50"><td class="px-4 py-3 font-bold">Mixed Content</td><td class="px-4 py-3"><span class="px-2 py-1 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700">OK</span></td><td class="px-4 py-3"><span class="px-2 py-1 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700">Low</span></td><td class="px-4 py-3 text-slate-600">HTTP画像・JS・CSS混在は未検出想定</td><td class="px-4 py-3 text-slate-600">保護通信の信頼性低下を回避</td><td class="px-4 py-3 text-slate-600">外部埋め込みも含めてHTTPS統一</td></tr>
+                        <tr class="hover:bg-slate-50/50"><td class="px-4 py-3 font-bold">Directory Listing</td><td class="px-4 py-3"><span class="px-2 py-1 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700">要確認</span></td><td class="px-4 py-3"><span class="px-2 py-1 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700">Medium</span></td><td class="px-4 py-3 text-slate-600">/uploads/ /backup/ 等の一覧表示可能性を確認</td><td class="px-4 py-3 text-slate-600">不要ファイルが公開状態になる恐れ</td><td class="px-4 py-3 text-slate-600">Indexes無効、公開対象を限定</td></tr>
+                        <tr class="hover:bg-slate-50/50"><td class="px-4 py-3 font-bold">Server / X-Powered-By</td><td class="px-4 py-3"><span class="px-2 py-1 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700">露出</span></td><td class="px-4 py-3"><span class="px-2 py-1 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700">Medium</span></td><td class="px-4 py-3 text-slate-600">Apache / nginx / PHP など技術情報が見える想定</td><td class="px-4 py-3 text-slate-600">攻撃者が技術スタックを推測しやすい</td><td class="px-4 py-3 text-slate-600">不要なヘッダやバナーを非表示化</td></tr>
+                        <tr class="hover:bg-slate-50/50"><td class="px-4 py-3 font-bold">公開ファイル露出</td><td class="px-4 py-3"><span class="px-2 py-1 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700">一部</span></td><td class="px-4 py-3"><span class="px-2 py-1 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700">Medium</span></td><td class="px-4 py-3 text-slate-600">.env / backup.zip / phpinfo などを探索対象</td><td class="px-4 py-3 text-slate-600">誤配置ファイルがあると重大事故につながる</td><td class="px-4 py-3 text-slate-600">公開領域から除外しデプロイを見直す</td></tr>
+                        <tr class="hover:bg-slate-50/50"><td class="px-4 py-3 font-bold">フォーム送信保護</td><td class="px-4 py-3"><span class="px-2 py-1 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700">OK</span></td><td class="px-4 py-3"><span class="px-2 py-1 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700">Low</span></td><td class="px-4 py-3 text-slate-600">問い合わせフォーム送信先がHTTPS</td><td class="px-4 py-3 text-slate-600">通信経路上の平文露出を避けやすい</td><td class="px-4 py-3 text-slate-600">加えてCSPやCSRF対策を内部で整備</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
+            <!-- URL Table -->
+            <section class="lg:col-span-2 bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+                <div class="px-6 py-4 border-b border-slate-100 bg-slate-50/50">
+                    <h2 class="text-sm font-black text-slate-800 uppercase tracking-wider">ページ / URL別の確認対象</h2>
+                </div>
+                <div class="p-6">
+                    <div id="js-url-list" class="space-y-3">
+                        <div class="p-4 rounded-xl border border-slate-100 bg-slate-50/30">
+                            <p class="font-mono text-xs text-blue-600 break-all">https://example.com/</p>
+                            <div class="flex flex-wrap gap-2 mt-2">
+                                <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700">Score 86</span>
+                                <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700">Low</span>
+                            </div>
+                            <p class="text-xs text-slate-500 mt-2 leading-relaxed">HTTPS / Mixed Content / 基本ヘッダは概ね良好。CSP不足のみ継続課題。</p>
+                        </div>
+                        <div class="p-4 rounded-xl border border-slate-100 bg-slate-50/30">
+                            <p class="font-mono text-xs text-blue-600 break-all">https://example.com/contact/</p>
+                            <div class="flex flex-wrap gap-2 mt-2">
+                                <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-700">Score 72</span>
+                                <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-700">Medium</span>
+                            </div>
+                            <p class="text-xs text-slate-500 mt-2 leading-relaxed">フォーム送信はHTTPSだが、Cookie属性とReferrer-Policyの見直し余地。</p>
+                        </div>
+                        <div class="p-4 rounded-xl border border-slate-100 bg-slate-50/30">
+                            <p class="font-mono text-xs text-blue-600 break-all">https://example.com/login/</p>
+                            <div class="flex flex-wrap gap-2 mt-2">
+                                <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-red-50 text-red-700">Score 58</span>
+                                <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-red-50 text-red-700">High</span>
+                            </div>
+                            <p class="text-xs text-slate-500 mt-2 leading-relaxed">認証系ページなのに X-Frame-Options / HttpOnly / SameSite 不足は優先度高。</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Observed Data -->
+            <section class="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+                <div class="px-6 py-4 border-b border-slate-100 bg-slate-50/50">
+                    <h2 class="text-sm font-black text-slate-800 uppercase tracking-wider">観測データ</h2>
+                </div>
+                <div class="p-6 space-y-4">
+                    <div class="p-4 rounded-xl border border-slate-100 bg-slate-50/30">
+                        <p class="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">SSL / TLS</p>
+                        <p class="text-xs text-slate-700 leading-relaxed">HTTPS有効 / TLS応答あり / 証明書チェーン応答あり</p>
+                    </div>
+                    <div class="p-4 rounded-xl border border-slate-100 bg-slate-50/30">
+                        <p class="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Response Headers</p>
+                        <p class="text-xs text-slate-700 leading-relaxed">Server / Set-Cookie / HSTS / X-Content-Type-Options 等</p>
+                    </div>
+                    <div class="p-4 rounded-xl border border-slate-100 bg-slate-50/30">
+                        <p class="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">HTML / DOM</p>
+                        <p class="text-xs text-slate-700 leading-relaxed">Mixed Content、外部script、form action、meta露出など</p>
+                    </div>
+                    <div class="p-4 rounded-xl border border-slate-100 bg-slate-50/30">
+                        <p class="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">公開URL探索</p>
+                        <p class="text-xs text-slate-700 leading-relaxed">robots.txt / sitemap.xml / uploads / backup / admin など</p>
+                    </div>
+                    <div class="p-4 rounded-xl border border-dashed border-slate-200 bg-slate-50/20">
+                        <p class="text-[10px] text-slate-500 leading-relaxed">
+                            このページは、<strong class="text-slate-700">公開レスポンス・HTML・リンク・リソース・一般的な公開URL探索</strong>から見える範囲のみで判断する設計です。
+                            WAF、IDS/IPS、サーバ内設定などは外部から確証が取れないため別診断領域として切り分けています。
+                        </p>
+                    </div>
+                </div>
+            </section>
+        </div>
+
+        <!-- Recommended Actions -->
+        <section class="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+            <div class="px-6 py-4 border-b border-slate-100 bg-slate-50/50">
+                <h2 class="text-sm font-black text-slate-800 uppercase tracking-wider">推奨アクション</h2>
+            </div>
+            <div class="p-6 space-y-4">
+                <div class="p-5 rounded-xl border border-slate-100 bg-slate-50/30">
+                    <div class="flex flex-wrap items-center gap-2 mb-2">
+                        <span class="font-bold text-slate-900">1. X-Frame-Options または frame-ancestors を設定する</span>
+                        <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-red-50 text-red-700">High</span>
+                        <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-600">Header</span>
+                        <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700">比較的短時間</span>
+                    </div>
+                    <p class="text-sm text-slate-600 leading-relaxed">管理画面・ログイン画面・フォーム系ページは特に優先です。CSP の frame-ancestors を使うなら、X-Frame-Options とあわせて整理するとよいです。</p>
+                </div>
+                <div class="p-5 rounded-xl border border-slate-100 bg-slate-50/30">
+                    <div class="flex flex-wrap items-center gap-2 mb-2">
+                        <span class="font-bold text-slate-900">2. 認証系 Cookie に Secure / HttpOnly / SameSite を付与する</span>
+                        <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-red-50 text-red-700">High</span>
+                        <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-600">Cookie</span>
+                    </div>
+                    <p class="text-sm text-slate-600 leading-relaxed">セッションIDやログイン維持Cookieは最優先です。外部から見ても対策有無が分かりやすく、スコア改善効果も大きい領域です。</p>
+                </div>
+                <div class="p-5 rounded-xl border border-slate-100 bg-slate-50/30">
+                    <div class="flex flex-wrap items-center gap-2 mb-2">
+                        <span class="font-bold text-slate-900">3. Content-Security-Policy を段階導入する</span>
+                        <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-700">Medium</span>
+                        <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-600">XSS</span>
+                    </div>
+                    <p class="text-sm text-slate-600 leading-relaxed">まずは report-only から始め、使用中の外部タグを洗い出してから本適用する流れが安全です。</p>
+                </div>
+                <div class="p-5 rounded-xl border border-slate-100 bg-slate-50/30">
+                    <div class="flex flex-wrap items-center gap-2 mb-2">
+                        <span class="font-bold text-slate-900">4. Server / X-Powered-By / 不要公開ファイルの露出を減らす</span>
+                        <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-700">Medium</span>
+                        <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-600">Exposure</span>
+                    </div>
+                    <p class="text-sm text-slate-600 leading-relaxed">技術情報の露出は直接侵害ではなくても、攻撃の足がかりになります。デプロイ時に backup、old、test、phpinfo 系ファイルが出ていないかも同時に確認します。</p>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <script src="/js/header.js"></script>
+    <script src="/js/security.js"></script>
+</body>
+</html>

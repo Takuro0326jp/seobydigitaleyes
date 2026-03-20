@@ -1,0 +1,3 @@
+-- テスト用: 既存ユーザーの id に合わせて user_id を変更して実行してください
+-- INSERT INTO scans (id, user_id, target_url, status) VALUES
+-- (UUID(), 1, 'https://example.com/', 'completed');

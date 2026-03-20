@@ -1,0 +1,33 @@
+{
+  "name": "seoscan-auth",
+  "version": "1.0.0",
+  "description": "SEO Scan login/authentication service",
+  "main": "server.js",
+  "scripts": {
+    "migrate:multitenant": "node scripts/run-migration-multitenant.js",
+    "migrate:gsc-oauth": "node scripts/run-migration-gsc-oauth.js",
+    "migrate:sitemap": "node scripts/run-migration-sitemap.js",
+    "prestart": "lsof -ti :3000 | xargs kill -9 2>/dev/null || true; sleep 2",
+    "predev": "lsof -ti :3000 | xargs kill -9 2>/dev/null || true",
+    "start": "NODE_ENV=production node server.js",
+    "dev": "NODE_ENV=development node server.js"
+  },
+  "dependencies": {
+    "@aws-sdk/client-ses": "^3.686.0",
+    "@googleapis/searchconsole": "^6.0.1",
+    "aws-sdk": "^2.1693.0",
+    "bcrypt": "^6.0.0",
+    "bcryptjs": "^3.0.3",
+    "cheerio": "^1.2.0",
+    "cookie-parser": "^1.4.7",
+    "dotenv": "^17.3.1",
+    "express": "^5.2.1",
+    "express-rate-limit": "^8.3.1",
+    "helmet": "^8.1.0",
+    "mysql2": "^3.20.0",
+    "nodemailer": "^8.0.3"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}

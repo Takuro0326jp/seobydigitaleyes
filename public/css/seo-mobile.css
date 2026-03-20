@@ -1,0 +1,136 @@
+/* seo-mobile.css - モバイルフレンドリー診断ページ用 */
+
+/* --- AI Review: 左側アイコンエリア（モックに合わせて md:w-40 = 160px） --- */
+@media (min-width: 768px) {
+    #ai-review-section .ai-review-icon-area {
+        width: 10rem !important;
+        min-width: 10rem !important;
+        max-width: 10rem !important;
+    }
+}
+
+/* --- スマホモックアップ --- */
+.mobile-preview-wrapper {
+    padding: 0;
+    flex-shrink: 0;
+}
+
+.mobile-preview {
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+    border: 10px solid #0f172a;
+    border-radius: 3rem;
+    background: #0f172a;
+    flex-shrink: 0;
+}
+
+.phone-notch {
+    position: absolute;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 8rem;
+    height: 1.5rem;
+    background: #0f172a;
+    border-radius: 0 0 1rem 1rem;
+    z-index: 20;
+}
+
+.mobile-preview iframe {
+    display: block;
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    background: #fff;
+}
+
+/* 一覧：約50件分の高さで枠内スクロール */
+.mobile-list-scroll {
+    max-height: 600px !important;
+    overflow-y: auto !important;
+}
+
+/* --- 1024px以下（スマホ・タブレット） --- */
+@media (max-width: 1024px) {
+    /* プレビューコンテナは親の hidden lg:block で非表示 */
+
+    /* メインエリアの余白 */
+    main {
+        padding: 1rem !important;
+    }
+
+    /* テーブルをカード形式に変換 */
+    #siteListTable,
+    #siteListTable thead,
+    #siteListTable tbody,
+    #siteListTable tr,
+    #siteListTable td {
+        display: block !important;
+        width: 100% !important;
+    }
+
+    thead {
+        display: none !important;
+    }
+
+    #urlTableBody tr {
+        background: white !important;
+        border: 1px solid #e2e8f0 !important;
+        border-radius: 12px !important;
+        margin-bottom: 12px !important;
+        padding: 16px !important;
+        position: relative !important;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+    }
+
+    #urlTableBody td {
+        padding: 4px 0 !important;
+        border: none !important;
+        text-align: left !important;
+    }
+
+    #urlTableBody p.truncate {
+        white-space: normal !important;
+        word-break: break-all !important;
+    }
+
+    #urlTableBody td[data-label="Depth"]::before {
+        content: "DEPTH: ";
+        font-weight: 800;
+        color: #94a3b8;
+        font-size: 9px;
+    }
+    #urlTableBody td[data-label="URL & Title"]::before {
+        content: "INFO: ";
+        font-weight: 800;
+        color: #94a3b8;
+        font-size: 9px;
+    }
+    #urlTableBody td[data-label="Score"]::before {
+        content: "SCORE: ";
+        font-weight: 800;
+        color: #94a3b8;
+        font-size: 9px;
+    }
+
+    #urlTableBody td[data-label="Detail"] {
+        position: absolute !important;
+        top: 16px;
+        right: 16px;
+        width: auto !important;
+    }
+    #urlTableBody td[data-label="Detail"]::before {
+        content: "" !important;
+    }
+
+    .flex.justify-end.p-6 {
+        justify-content: center !important;
+        padding: 1.5rem 1rem !important;
+    }
+}
+
+/* --- 768px以下（スマホ）追加調整 --- */
+@media (max-width: 768px) {
+    main {
+        padding: 1rem !important;
+    }
+}
