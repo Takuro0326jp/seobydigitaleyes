@@ -158,24 +158,33 @@ async function fetchGoogleAdsReportWithMeta(startDate, endDate, userId = null, o
         console.warn("[Google Ads] report() fallback error:", reportErr.message);
       }
     }
-    /** report で取れなければ GAQL query を試行 */
-    const gaqlPrimary = `SELECT campaign.id, campaign.name,
+    /** report で取れなければ GAQL query を試行
+     * 注意: segments.date は SELECT に含める必要あり（WHERE で絞る場合は必須）
+     * ref: https://developers.google.com/google-ads/api/docs/reporting/segmentation
+     */
+    const gaqlPrimary = `SELECT campaign.id, campaign.name, segments.date,
       metrics.impressions, metrics.clicks, metrics.cost_micros, metrics.conversions, metrics.all_conversions
     FROM campaign
     WHERE segments.date BETWEEN '${startDate}' AND '${endDate}'
       AND campaign.status != 'REMOVED'`;
-    const gaqlCompact = `SELECT campaign.id, campaign.name,
+    const gaqlCompact = `SELECT campaign.id, campaign.name, segments.date,
       metrics.impressions, metrics.clicks, metrics.cost_micros, metrics.conversions, metrics.all_conversions
     FROM campaign
     WHERE segments.date BETWEEN '${startCompact}' AND '${endCompact}'
       AND campaign.status != 'REMOVED'`;
-    const gaqlLast30 = `SELECT campaign.id, campaign.name,
+    const gaqlLast30 = `SELECT campaign.id, campaign.name, segments.date,
       metrics.impressions, metrics.clicks, metrics.cost_micros, metrics.conversions, metrics.all_conversions
     FROM campaign
     WHERE segments.date DURING LAST_30_DAYS
       AND campaign.status != 'REMOVED'`;
+    const gaqlLast90 = `SELECT campaign.id, campaign.name, segments.date,
+      metrics.impressions, metrics.clicks, metrics.cost_micros, metrics.conversions, metrics.all_conversions
+    FROM campaign
+    WHERE segments.date DURING LAST_90_DAYS
+      AND campaign.status != 'REMOVED'`;
 
-    for (const [gaql, label] of [[gaqlPrimary, "BETWEEN"], [gaqlCompact, "BETWEEN_compact"], [gaqlLast30, "LAST_30_DAYS"]]) {
+    let lastQueryError = null;
+    for (const [gaql, label] of [[gaqlPrimary, "BETWEEN"], [gaqlCompact, "BETWEEN_compact"], [gaqlLast30, "LAST_30_DAYS"], [gaqlLast90, "LAST_90_DAYS"]]) {
       try {
         result = await customer.query(gaql);
         if (Array.isArray(result)) {
@@ -189,14 +198,16 @@ async function fetchGoogleAdsReportWithMeta(startDate, endDate, userId = null, o
           campaigns = toArray(result);
         }
         if (campaigns.length > 0) {
-          if (process.env.NODE_ENV !== "production" && label === "LAST_30_DAYS") {
-            console.log("[Google Ads] カスタム日付で0件だったため LAST_30_DAYS で取得");
+          if (process.env.NODE_ENV !== "production" && label !== "BETWEEN") {
+            console.log("[Google Ads] " + label + " で取得");
           }
           break;
         }
+        lastQueryError = null;
       } catch (qErr) {
+        lastQueryError = { label, message: qErr.message || "", errors: qErr.errors };
         if (process.env.NODE_ENV !== "production") {
-          console.warn("[Google Ads] query error:", qErr.message);
+          console.warn("[Google Ads] query error (" + label + "):", qErr.message);
         }
       }
     }
@@ -252,6 +263,7 @@ async function fetchGoogleAdsReportWithMeta(startDate, endDate, userId = null, o
         ...debugInfo,
         wantDebug: true,
         method: methodUsed || "query",
+        last_query_error: lastQueryError,
         date_range: { startDate, endDate },
         login_customer_id: loginCustomerId || "(未設定・MCC配下の場合は.envにGOOGLE_ADS_LOGIN_CUSTOMER_IDを指定)",
         raw_type: result && Array.isArray(result) ? "array" : (result ? "object" : "null"),
