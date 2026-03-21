@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>ADs Dashboard | SEO Scan</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link href="/css/tailwind.css" rel="stylesheet">
+  <link href="/css/style.css" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap');
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #f5f4f0;
+      --surface: #ffffff;
+      --surface2: #f9f8f5;
+      --border: #e8e6e0;
+      --text-primary: #1a1917;
+      --text-secondary: #6b6860;
+      --text-muted: #a09e99;
+      --accent: #2a5cdb;
+      --accent-light: #eef2fd;
+      --good: #0f7a4a;
+      --good-light: #e8f5ee;
+      --warn: #c45e00;
+      --warn-light: #fff3e8;
+      --bad: #cc2c2c;
+      --bad-light: #fdeaea;
+      --google: #4285f4;
+      --yahoo: #ff0033;
+      --meta: #1877f2;
+      --x: #14171a;
+      --line: #06c755;
+    }
+
+    body {
+      font-family: 'DM Sans', sans-serif;
+      background: var(--bg);
+      color: var(--text-primary);
+      font-size: 14px;
+      min-height: 100vh;
+    }
+
+    .header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 0 28px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 56px;
+      position: sticky;
+      top: 64px;
+      z-index: 99;
+    }
+    .header-left { display: flex; align-items: center; gap: 16px; }
+    .logo { font-size: 15px; font-weight: 600; letter-spacing: -0.3px; }
+    .logo span { color: var(--accent); }
+    .badge-integrated { font-size: 11px; background: var(--accent-light); color: var(--accent); padding: 2px 8px; border-radius: 20px; font-weight: 500; display: inline-flex; align-items: center; gap: 4px; }
+    .badge-integrated.connected { background: var(--good-light); color: var(--good); }
+
+    .filter-bar {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 10px 28px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .filter-bar select,
+    .filter-bar input[type="date"] {
+      border: 1px solid var(--border);
+      background: var(--surface2);
+      color: var(--text-primary);
+      padding: 6px 10px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-family: 'DM Sans', sans-serif;
+      outline: none;
+      cursor: pointer;
+      transition: border-color .15s;
+    }
+    .filter-bar select:hover,
+    .filter-bar input[type="date"]:hover { border-color: #c0bdb5; }
+    .date-range { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-muted); }
+    .btn-update {
+      margin-left: auto;
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      padding: 7px 16px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-family: 'DM Sans', sans-serif;
+      font-weight: 500;
+      cursor: pointer;
+      transition: opacity .15s;
+    }
+    .btn-update:hover { opacity: .88; }
+    .btn-dl {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--text-secondary);
+      padding: 7px 14px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-family: 'DM Sans', sans-serif;
+      cursor: pointer;
+      transition: background .15s;
+      display: flex; align-items: center; gap: 6px;
+    }
+    .btn-dl:hover { background: var(--border); }
+
+    .tabs-bar {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 0 28px;
+      display: flex;
+      gap: 0;
+    }
+    .tab-btn {
+      padding: 12px 18px;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-muted);
+      border: none;
+      background: none;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      transition: color .15s, border-color .15s;
+      font-family: 'DM Sans', sans-serif;
+    }
+    .tab-btn:hover { color: var(--text-primary); }
+    .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+    .tab-panel { display: none; padding: 24px 28px; }
+    .tab-panel.active { display: block; }
+
+    .kpi-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; margin-bottom: 20px; }
+    .kpi-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px 16px;
+      position: relative;
+      overflow: hidden;
+    }
+    .kpi-label { font-size: 11px; color: var(--text-muted); font-weight: 500; letter-spacing: .04em; text-transform: uppercase; margin-bottom: 6px; }
+    .kpi-value { font-size: 20px; font-weight: 600; letter-spacing: -0.5px; line-height: 1; margin-bottom: 8px; }
+    .kpi-delta { font-size: 12px; font-weight: 500; display: flex; align-items: center; gap: 4px; }
+    .kpi-delta.up { color: var(--good); }
+    .kpi-delta.down { color: var(--bad); }
+    .kpi-delta.neutral { color: var(--text-muted); }
+    .sparkline-wrap { margin-top: 8px; height: 32px; }
+    .kpi-card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 3px;
+      border-radius: 12px 12px 0 0;
+    }
+    .kpi-card.c-blue::before { background: #2a5cdb; }
+    .kpi-card.c-green::before { background: #0f7a4a; }
+    .kpi-card.c-yellow::before { background: #d97706; }
+    .kpi-card.c-purple::before { background: #7c3aed; }
+    .kpi-card.c-pink::before { background: #db2777; }
+    .kpi-card.c-gray::before { background: #9ca3af; }
+
+    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px; }
+    .three-col { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; margin-bottom: 20px; }
+
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    .panel-header {
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .panel-title { font-size: 13px; font-weight: 600; }
+    .panel-sub { font-size: 12px; color: var(--text-muted); }
+    .panel-body { padding: 16px 18px; }
+    .chart-area { position: relative; }
+
+    .media-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 20px; }
+    .media-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px 16px;
+      cursor: pointer;
+      transition: box-shadow .15s, border-color .15s;
+    }
+    .media-card:hover { border-color: #c0bdb5; box-shadow: 0 2px 8px rgba(0,0,0,.06); }
+    .media-card.active { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-light); }
+    .media-name { font-size: 13px; font-weight: 600; margin-bottom: 10px; display: flex; align-items: center; gap: 6px; }
+    .media-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+    .media-metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+    .media-metric-item { }
+    .media-metric-label { font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .04em; }
+    .media-metric-value { font-size: 14px; font-weight: 600; }
+    .roas-bar-wrap { margin-top: 10px; }
+    .roas-bar-bg { background: var(--bg); height: 4px; border-radius: 4px; overflow: hidden; }
+    .roas-bar-fill { height: 4px; border-radius: 4px; transition: width .4s; }
+
+    .data-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .data-table th {
+      padding: 10px 14px;
+      text-align: left;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: .05em;
+      background: var(--surface2);
+      border-bottom: 1px solid var(--border);
+      cursor: pointer;
+      user-select: none;
+      white-space: nowrap;
+    }
+    .data-table th:hover { color: var(--text-primary); }
+    .data-table td { padding: 11px 14px; border-bottom: 1px solid var(--border); color: var(--text-primary); }
+    .data-table tr:last-child td { border-bottom: none; }
+    .data-table tr:hover td { background: var(--surface2); }
+    .sort-icon { margin-left: 4px; opacity: .4; }
+    .tag-media {
+      display: inline-flex; align-items: center; gap: 5px;
+      font-size: 11px; font-weight: 500;
+      padding: 2px 8px; border-radius: 20px;
+    }
+    .perf-good { color: var(--good); font-weight: 600; }
+    .perf-warn { color: var(--warn); font-weight: 600; }
+    .perf-bad  { color: var(--bad);  font-weight: 600; }
+    .goal-badge {
+      font-size: 10px; padding: 2px 6px; border-radius: 4px;
+      font-weight: 600; margin-left: 6px;
+    }
+    .goal-over { background: var(--bad-light); color: var(--bad); }
+    .goal-ok   { background: var(--good-light); color: var(--good); }
+
+    .heatmap-grid { display: grid; grid-template-columns: 56px repeat(24, 1fr); gap: 2px; font-size: 11px; }
+    .heatmap-header { text-align: center; color: var(--text-muted); padding: 2px 0; }
+    .heatmap-row-label { color: var(--text-muted); display: flex; align-items: center; font-size: 11px; }
+    .hm-cell {
+      aspect-ratio: 1;
+      border-radius: 3px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 9px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: transform .1s;
+    }
+    .hm-cell:hover { transform: scale(1.15); z-index: 10; position: relative; }
+    .hm-legend { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--text-muted); margin-top: 12px; }
+    .hm-legend-bar { display: flex; gap: 2px; }
+    .hm-legend-step { width: 18px; height: 10px; border-radius: 2px; }
+
+    .tooltip {
+      position: fixed;
+      background: var(--text-primary);
+      color: #fff;
+      padding: 6px 10px;
+      border-radius: 6px;
+      font-size: 12px;
+      pointer-events: none;
+      z-index: 999;
+      display: none;
+      white-space: nowrap;
+    }
+
+    .alert-row { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+    .alert-item {
+      display: flex; align-items: center; gap: 8px;
+      padding: 8px 14px; border-radius: 8px; font-size: 12px; font-weight: 500;
+    }
+    .alert-item.warn { background: var(--warn-light); color: var(--warn); }
+    .alert-item.bad  { background: var(--bad-light);  color: var(--bad); }
+    .alert-icon { font-size: 14px; }
+
+    @media (max-width: 1100px) {
+      .kpi-grid { grid-template-columns: repeat(3, 1fr); }
+      .media-grid { grid-template-columns: repeat(3, 1fr); }
+      .two-col, .three-col { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 640px) {
+      .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+      .media-grid { grid-template-columns: repeat(2, 1fr); }
+      .filter-bar { padding: 8px 16px; }
+      .tab-panel { padding: 16px; }
+    }
+  </style>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+</head>
+<body>
+
+<div id="header-container"></div>
+
+<!-- Header -->
+<header class="header">
+  <div class="header-left">
+    <div class="logo">ADs <span>Dashboard</span></div>
+    <span class="badge-integrated" id="badge-integrated" title="API連携状態">—</span>
+  </div>
+  <div style="display:flex;gap:10px;align-items:center">
+    <button class="btn-dl" onclick="openSettings()">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M8 2a1 1 0 100 2 1 1 0 000-2zM3 8a5 5 0 1010 0A5 5 0 003 8zm5-3a3 3 0 110 6 3 3 0 010-6z" fill="none" stroke="currentColor" stroke-width="1.3"/><circle cx="8" cy="8" r="1.5" fill="currentColor"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.22 3.22l1.42 1.42M11.36 11.36l1.42 1.42M3.22 12.78l1.42-1.42M11.36 4.64l1.42-1.42" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+      API設定
+    </button>
+    <button class="btn-dl" onclick="downloadExcel()">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M8 2v8M5 7l3 3 3-3M2 12h12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      Excelレポート DL
+    </button>
+  </div>
+</header>
+
+<!-- Filter bar -->
+<div class="filter-bar">
+  <select id="period-type-select" title="期間の指定方法">
+    <option value="month" selected>取得月</option>
+    <option value="date">日付指定</option>
+  </select>
+  <div id="period-month-ui" class="date-range" style="display:flex;align-items:center;gap:6px">
+    <span style="margin-right:2px">取得月</span>
+    <select id="report-month-select" title="12月のみ運用のアカウントは該当月を選択">
+      <!-- 直近24ヶ月をJSで生成 -->
+    </select>
+    <span id="date-range-label" style="color:var(--text-muted);font-size:12px">—</span>
+  </div>
+  <div id="period-date-ui" class="date-range" style="display:none;align-items:center;gap:6px">
+    <input type="date" id="date-start" value="">
+    <span>〜</span>
+    <input type="date" id="date-end" value="">
+  </div>
+  <select id="compare-select">
+    <option value="none">比較：なし</option>
+    <option value="prev" selected>前期間</option>
+    <option value="yoy">前年同期</option>
+  </select>
+  <select id="media-filter">
+    <option value="">媒体：ALL</option>
+  </select>
+  <button class="btn-update" id="btn-update">更新</button>
+</div>
+
+<!-- Tabs -->
+<div class="tabs-bar">
+  <button class="tab-btn active" onclick="window.switchTab('overview',this)">概要</button>
+  <button class="tab-btn" onclick="window.switchTab('media',this)">媒体別</button>
+  <button class="tab-btn" onclick="window.switchTab('area',this)">エリア別</button>
+  <button class="tab-btn" onclick="window.switchTab('time',this)">時間帯別</button>
+  <button class="tab-btn" onclick="window.switchTab('campaign',this)">キャンペーン</button>
+</div>
+
+<!-- TAB: 概要 -->
+<div class="tab-panel active" id="tab-overview">
+  <div class="alert-row" id="alert-row" style="display:none"></div>
+
+  <div class="kpi-grid">
+    <div class="kpi-card c-blue">
+      <div class="kpi-label">広告費</div>
+      <div class="kpi-value" id="kpi-cost">—</div>
+      <div class="kpi-delta" id="kpi-cost-delta">—</div>
+      <div class="sparkline-wrap"><canvas id="sp1" height="32"></canvas></div>
+    </div>
+    <div class="kpi-card c-green">
+      <div class="kpi-label">CV</div>
+      <div class="kpi-value" id="kpi-cv">—</div>
+      <div class="kpi-delta" id="kpi-cv-delta">—</div>
+      <div class="sparkline-wrap"><canvas id="sp2" height="32"></canvas></div>
+    </div>
+    <div class="kpi-card c-yellow">
+      <div class="kpi-label">CPA</div>
+      <div class="kpi-value" id="kpi-cpa">—</div>
+      <div class="kpi-delta" id="kpi-cpa-delta">—</div>
+      <div class="sparkline-wrap"><canvas id="sp3" height="32"></canvas></div>
+    </div>
+    <div class="kpi-card c-purple">
+      <div class="kpi-label">売上</div>
+      <div class="kpi-value" id="kpi-revenue">—</div>
+      <div class="kpi-delta" id="kpi-revenue-delta">—</div>
+      <div class="sparkline-wrap"><canvas id="sp4" height="32"></canvas></div>
+    </div>
+    <div class="kpi-card c-pink">
+      <div class="kpi-label">ROAS</div>
+      <div class="kpi-value" id="kpi-roas">—</div>
+      <div class="kpi-delta" id="kpi-roas-delta">—</div>
+      <div class="sparkline-wrap"><canvas id="sp5" height="32"></canvas></div>
+    </div>
+    <div class="kpi-card c-gray">
+      <div class="kpi-label">LTV</div>
+      <div class="kpi-value" id="kpi-ltv">—</div>
+      <div class="kpi-delta" id="kpi-ltv-delta">—</div>
+      <div class="sparkline-wrap"><canvas id="sp6" height="32"></canvas></div>
+    </div>
+  </div>
+
+  <div class="two-col">
+    <div class="panel">
+      <div class="panel-header">
+        <span class="panel-title">広告費・CV トレンド</span>
+        <span class="panel-sub" id="trend-sub">過去7日</span>
+      </div>
+      <div class="panel-body chart-area">
+        <canvas id="trendChart" height="180"></canvas>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-header">
+        <span class="panel-title">媒体別 コスト配分</span>
+        <span class="panel-sub">今期</span>
+      </div>
+      <div class="panel-body chart-area">
+        <canvas id="donutChart" height="180"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-header">
+      <span class="panel-title">媒体別サマリー</span>
+    </div>
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>媒体 <span class="sort-icon">↕</span></th>
+          <th>広告費 <span class="sort-icon">↕</span></th>
+          <th>CV <span class="sort-icon">↕</span></th>
+          <th>CPA <span class="sort-icon">↕</span></th>
+          <th>ROAS <span class="sort-icon">↕</span></th>
+          <th>CTR <span class="sort-icon">↕</span></th>
+          <th>IMP <span class="sort-icon">↕</span></th>
+        </tr>
+      </thead>
+      <tbody id="overview-media-tbody">
+        <tr class="empty-row"><td colspan="7" style="text-align:center;color:var(--text-muted);padding:24px">データがありません。API連携して更新してください。</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- TAB: 媒体別 -->
+<div class="tab-panel" id="tab-media">
+  <div class="media-grid" id="media-cards"></div>
+  <div class="panel">
+    <div class="panel-header">
+      <span class="panel-title">媒体 Cost × ROAS バブルチャート</span>
+      <span class="panel-sub">バブルサイズ＝CV数</span>
+    </div>
+    <div class="panel-body"><canvas id="bubbleChart" height="280"></canvas></div>
+  </div>
+</div>
+
+<!-- TAB: エリア別 -->
+<div class="tab-panel" id="tab-area">
+  <div class="panel">
+    <div class="panel-header">
+      <span class="panel-title">エリア別パフォーマンス</span>
+    </div>
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>エリア <span class="sort-icon">↕</span></th>
+          <th>広告費 <span class="sort-icon">↕</span></th>
+          <th>CV <span class="sort-icon">↕</span></th>
+          <th>CPA <span class="sort-icon">↕</span></th>
+          <th>ROAS <span class="sort-icon">↕</span></th>
+          <th>売上 <span class="sort-icon">↕</span></th>
+          <th>構成比</th>
+        </tr>
+      </thead>
+      <tbody id="area-tbody">
+        <tr class="empty-row"><td colspan="7" style="text-align:center;color:var(--text-muted);padding:24px">データがありません</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- TAB: 時間帯別 -->
+<div class="tab-panel" id="tab-time">
+  <div class="panel">
+    <div class="panel-header">
+      <span class="panel-title">時間帯×曜日 CV ヒートマップ</span>
+      <span class="panel-sub">色が濃いほどCV多</span>
+    </div>
+    <div class="panel-body">
+      <div id="heatmap"></div>
+      <div class="hm-legend">
+        <span>低</span>
+        <div class="hm-legend-bar" id="hm-legend-bar"></div>
+        <span>高</span>
+      </div>
+    </div>
+  </div>
+  <div style="margin-top:16px" class="panel">
+    <div class="panel-header"><span class="panel-title">時間帯別サマリー</span></div>
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>時間帯 <span class="sort-icon">↕</span></th>
+          <th>広告費 <span class="sort-icon">↕</span></th>
+          <th>CV <span class="sort-icon">↕</span></th>
+          <th>CPA <span class="sort-icon">↕</span></th>
+          <th>ROAS <span class="sort-icon">↕</span></th>
+        </tr>
+      </thead>
+      <tbody id="time-tbody">
+        <tr class="empty-row"><td colspan="5" style="text-align:center;color:var(--text-muted);padding:24px">データがありません</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- TAB: キャンペーン -->
+<div class="tab-panel" id="tab-campaign">
+  <div class="panel">
+    <div class="panel-header">
+      <span class="panel-title">キャンペーン一覧</span>
+      <div style="display:flex;gap:8px">
+        <select id="campaign-media-filter" style="border:1px solid var(--border);padding:4px 8px;border-radius:6px;font-size:12px;background:var(--surface2)">
+          <option>すべての媒体</option>
+        </select>
+        <select id="campaign-sort" style="border:1px solid var(--border);padding:4px 8px;border-radius:6px;font-size:12px;background:var(--surface2)">
+          <option>並び替え：CPA</option>
+          <option>並び替え：ROAS</option>
+          <option>並び替え：CV</option>
+        </select>
+      </div>
+    </div>
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>キャンペーン名 <span class="sort-icon">↕</span></th>
+          <th>媒体 <span class="sort-icon">↕</span></th>
+          <th>広告費 <span class="sort-icon">↕</span></th>
+          <th>IMP <span class="sort-icon">↕</span></th>
+          <th>CTR <span class="sort-icon">↕</span></th>
+          <th>CV <span class="sort-icon">↕</span></th>
+          <th>CPA <span class="sort-icon">↕</span></th>
+          <th>ROAS <span class="sort-icon">↕</span></th>
+        </tr>
+      </thead>
+      <tbody id="campaign-tbody">
+        <tr class="empty-row"><td colspan="8" style="text-align:center;color:var(--text-muted);padding:24px">データがありません。API連携して更新してください。</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="tooltip" id="tooltip"></div>
+
+<!-- API Settings Modal -->
+<div id="settings-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:200;align-items:center;justify-content:center">
+  <div style="background:#fff;border-radius:16px;width:680px;max-width:95vw;max-height:90vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 24px 64px rgba(0,0,0,.18)">
+    <div style="padding:20px 24px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
+      <div>
+        <div style="font-size:15px;font-weight:600">API連携設定</div>
+        <div style="font-size:12px;color:var(--text-muted);margin-top:2px">各媒体のAPI認証情報を設定します。情報はローカルに保存されます。</div>
+      </div>
+      <button onclick="closeSettings()" style="border:none;background:none;cursor:pointer;padding:6px 10px;border-radius:8px;color:var(--text-muted);font-size:20px;line-height:1">×</button>
+    </div>
+    <div style="display:flex;flex:1;overflow:hidden">
+      <div style="width:180px;flex-shrink:0;border-right:1px solid var(--border);padding:12px 8px;overflow-y:auto;background:var(--surface2)">
+        <div style="font-size:10px;font-weight:600;color:var(--text-muted);letter-spacing:.06em;text-transform:uppercase;padding:4px 10px 8px">媒体</div>
+        <div id="media-nav"></div>
+      </div>
+      <div style="flex:1;overflow-y:auto;padding:24px" id="api-panels"></div>
+    </div>
+    <div style="padding:16px 24px;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;background:var(--surface2)">
+      <div id="save-status" style="font-size:12px;color:var(--good);display:none">✓ 保存しました</div>
+      <div style="display:flex;gap:10px;margin-left:auto">
+        <button onclick="closeSettings()" style="border:1px solid var(--border);background:#fff;padding:8px 18px;border-radius:8px;font-size:13px;cursor:pointer;font-family:'DM Sans',sans-serif">キャンセル</button>
+        <button onclick="saveSettings()" style="background:var(--accent);color:#fff;border:none;padding:8px 20px;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer;font-family:'DM Sans',sans-serif">保存する</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="/js/header.js"></script>
+<script src="/js/ads.js"></script>
+</body>
+</html>

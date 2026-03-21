@@ -7,7 +7,7 @@
     "migrate:multitenant": "node scripts/run-migration-multitenant.js",
     "migrate:gsc-oauth": "node scripts/run-migration-gsc-oauth.js",
     "migrate:sitemap": "node scripts/run-migration-sitemap.js",
-    "prestart": "lsof -ti :3000 | xargs kill -9 2>/dev/null || true; sleep 2",
+    "prestart": "lsof -ti :3000 | xargs kill -9 2>/dev/null || true; sleep 5",
     "predev": "lsof -ti :3000 | xargs kill -9 2>/dev/null || true",
     "start": "NODE_ENV=production node server.js",
     "dev": "NODE_ENV=development node server.js"
@@ -23,6 +23,7 @@
     "dotenv": "^17.3.1",
     "express": "^5.2.1",
     "express-rate-limit": "^8.3.1",
+    "google-ads-api": "^23.0.0",
     "helmet": "^8.1.0",
     "mysql2": "^3.20.0",
     "nodemailer": "^8.0.3"

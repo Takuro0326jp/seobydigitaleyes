@@ -48,7 +48,7 @@
                 <div id="password-container">
                     <div class="flex justify-between items-center mb-1">
                         <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Password</label>
-                        <span class="text-[9px] text-slate-300 font-bold italic">紛失時は管理者へ問い合わせてください</span>
+                        <button type="button" id="open-reset-modal" class="text-[9px] text-indigo-500 font-bold hover:text-indigo-600 hover:underline">パスワードを忘れた</button>
                     </div>
                     <input type="password" id="password-input" required
                         class="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-indigo-500 transition-all font-bold">
@@ -87,7 +87,7 @@
                 </div>
                 <button type="button" id="close-modal" class="text-slate-300 hover:text-slate-900 transition-colors text-2xl">&times;</button>
             </div>
-            <p class="text-sm text-slate-600 mb-6 leading-relaxed">管理者によって登録されたメールアドレスを入力してください。</p>
+            <p class="text-sm text-slate-600 mb-6 leading-relaxed">ご登録のメールアドレスを入力してください。パスワード再設定のリンクを送信します。</p>
             <form id="reset-form" class="space-y-4">
                 <input type="email" id="reset-email" required placeholder="name@company.com" class="oe-input w-full px-4 py-3 text-sm bg-gray-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500">
                 <button type="submit" class="w-full bg-slate-900 text-white font-bold py-4 rounded-xl text-[11px] tracking-[0.2em] uppercase hover:bg-blue-600 transition shadow-lg">再設定依頼を送信する</button>

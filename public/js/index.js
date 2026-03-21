@@ -18,13 +18,45 @@ document.addEventListener("DOMContentLoaded", () => {
   if (!form) return;
 
   const resetModal = document.getElementById("reset-modal");
+  document.getElementById("open-reset-modal")?.addEventListener("click", () => {
+    resetModal?.classList.remove("hidden");
+    document.getElementById("reset-email")?.focus();
+  });
   document.getElementById("close-modal")?.addEventListener("click", () => {
     resetModal?.classList.add("hidden");
   });
-  document.getElementById("reset-form")?.addEventListener("submit", (e) => {
+  resetModal?.addEventListener("click", (e) => {
+    if (e.target === resetModal) resetModal.classList.add("hidden");
+  });
+  document.getElementById("reset-form")?.addEventListener("submit", async (e) => {
     e.preventDefault();
-    alert("再設定依頼は管理者へお問い合わせください。");
-    resetModal?.classList.add("hidden");
+    const emailInput = document.getElementById("reset-email");
+    const submitBtn = resetModal?.querySelector('button[type="submit"]');
+    const email = (emailInput?.value || "").trim().toLowerCase();
+    if (!email) return;
+    if (submitBtn) {
+      submitBtn.disabled = true;
+      submitBtn.textContent = "送信中...";
+    }
+    try {
+      const res = await fetch("/api/auth/forgot-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "送信に失敗しました");
+      alert(data.message || "ご登録のメールアドレス宛にパスワード再設定のリンクを送信しました。");
+      resetModal?.classList.add("hidden");
+      if (emailInput) emailInput.value = "";
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.textContent = "再設定依頼を送信する";
+      }
+    }
   });
 
   form.addEventListener("submit", async (e) => {

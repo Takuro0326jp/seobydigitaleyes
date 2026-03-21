@@ -16,6 +16,7 @@ const scanRoutes = require("./routes/scans");
 const scanModule = require("./routes/scan");
 const gscRoutes = require("./routes/gsc");
 const strategyRoutes = require("./routes/strategy");
+const adsRoutes = require("./routes/ads");
 const { handleSitemapLast, handleSubmitSitemap } = require("./routes/sitemap");
 const handleStart = scanModule.handleStart;
 const handleResult = scanModule.handleResult;
@@ -259,6 +260,7 @@ app.get("/api/scans/result/:id", (req, res, next) =>
 app.use("/api/scans", scanRoutes);
 app.use("/api/gsc", gscRoutes);
 app.use("/api/strategy", strategyRoutes);
+app.use("/api/ads", adsRoutes);
 
 // GET /api/link-analysis?scan_id=X — user もアクセス可能（/api/scans/:id/link-analysis へリダイレクト）
 app.get("/api/link-analysis", (req, res) => {
@@ -385,6 +387,15 @@ app.use((err, req, res, next) => {
     }
   }
   try {
+    await pool.query("ALTER TABLE users ADD COLUMN password_reset_token VARCHAR(64) NULL");
+    await pool.query("ALTER TABLE users ADD COLUMN password_reset_expires_at DATETIME NULL");
+    console.log("[DB] users.password_reset_token 確認OK");
+  } catch (e) {
+    if (e.code !== "ER_DUP_FIELDNAME") {
+      console.warn("[DB] password_reset_token 追加スキップ:", e.message);
+    }
+  }
+  try {
     await pool.query("ALTER TABLE auth_codes ADD COLUMN one_time_token VARCHAR(64) NULL");
     console.log("[DB] auth_codes.one_time_token 確認OK");
   } catch (e) {
@@ -435,6 +446,111 @@ app.use((err, req, res, next) => {
     if (e.code !== "ER_NO_SUCH_TABLE" && e.code !== "ER_BAD_FIELD_ERROR") {
       console.warn("[DB] oauth_states.state 拡張スキップ:", e.message);
     }
+  }
+  try {
+    await pool.query("ALTER TABLE oauth_states ADD COLUMN customer_id VARCHAR(20) NULL");
+    console.log("[DB] oauth_states.customer_id 追加OK");
+  } catch (e) {
+    if (e.code !== "ER_DUP_FIELDNAME") {
+      console.warn("[DB] oauth_states.customer_id 追加スキップ:", e.message);
+    }
+  }
+  try {
+    await pool.execute(`CREATE TABLE IF NOT EXISTS google_ads_tokens (
+      user_id INT NOT NULL,
+      customer_id VARCHAR(20) NULL,
+      access_token TEXT,
+      refresh_token TEXT,
+      expiry_date BIGINT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+      PRIMARY KEY (user_id),
+      KEY idx_google_ads_tokens_user (user_id),
+      CONSTRAINT fk_google_ads_tokens_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    )`);
+    console.log("[DB] google_ads_tokens 確認OK");
+  } catch (e) {
+    if (e.code !== "ER_TABLE_EXISTS" && e.code !== "ER_TABLE_EXISTS_ERROR") console.warn("[DB] google_ads_tokens スキップ:", e?.message);
+  }
+  try {
+    await pool.query("ALTER TABLE google_ads_tokens ADD COLUMN login_customer_id VARCHAR(20) NULL");
+    console.log("[DB] google_ads_tokens.login_customer_id 追加OK");
+  } catch (e) {
+    if (e.code !== "ER_DUP_FIELDNAME" && e.code !== "ER_NO_SUCH_TABLE") {
+      console.warn("[DB] google_ads_tokens.login_customer_id 追加スキップ:", e.message);
+    }
+  }
+  try {
+    await pool.execute(`CREATE TABLE IF NOT EXISTS api_auth_sources (
+      id INT NOT NULL AUTO_INCREMENT,
+      user_id INT NOT NULL,
+      name VARCHAR(100) NOT NULL,
+      platform VARCHAR(32) NOT NULL DEFAULT 'google',
+      login_customer_id VARCHAR(20) NULL,
+      refresh_token TEXT NOT NULL,
+      access_token TEXT NULL,
+      expiry_date BIGINT NULL,
+      google_email VARCHAR(255) NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+      PRIMARY KEY (id),
+      KEY idx_api_auth_sources_user (user_id),
+      CONSTRAINT fk_api_auth_sources_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    )`);
+    console.log("[DB] api_auth_sources 確認OK");
+  } catch (e) {
+    if (e.code !== "ER_TABLE_EXISTS" && e.code !== "ER_TABLE_EXISTS_ERROR") console.warn("[DB] api_auth_sources スキップ:", e?.message);
+  }
+  try {
+    await pool.query("ALTER TABLE api_auth_sources ADD COLUMN login_customer_id VARCHAR(20) NULL");
+  } catch (e) {
+    if (e.code !== "ER_DUP_FIELDNAME") { /* ignore */ }
+  }
+  try {
+    await pool.execute(`CREATE TABLE IF NOT EXISTS google_ads_accounts (
+      id INT NOT NULL AUTO_INCREMENT,
+      user_id INT NOT NULL,
+      api_auth_source_id INT NOT NULL,
+      name VARCHAR(100) NOT NULL,
+      customer_id VARCHAR(20) NOT NULL,
+      login_customer_id VARCHAR(20) NULL,
+      is_selected TINYINT(1) DEFAULT 0,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+      PRIMARY KEY (id),
+      KEY idx_google_ads_accounts_user (user_id),
+      KEY idx_google_ads_accounts_auth (api_auth_source_id),
+      CONSTRAINT fk_google_ads_accounts_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      CONSTRAINT fk_google_ads_accounts_auth FOREIGN KEY (api_auth_source_id) REFERENCES api_auth_sources(id) ON DELETE CASCADE
+    )`);
+    console.log("[DB] google_ads_accounts 確認OK");
+  } catch (e) {
+    if (e.code !== "ER_TABLE_EXISTS" && e.code !== "ER_TABLE_EXISTS_ERROR") console.warn("[DB] google_ads_accounts スキップ:", e?.message);
+  }
+  try {
+    await pool.query("ALTER TABLE google_ads_accounts ADD COLUMN api_auth_source_id INT NULL");
+  } catch (e) {
+    if (e.code !== "ER_DUP_FIELDNAME") { /* ignore */ }
+  }
+  try {
+    await pool.query("ALTER TABLE google_ads_accounts MODIFY COLUMN refresh_token TEXT NULL");
+  } catch (e) {
+    if (e.code !== "ER_BAD_FIELD_ERROR" && e.code !== "ER_NO_SUCH_COLUMN") { /* ignore */ }
+  }
+  try {
+    await pool.query("ALTER TABLE google_ads_accounts ADD CONSTRAINT fk_gaa_auth FOREIGN KEY (api_auth_source_id) REFERENCES api_auth_sources(id) ON DELETE CASCADE");
+  } catch (e) {
+    if (e.code !== "ER_DUP_KEYNAME" && e.code !== "ER_FK_DUP_NAME" && e.code !== "ER_FOREIGN_KEY_EXISTS") { /* ignore */ }
+  }
+  try {
+    await pool.query("ALTER TABLE oauth_states ADD COLUMN login_customer_id VARCHAR(20) NULL");
+  } catch (e) {
+    if (e.code !== "ER_DUP_FIELDNAME") { /* ignore */ }
+  }
+  try {
+    await pool.query("ALTER TABLE oauth_states ADD COLUMN account_name VARCHAR(100) NULL");
+  } catch (e) {
+    if (e.code !== "ER_DUP_FIELDNAME") { /* ignore */ }
   }
   try {
     await pool.execute(`CREATE TABLE IF NOT EXISTS scan_google_tokens (
@@ -545,13 +661,18 @@ app.use((err, req, res, next) => {
     console.warn("[DB] company_urls 重複統合 スキップ:", e?.message);
   }
 
+  let listened = false;
   const server = app.listen(port, () => {
+    listened = true;
     console.log(`server running on :${port} (PID: ${process.pid})`);
   });
   server.on("error", (err) => {
+    if (listened) return;
     if (err.code === "EADDRINUSE") {
       console.error(`\n[エラー] ポート ${port} は既に使用中です。`);
-      console.error("→ npm start を使うと自動で既存プロセスを停止します\n");
+      console.error("→ 以下を実行してから npm start を再実行してください:\n  lsof -ti :3000 | xargs kill -9\n  sleep 5\n\n");
+    } else {
+      console.error("[エラー]", err.message);
     }
     process.exit(1);
   });

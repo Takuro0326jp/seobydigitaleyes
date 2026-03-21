@@ -5,6 +5,7 @@ const nodemailer = require("nodemailer");
 const { SESClient, SendEmailCommand } = require("@aws-sdk/client-ses");
 const pool = require("../db");
 const { getUserIdFromRequest } = require("../services/session");
+const { sendPasswordResetEmail } = require("../services/email");
 const {
   getOAuth2Client,
   getRedirectUri,
@@ -32,6 +33,8 @@ const htmlTemplate = (code, loginUrl) => `
     <p style="margin-top:24px;">
       <a href="${loginUrl}" style="display:inline-block;background:#6366f1;color:#ffffff;font-weight:700;font-size:14px;padding:14px 32px;border-radius:12px;text-decoration:none;box-shadow:0 4px 14px rgba(99,102,241,0.4);">ワンクリックでログイン</a>
     </p>
+    <p style="margin-top:16px;font-size:12px;color:#94a3b8;">デフォルトブラウザ以外を使う場合: 以下のURLを選択してコピーし、お使いのブラウザに貼り付けてください</p>
+    <p style="margin-top:8px;font-size:11px;font-family:monospace;color:#475569;background:#f8fafc;padding:12px 16px;border-radius:8px;border:1px solid #e2e8f0;word-break:break-all;text-align:left;">${String(loginUrl).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;")}</p>
     ` : ""}
     <p style="margin-top:24px;font-size:13px;color:#94a3b8;">このコードの有効期限は10分です</p>
     <hr style="border:none;border-top:1px solid #f1f5f9;margin:32px 0;">
@@ -302,26 +305,91 @@ router.post("/verify-code", async (req, res) => {
   }
 });
 
-// POST /api/auth/set-password - 招待ユーザーのパスワード設定
+// POST /api/auth/forgot-password - パスワード再設定メール送信
+router.post("/forgot-password", async (req, res) => {
+  const { email } = req.body || {};
+  const rawEmail = (email || "").trim().toLowerCase();
+  if (!rawEmail) {
+    return res.status(400).json({ success: false, error: "メールアドレスを入力してください" });
+  }
+  try {
+    const [rows] = await pool.query(
+      "SELECT id, email FROM users WHERE email = ? LIMIT 1",
+      [rawEmail]
+    );
+    // セキュリティのため、存在・非存在に関わらず同じレスポンスを返す
+    if (rows.length > 0) {
+      const user = rows[0];
+      const resetToken = crypto.randomBytes(32).toString("hex");
+      const baseUrl = (process.env.APP_URL || `${req.protocol}://${req.get("host")}`).replace(/\/+$/, "");
+      const setPasswordUrl = `${baseUrl}/auth/set-password.html?token=${encodeURIComponent(resetToken)}`;
+
+      await pool.query(
+        `UPDATE users SET password_reset_token = ?, password_reset_expires_at = DATE_ADD(NOW(), INTERVAL 1 HOUR)
+         WHERE id = ?`,
+        [resetToken, user.id]
+      );
+
+      try {
+        await sendPasswordResetEmail({ to: user.email, setPasswordUrl });
+      } catch (mailErr) {
+        console.error("[auth] forgot-password メール送信エラー:", mailErr?.message);
+      }
+    }
+    return res.json({ success: true, message: "ご登録のメールアドレス宛にパスワード再設定のリンクを送信しました。" });
+  } catch (e) {
+    console.error("[auth] forgot-password:", e);
+    return res.status(500).json({ success: false, error: "処理に失敗しました。しばらく経ってからお試しください。" });
+  }
+});
+
+// POST /api/auth/set-password - 招待ユーザー or パスワード再設定
 router.post("/set-password", async (req, res) => {
   const { token, password } = req.body || {};
   if (!token || !password || password.length < 6) {
     return res.status(400).json({ error: "トークンとパスワード（6文字以上）が必要です" });
   }
   try {
-    const [rows] = await pool.query(
+    // 1. 招待トークンで検索
+    let [rows] = await pool.query(
       `SELECT id, email FROM users WHERE invitation_token = ? AND invitation_expires_at > NOW() LIMIT 1`,
       [token]
     );
+    let clearInvite = true;
+    let clearReset = false;
+
     if (!rows.length) {
-      return res.status(401).json({ error: "招待リンクの有効期限が切れているか、無効です。管理者に再招待を依頼してください。" });
+      // 2. パスワード再設定トークンで検索
+      [rows] = await pool.query(
+        `SELECT id, email FROM users WHERE password_reset_token = ? AND password_reset_expires_at > NOW() LIMIT 1`,
+        [token]
+      );
+      if (!rows.length) {
+        return res.status(401).json({
+          error: "リンクの有効期限が切れているか、無効です。パスワードを忘れた場合は再度メール送信をお試しください。"
+        });
+      }
+      clearInvite = false;
+      clearReset = true;
     }
+
     const user = rows[0];
     const hash = await bcrypt.hash(password, 10);
+
+    const updates = ["password = ?"];
+    const params = [hash, user.id];
+    if (clearInvite) {
+      updates.push("invitation_token = NULL", "invitation_expires_at = NULL");
+    }
+    if (clearReset) {
+      updates.push("password_reset_token = NULL", "password_reset_expires_at = NULL");
+    }
+
     await pool.query(
-      `UPDATE users SET password = ?, invitation_token = NULL, invitation_expires_at = NULL WHERE id = ?`,
-      [hash, user.id]
+      `UPDATE users SET ${updates.join(", ")} WHERE id = ?`,
+      params
     );
+
     const sessionToken = crypto.randomBytes(32).toString("hex");
     const expires = new Date();
     expires.setDate(expires.getDate() + 7);
