@@ -18,14 +18,18 @@ const {
   ensureCompanyUrl,
   grantUserUrlAccess,
 } = require("../services/accessControl");
+const { getAccessibleUrls } = require("../services/userUrlAccess");
 const pool = require("../db");
-const { enqueueCrawl } = require("../services/crawlQueue");
+const { enqueueCrawl, setScanStartTime, getScanStartTime } = require("../services/crawlQueue");
 const { runScanCrawl } = require("../services/scanCrawl");
 const { handleTrends } = require("./scan");
 
 const router = express.Router();
 
-const MAX_PAGES = Number(process.env.MAX_CRAWL_PAGES || 1000);
+const MAX_PAGES = Number(
+  process.env.MAX_CRAWL_PAGES ||
+  (process.env.NODE_ENV === "production" ? 5000 : 1000)
+);
 
 const scanCreateLimiter = rateLimit({
   windowMs: 5 * 60 * 1000,
@@ -41,6 +45,57 @@ function isValidUrl(url) {
     return u.protocol === "http:" || u.protocol === "https:";
   } catch {
     return false;
+  }
+}
+
+const lastReEnqueueAt = new Map();
+const RE_ENQUEUE_COOLDOWN_MS = 5 * 60 * 1000;
+
+async function reEnqueueStuckQueuedScan(scanId, targetUrl) {
+  try {
+    const now = Date.now();
+    if (now - (lastReEnqueueAt.get(scanId) || 0) < RE_ENQUEUE_COOLDOWN_MS) return;
+    const [[row]] = await pool.query(
+      `SELECT status FROM scans WHERE id = ? LIMIT 1`,
+      [scanId]
+    );
+    if (row?.status !== "queued") return;
+    lastReEnqueueAt.set(scanId, now);
+    const normalized = normalizeUrl(targetUrl);
+    setScanStartTime(scanId);
+    enqueueCrawl(() => runScanCrawl(scanId, normalized));
+    console.log("[scans] queued scan", scanId, "をキューに再追加");
+  } catch (e) {
+    console.warn("[scans] reEnqueueStuckQueuedScan:", e?.message);
+  }
+}
+
+async function recoverStuckScanWithPages(scanId) {
+  try {
+    const [[stats]] = await pool.query(
+      `SELECT ROUND(AVG(score)) AS avg_score, COUNT(*) AS page_count,
+       SUM(CASE WHEN status_code >= 400 OR is_noindex = 1 OR COALESCE(title,'') = '' OR COALESCE(h1_count,0) = 0 OR CHAR_LENGTH(COALESCE(title,'')) < 10 THEN 1 ELSE 0 END) AS critical
+       FROM scan_pages WHERE scan_id = ?`,
+      [scanId]
+    );
+    const avg = stats?.avg_score ?? null;
+    const [r] = await pool.query(
+      `UPDATE scans SET status = 'completed', avg_score = ?, error_message = NULL, updated_at = NOW() WHERE id = ? AND status = 'running'`,
+      [avg, scanId]
+    );
+    if (r?.affectedRows > 0) {
+      try {
+        await pool.query(
+          `INSERT INTO scan_history (scan_id, avg_score, page_count, critical_issues) VALUES (?,?,?,?)`,
+          [scanId, avg, stats?.page_count ?? 0, stats?.critical ?? 0]
+        );
+      } catch {
+        /* scan_history 未作成時はスキップ */
+      }
+      console.log("[scans] stuck scan", scanId, "→ completed (ページデータあり)");
+    }
+  } catch (e) {
+    console.warn("[scans] recoverStuckScanWithPages:", e?.message);
   }
 }
 
@@ -357,42 +412,89 @@ router.post("/", scanCreateLimiter, async (req, res) => {
       await pool.query(`DELETE FROM scan_pages WHERE scan_id = ?`, [scanId]);
       try {
         await pool.query(
-          `UPDATE scans SET target_url = ?, status = 'queued', avg_score = NULL,
-           created_at = ?, updated_at = NOW() WHERE id = ?`,
+          `UPDATE scans SET target_url = ?, status = 'queued', avg_score = NULL, error_message = NULL,
+           created_at = ?, started_at = NOW(), updated_at = NOW() WHERE id = ?`,
           [normalized, earliest, scanId]
         );
       } catch {
-        await pool.query(
-          `UPDATE scans SET target_url = ?, status = 'queued', avg_score = NULL,
-           created_at = ? WHERE id = ?`,
-          [normalized, earliest, scanId]
-        );
+        try {
+          await pool.query(
+            `UPDATE scans SET target_url = ?, status = 'queued', avg_score = NULL, error_message = NULL,
+             created_at = ?, started_at = NOW() WHERE id = ?`,
+            [normalized, earliest, scanId]
+          );
+        } catch {
+          await pool.query(
+            `UPDATE scans SET target_url = ?, status = 'queued', avg_score = NULL, error_message = NULL,
+             created_at = ?, updated_at = NOW() WHERE id = ?`,
+            [normalized, earliest, scanId]
+          );
+        }
       }
     } else {
       scanId = crypto.randomUUID();
       try {
         await pool.query(
-          `INSERT INTO scans (id, user_id, company_id, target_url, status, created_at, updated_at)
-           VALUES (?, ?, ?, ?, 'queued', NOW(), NOW())`,
+          `INSERT INTO scans (id, user_id, company_id, target_url, status, created_at, started_at, updated_at)
+           VALUES (?, ?, ?, ?, 'queued', NOW(), NOW(), NOW())`,
           [scanId, user.id, user.company_id, normalized]
         );
       } catch {
-        await pool.query(
-          `INSERT INTO scans (id, user_id, company_id, target_url, status, created_at)
-           VALUES (?, ?, ?, ?, 'queued', NOW())`,
-          [scanId, user.id, user.company_id, normalized]
-        );
+        try {
+          await pool.query(
+            `INSERT INTO scans (id, user_id, company_id, target_url, status, created_at, started_at)
+             VALUES (?, ?, ?, ?, 'queued', NOW(), NOW())`,
+            [scanId, user.id, user.company_id, normalized]
+          );
+        } catch {
+          await pool.query(
+            `INSERT INTO scans (id, user_id, company_id, target_url, status, created_at)
+             VALUES (?, ?, ?, ?, 'queued', NOW())`,
+            [scanId, user.id, user.company_id, normalized]
+          );
+        }
       }
     }
 
-    setImmediate(() => {
-      enqueueCrawl(() => runScanCrawl(scanId, normalized));
-    });
+    setScanStartTime(scanId);
+    enqueueCrawl(() => runScanCrawl(scanId, normalized));
 
     return res.status(202).json({ scanId });
   } catch (e) {
     console.error("create scan error:", e);
     return res.status(500).json({ error: "scan create error" });
+  }
+});
+
+// GET /api/scans/debug — 一般ユーザー表示の診断（開発用）
+router.get("/debug", async (req, res) => {
+  try {
+    const user = await getUserWithContext(req);
+    if (!user) return res.status(401).json({ error: "unauthorized" });
+    if (isAdmin(user)) return res.json({ msg: "admin は全件表示のためスキップ" });
+
+    const urls = await getAccessibleUrls(user.id, user.company_id);
+    const allowedCanons = [...new Set(urls.map((u) => canonicalDomainKey(u)))];
+    const [allScans] = await pool.query(
+      `SELECT id, target_url, status, company_id FROM scans ORDER BY created_at DESC`
+    );
+    const scansWithCanon = (allScans || []).map((s) => ({
+      id: s.id,
+      target_url: s.target_url,
+      canon: canonicalDomainKey(s.target_url),
+      match: allowedCanons.includes(canonicalDomainKey(s.target_url)),
+    }));
+    return res.json({
+      user_id: user.id,
+      company_id: user.company_id,
+      accessible_urls: urls,
+      allowedCanons,
+      scansSample: scansWithCanon,
+      o_eighty_in_allowed: allowedCanons.includes("o-eighty.com"),
+      o_eighty_scans: scansWithCanon.filter((s) => s.canon === "o-eighty.com"),
+    });
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
   }
 });
 
@@ -408,7 +510,7 @@ router.get("/", async (req, res) => {
     if (isAdmin(user)) {
       try {
         const [r] = await pool.query(
-          `SELECT s.id, s.target_url, s.status, s.created_at, s.avg_score, s.updated_at, s.company_id, s.gsc_property_url, s.error_message, c.name AS company_name
+          `SELECT s.id, s.target_url, s.status, s.created_at, s.started_at, s.avg_score, s.updated_at, s.company_id, s.gsc_property_url, s.error_message, c.name AS company_name
            FROM scans s
            LEFT JOIN companies c ON s.company_id = c.id
            ORDER BY COALESCE(s.updated_at, s.created_at) DESC`
@@ -416,14 +518,16 @@ router.get("/", async (req, res) => {
         rows = r;
       } catch {
         const [r] = await pool.query(
-          `SELECT s.id, s.target_url, s.status, s.created_at, s.avg_score, s.company_id, s.gsc_property_url, s.error_message, c.name AS company_name
+          `SELECT s.id, s.target_url, s.status, s.created_at, s.avg_score, s.updated_at, s.company_id, s.gsc_property_url, s.error_message, c.name AS company_name
            FROM scans s
            LEFT JOIN companies c ON s.company_id = c.id
            ORDER BY s.created_at DESC`
         );
-        rows = r.map((row) => ({ ...row, updated_at: null }));
+        rows = r.map((row) => ({ ...row, started_at: null }));
       }
     } else {
+      // 一般ユーザー: 閲覧可能URL（user_url_access）を起点に構築。scans ベースにすると
+      // company_urls にないドメイン（ronherman.jp 等）が混入するため、権限付与リストと完全一致させる
       if (user.company_id == null) {
         return res.json([]);
       }
@@ -432,46 +536,87 @@ router.get("/", async (req, res) => {
       } catch (mergeErr) {
         console.error("mergeScansToOnePerDomain:", mergeErr.message || mergeErr);
       }
-      try {
-        const [r] = await pool.query(
-          `SELECT s.id, s.target_url, s.status, s.created_at, s.avg_score, s.updated_at, s.company_id, s.gsc_property_url, c.name AS company_name
-           FROM scans s
-           LEFT JOIN companies c ON s.company_id = c.id
-           JOIN company_urls cu ON s.target_url = cu.url AND s.company_id = cu.company_id
-           JOIN user_url_access ua ON ua.url_id = cu.id
-           WHERE ua.user_id = ? AND s.company_id = ?
-           ORDER BY COALESCE(s.updated_at, s.created_at) DESC`,
-          [user.id, user.company_id]
-        );
-        rows = r;
-      } catch {
-        const [r] = await pool.query(
-          `SELECT s.id, s.target_url, s.status, s.created_at, s.avg_score, s.company_id, s.gsc_property_url, s.error_message, c.name AS company_name
-           FROM scans s
-           LEFT JOIN companies c ON s.company_id = c.id
-           JOIN company_urls cu ON s.target_url = cu.url AND s.company_id = cu.company_id
-           JOIN user_url_access ua ON ua.url_id = cu.id
-           WHERE ua.user_id = ? AND s.company_id = ?
-           ORDER BY s.created_at DESC`,
-          [user.id, user.company_id]
-        );
-        rows = r.map((row) => ({ ...row, updated_at: null }));
+      const [companyRow] = await pool.query(
+        "SELECT name FROM companies WHERE id = ? LIMIT 1",
+        [user.company_id]
+      );
+      const companyName = companyRow?.[0]?.name || null;
+      const accessibleUrls = await getAccessibleUrls(user.id, user.company_id);
+      if (accessibleUrls.length === 0) {
+        rows = [];
+      } else {
+        let scansRows = [];
+        try {
+          const [r] = await pool.query(
+            `SELECT s.id, s.target_url, s.status, s.created_at, s.started_at, s.avg_score, s.updated_at, s.company_id, s.gsc_property_url, s.error_message, c.name AS company_name
+             FROM scans s
+             LEFT JOIN companies c ON s.company_id = c.id
+             WHERE s.company_id = ?`,
+            [user.company_id]
+          );
+          scansRows = r || [];
+        } catch {
+          const [r] = await pool.query(
+            `SELECT s.id, s.target_url, s.status, s.created_at, s.avg_score, s.updated_at, s.company_id, s.gsc_property_url, s.error_message, c.name AS company_name
+             FROM scans s
+             LEFT JOIN companies c ON s.company_id = c.id
+             WHERE s.company_id = ?`,
+            [user.company_id]
+          );
+          scansRows = (r || []).map((row) => ({ ...row, started_at: null }));
+        }
+        const scanByCanon = new Map();
+        for (const s of scansRows) {
+          const k = canonicalDomainKey(s.target_url);
+          if (k) scanByCanon.set(k, s);
+        }
+        rows = [];
+        const seenCanon = new Set();
+        for (const url of accessibleUrls) {
+          const canon = canonicalDomainKey(url);
+          if (!canon || seenCanon.has(canon)) continue;
+          seenCanon.add(canon);
+          const scan = scanByCanon.get(canon);
+          if (scan) {
+            rows.push(scan);
+          } else {
+            rows.push({
+              id: `no_scan:${canon}`,
+              target_url: url,
+              status: "no_scan",
+              created_at: null,
+              updated_at: null,
+              avg_score: null,
+              company_id: user.company_id,
+              company_name: companyName || null,
+              gsc_property_url: null,
+              error_message: null,
+            });
+          }
+        }
       }
     }
 
     const seenCanon = new Set();
     const body = [];
+    const scanningIds = [];
     for (const row of rows) {
       const canon = canonicalDomainKey(row.target_url);
       const dedupeKey = canon || `__id:${row.id}`;
       if (canon && seenCanon.has(canon)) continue;
       if (canon) seenCanon.add(canon);
 
+      if (row.status === "running" || row.status === "queued") {
+        scanningIds.push(row.id);
+      }
+
       body.push({
         id: row.id,
         domain: canon || domainFromTargetUrl(row.target_url) || row.target_url,
+        target_url: row.target_url ?? null,
         status: row.status,
         created_at: row.created_at,
+        started_at: row.started_at ?? null,
         updated_at: row.updated_at || row.created_at,
         avg_score: row.avg_score,
         company_id: row.company_id ?? null,
@@ -479,6 +624,36 @@ router.get("/", async (req, res) => {
         gsc_property_url: row.gsc_property_url ?? null,
         error_message: row.error_message ?? null,
       });
+    }
+
+    let pageCountByScanId = {};
+    if (scanningIds.length > 0) {
+      const [countRows] = await pool.query(
+        `SELECT scan_id, COUNT(*) AS cnt FROM scan_pages WHERE scan_id IN (?) GROUP BY scan_id`,
+        [scanningIds]
+      );
+      for (const r of countRows || []) {
+        pageCountByScanId[r.scan_id] = r.cnt || 0;
+      }
+    }
+
+    const now = Date.now();
+    for (const item of body) {
+      if (item.status === "running" || item.status === "queued") {
+        item.processed_pages = pageCountByScanId[item.id] ?? 0;
+        const startMs = getScanStartTime(item.id)
+          ?? (item.started_at ? new Date(item.started_at).getTime() : null)
+          ?? (item.updated_at ? new Date(item.updated_at).getTime() : null);
+        item.elapsed_minutes = startMs > 0 ? Math.max(0, Math.floor((now - startMs) / 60000)) : 0;
+
+        if (item.status === "running" && item.processed_pages > 0 && item.elapsed_minutes >= 20) {
+          setImmediate(() => recoverStuckScanWithPages(item.id).catch(() => {}));
+        }
+        if (item.status === "queued" && item.elapsed_minutes >= 2 && item.target_url) {
+          setImmediate(() => reEnqueueStuckQueuedScan(item.id, item.target_url).catch(() => {}));
+        }
+        item.error_message = null;
+      }
     }
 
     return res.json(body);

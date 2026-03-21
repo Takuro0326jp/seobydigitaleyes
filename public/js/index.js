@@ -1,4 +1,9 @@
 document.addEventListener("DOMContentLoaded", () => {
+  const params = new URLSearchParams(window.location.search);
+  const error = params.get("error");
+  if (error === "code_expired") alert("認証コードの有効期限が切れています。再度ログインを試してください。");
+  else if (error === "invalid_token") alert("認証リンクが無効です。再度ログインを試してください。");
+
   const form = document.getElementById("scan-form");
   const emailInput = document.getElementById("email-input");
   const passwordInput = document.getElementById("password-input");

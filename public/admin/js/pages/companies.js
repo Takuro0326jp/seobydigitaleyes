@@ -5,51 +5,50 @@ import { adminApi } from "../api.js";
 
 export async function render(container) {
   const companies = await adminApi.companies.list();
+  const urlCounts = await Promise.all(
+    companies.map(async (c) => {
+      try {
+        const urls = await adminApi.companies.urls(c.id);
+        return { id: c.id, count: urls.length };
+      } catch {
+        return { id: c.id, count: 0 };
+      }
+    })
+  );
+  const countMap = Object.fromEntries(urlCounts.map((uc) => [uc.id, uc.count]));
+
   container.innerHTML = `
-    <div class="flex justify-between items-center mb-6">
-      <h2 class="text-2xl font-bold text-slate-900">企業管理</h2>
-      <button id="btn-add-company" class="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700">新規追加</button>
+    <div class="flex justify-between items-end mb-8">
+      <div>
+        <h2 class="text-3xl font-extrabold text-slate-900 tracking-tight">企業管理</h2>
+        <p class="text-slate-500 mt-2 font-medium">クライアント企業とドメインの紐付け。</p>
+      </div>
+      <button id="btn-add-company" class="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-xl text-sm font-bold shadow-lg shadow-indigo-100 transition-all active:scale-95">新規追加</button>
     </div>
-    <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
-      <table class="w-full text-left">
-        <thead class="bg-slate-50 border-b border-slate-200">
-          <tr>
-            <th class="px-6 py-4 text-xs font-semibold text-slate-500 uppercase">ID</th>
-            <th class="px-6 py-4 text-xs font-semibold text-slate-500 uppercase">企業名</th>
-            <th class="px-6 py-4 text-xs font-semibold text-slate-500 uppercase">登録URL</th>
-            <th class="px-6 py-4 text-xs font-semibold text-slate-500 uppercase">登録日</th>
-            <th class="px-6 py-4 text-xs font-semibold text-slate-500 uppercase w-48"></th>
-          </tr>
-        </thead>
-        <tbody class="divide-y divide-slate-100" id="companies-tbody">
-          ${companies.map((c) => `
-            <tr class="hover:bg-slate-50" data-company-id="${c.id}">
-              <td class="px-6 py-4 text-sm text-slate-600">${c.id}</td>
-              <td class="px-6 py-4 text-sm font-medium text-slate-900">${escapeHtml(c.name || "")}</td>
-              <td class="px-6 py-4 text-sm text-slate-600" id="company-urls-${c.id}">—</td>
-              <td class="px-6 py-4 text-sm text-slate-500">${formatDate(c.created_at)}</td>
-              <td class="px-6 py-4">
-                <button class="btn-edit text-indigo-600 text-sm hover:underline" data-id="${c.id}" data-name="${escapeHtml(c.name || "")}">編集</button>
-                <button class="btn-urls text-indigo-600 text-sm hover:underline ml-2" data-id="${c.id}" data-name="${escapeHtml(c.name || "")}">URL管理</button>
-                <button class="btn-delete text-red-600 text-sm hover:underline ml-2" data-id="${c.id}" data-name="${escapeHtml(c.name || "")}">削除</button>
-              </td>
-            </tr>
-          `).join("")}
-        </tbody>
-      </table>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6" id="companies-grid">
+      ${companies.map((c) => {
+        const initial = (c.name || "?").charAt(0).toUpperCase();
+        const count = countMap[c.id] ?? 0;
+        return `
+        <div class="bg-white p-6 rounded-2xl border border-slate-200/60 shadow-sm hover:shadow-md transition-all" data-company-id="${c.id}">
+          <div class="flex justify-between items-start mb-6">
+            <div class="w-12 h-12 bg-slate-100 rounded-xl flex items-center justify-center text-xl font-bold text-slate-400">${escapeHtml(initial)}</div>
+            <span class="bg-emerald-50 text-emerald-700 text-[10px] font-bold px-2 py-1 rounded border border-emerald-100 uppercase">Active</span>
+          </div>
+          <h3 class="text-lg font-bold text-slate-800">${escapeHtml(c.name || "")}</h3>
+          <p class="text-sm text-slate-400 mt-1 mb-6" id="company-urls-${c.id}">登録URL: ${count}件</p>
+          <div class="flex gap-2">
+            <button class="btn-urls flex-1 bg-indigo-50 text-indigo-600 py-2.5 rounded-lg text-xs font-bold hover:bg-indigo-100 transition-colors" data-id="${c.id}" data-name="${escapeHtml(c.name || "")}">URL管理</button>
+            <button class="btn-edit px-3 bg-slate-50 text-slate-600 py-2.5 rounded-lg text-xs font-bold hover:bg-slate-100 transition-colors" data-id="${c.id}" data-name="${escapeHtml(c.name || "")}">編集</button>
+            <button class="btn-delete px-3 bg-slate-50 text-slate-400 py-2.5 rounded-lg hover:bg-red-50 hover:text-red-500 transition-colors" data-id="${c.id}" data-name="${escapeHtml(c.name || "")}">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m4-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+            </button>
+          </div>
+        </div>
+      `;
+      }).join("")}
     </div>
   `;
-
-  for (const c of companies) {
-    try {
-      const urls = await adminApi.companies.urls(c.id);
-      const el = document.getElementById(`company-urls-${c.id}`);
-      if (el) el.textContent = urls.length ? `${urls.length}件` : "0件";
-    } catch {
-      const el = document.getElementById(`company-urls-${c.id}`);
-      if (el) el.textContent = "—";
-    }
-  }
 
   container.querySelector("#btn-add-company")?.addEventListener("click", () => openModal());
   container.querySelectorAll(".btn-edit").forEach((btn) => {
@@ -77,8 +76,8 @@ function formatDate(v) {
 function openModal(company = null) {
   const isEdit = !!company;
   const html = `
-    <div id="company-modal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div class="bg-white rounded-xl p-6 w-full max-w-md">
+    <div id="company-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50">
+      <div class="bg-white rounded-2xl p-6 w-full max-w-md border border-slate-200/60 shadow-2xl">
         <h3 class="text-lg font-bold mb-4">${isEdit ? "企業編集" : "企業追加"}</h3>
         <form id="company-form" class="space-y-4">
           <div>
@@ -86,8 +85,8 @@ function openModal(company = null) {
             <input type="text" name="name" value="${escapeHtml(company?.name || "")}" required class="w-full px-4 py-2 border border-slate-200 rounded-lg">
           </div>
           <div class="flex gap-2 justify-end pt-4">
-            <button type="button" id="company-modal-cancel" class="px-4 py-2 border border-slate-200 rounded-lg">キャンセル</button>
-            <button type="submit" class="px-4 py-2 bg-indigo-600 text-white rounded-lg">保存</button>
+            <button type="button" id="company-modal-cancel" class="px-4 py-2.5 border border-slate-200 rounded-xl text-sm font-medium hover:bg-slate-50 transition-colors">キャンセル</button>
+            <button type="submit" class="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-bold shadow-lg shadow-indigo-100 transition-all">保存</button>
           </div>
         </form>
       </div>
@@ -125,14 +124,14 @@ async function openUrlModal(companyId, companyName) {
     urls = [];
   }
   const html = `
-    <div id="url-modal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div class="bg-white rounded-xl p-6 w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
+    <div id="url-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50">
+      <div class="bg-white rounded-2xl p-6 w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col border border-slate-200/60 shadow-2xl">
         <h3 class="text-lg font-bold mb-4">URL管理 — ${escapeHtml(companyName)}</h3>
         <div class="flex gap-2 mb-4">
-          <input type="url" id="url-input" placeholder="https://example.com" class="flex-1 px-4 py-2 border border-slate-200 rounded-lg">
-          <button type="button" id="url-add-btn" class="px-4 py-2 bg-indigo-600 text-white rounded-lg">追加</button>
+          <input type="url" id="url-input" placeholder="https://example.com" class="flex-1 px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500">
+          <button type="button" id="url-add-btn" class="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-bold shadow-lg shadow-indigo-100 transition-all">追加</button>
         </div>
-        <div class="flex-1 overflow-y-auto border border-slate-200 rounded-lg">
+        <div class="flex-1 overflow-y-auto border border-slate-200 rounded-xl">
           <table class="w-full text-left text-sm">
             <thead class="bg-slate-50 sticky top-0">
               <tr>
@@ -152,7 +151,7 @@ async function openUrlModal(companyId, companyName) {
           </table>
         </div>
         <div class="mt-4 flex justify-end">
-          <button type="button" id="url-modal-close" class="px-4 py-2 border border-slate-200 rounded-lg">閉じる</button>
+          <button type="button" id="url-modal-close" class="px-5 py-2.5 border border-slate-200 rounded-xl text-sm font-medium hover:bg-slate-50 transition-colors">閉じる</button>
         </div>
       </div>
     </div>
@@ -181,7 +180,7 @@ async function openUrlModal(companyId, companyName) {
       tbody.appendChild(tr);
       input.value = "";
       const countEl = document.getElementById(`company-urls-${companyId}`);
-      if (countEl) countEl.textContent = `${tbody.querySelectorAll("tr").length}件`;
+      if (countEl) countEl.textContent = `登録URL: ${tbody.querySelectorAll("tr").length}件`;
     } catch (err) {
       alert(err.message);
     }

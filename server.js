@@ -32,20 +32,42 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
-// 全体レート制限（DoS 対策）
-app.use(
-  rateLimit({
-    windowMs: 60 * 1000,
-    max: 120,
-    message: { error: "リクエストが多すぎます。しばらく待ってから再試行してください。" },
-    standardHeaders: true,
-    legacyHeaders: false,
-  })
-);
+// API のみレート制限（DoS 対策・静的ファイルは除外）
+const apiRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: Number(process.env.RATE_LIMIT_MAX) || 400,
+  message: { error: "リクエストが多すぎます。しばらく待ってから再試行してください。" },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// /api/* へのリクエストのみレート制限を適用
+app.use("/api", apiRateLimiter);
 
 // 診断: このサーバーが応答しているか確認
 app.get("/api/ping", (req, res) => {
   res.json({ ok: true, pid: process.pid, msg: "このサーバーが応答しています" });
+});
+
+// DB接続・保存の診断（scans, scan_pages, scan_links の確認）
+app.get("/api/db-check", async (req, res) => {
+  try {
+    await pool.query("SELECT 1");
+    const [[scanRow]] = await pool.query(
+      "SELECT id, status, target_url, updated_at FROM scans ORDER BY created_at DESC LIMIT 1"
+    );
+    const [[pageCount]] = await pool.query("SELECT COUNT(*) AS c FROM scan_pages");
+    const [[linkCount]] = await pool.query("SELECT COUNT(*) AS c FROM scan_links").catch(() => [[{ c: 0 }]]);
+    res.json({
+      ok: true,
+      db: "connected",
+      latest_scan: scanRow || null,
+      scan_pages_total: pageCount?.c ?? 0,
+      scan_links_total: linkCount?.c ?? 0,
+    });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e?.message || "DB error" });
+  }
 });
 
 // trends API — /api/scans より先に登録（/:scanId に奪われないよう最優先）
@@ -288,12 +310,123 @@ app.use((err, req, res, next) => {
     }
   }
   try {
+    await pool.query("ALTER TABLE scans ADD COLUMN started_at DATETIME NULL");
+    console.log("[DB] scans.started_at 確認OK");
+  } catch (e) {
+    if (e.code !== "ER_DUP_FIELDNAME") {
+      console.warn("[DB] started_at 追加スキップ:", e.message);
+    }
+  }
+  try {
+    await pool.execute(`CREATE TABLE IF NOT EXISTS companies (
+      id INT NOT NULL AUTO_INCREMENT,
+      name VARCHAR(255) NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+      PRIMARY KEY (id)
+    )`);
+    console.log("[DB] companies 確認OK");
+  } catch (e) {
+    if (e.code !== "ER_TABLE_EXISTS_ERROR") console.warn("[DB] companies スキップ:", e.message);
+  }
+  try {
+    await pool.query("ALTER TABLE users ADD COLUMN company_id INT NULL");
+  } catch (e) {
+    if (e.code !== "ER_DUP_FIELDNAME") { /* ignore */ }
+  }
+  try {
+    await pool.execute(`CREATE TABLE IF NOT EXISTS company_urls (
+      id INT NOT NULL AUTO_INCREMENT,
+      company_id INT NOT NULL,
+      url VARCHAR(2048) NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (id),
+      UNIQUE KEY uq_company_url (company_id, url(500)),
+      KEY idx_company_urls_company (company_id),
+      CONSTRAINT fk_company_urls_company FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE
+    )`);
+    console.log("[DB] company_urls 確認OK");
+  } catch (e) {
+    if (e.code !== "ER_TABLE_EXISTS" && e.code !== "ER_TABLE_EXISTS_ERROR") console.warn("[DB] company_urls スキップ:", e?.message);
+  }
+  try {
+    await pool.execute(`CREATE TABLE IF NOT EXISTS user_url_access (
+      user_id INT NOT NULL,
+      url_id INT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (user_id, url_id),
+      KEY idx_user_url_access_url (url_id),
+      CONSTRAINT fk_user_url_access_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      CONSTRAINT fk_user_url_access_url FOREIGN KEY (url_id) REFERENCES company_urls(id) ON DELETE CASCADE
+    )`);
+    console.log("[DB] user_url_access 確認OK");
+  } catch (e) {
+    if (e.code !== "ER_TABLE_EXISTS" && e.code !== "ER_TABLE_EXISTS_ERROR") console.warn("[DB] user_url_access スキップ:", e?.message);
+  }
+  // company_url_id カラムの場合は url_id にリネーム（既存DB互換）
+  try {
+    const [cols] = await pool.query("SHOW COLUMNS FROM user_url_access");
+    const hasUrlId = cols.some((c) => c.Field === "url_id");
+    const hasCompanyUrlId = cols.some((c) => c.Field === "company_url_id");
+    if (!hasUrlId && hasCompanyUrlId) {
+      await pool.query("ALTER TABLE user_url_access CHANGE company_url_id url_id INT NOT NULL");
+      console.log("[DB] user_url_access.company_url_id → url_id リネームOK");
+    }
+  } catch (e) {
+    if (e.code !== "ER_DUP_FIELDNAME") console.warn("[DB] user_url_access カラム確認スキップ:", e?.message);
+  }
+  try {
+    await pool.query("ALTER TABLE users ADD COLUMN invitation_token VARCHAR(64) NULL");
+    await pool.query("ALTER TABLE users ADD COLUMN invitation_expires_at DATETIME NULL");
+    console.log("[DB] users.invitation_token 確認OK");
+  } catch (e) {
+    if (e.code !== "ER_DUP_FIELDNAME") {
+      console.warn("[DB] invitation_token 追加スキップ:", e.message);
+    }
+  }
+  try {
+    await pool.query("ALTER TABLE auth_codes ADD COLUMN one_time_token VARCHAR(64) NULL");
+    console.log("[DB] auth_codes.one_time_token 確認OK");
+  } catch (e) {
+    if (e.code !== "ER_DUP_FIELDNAME") {
+      console.warn("[DB] one_time_token 追加スキップ:", e.message);
+    }
+  }
+  try {
     await pool.query("ALTER TABLE scan_pages ADD COLUMN score_breakdown TEXT NULL");
     console.log("[DB] scan_pages.score_breakdown 確認OK");
   } catch (e) {
     if (e.code !== "ER_DUP_FIELDNAME") {
       console.warn("[DB] score_breakdown 追加スキップ:", e.message);
     }
+  }
+  try {
+    await pool.execute(`CREATE TABLE IF NOT EXISTS scan_links (
+      id INT NOT NULL AUTO_INCREMENT,
+      scan_id VARCHAR(36) NOT NULL,
+      from_url TEXT NOT NULL,
+      to_url TEXT NOT NULL,
+      PRIMARY KEY (id),
+      KEY idx_scan_links_scan (scan_id)
+    )`);
+    console.log("[DB] scan_links 確認OK");
+  } catch (e) {
+    if (e.code !== "ER_TABLE_EXISTS_ERROR") console.warn("[DB] scan_links スキップ:", e?.message);
+  }
+  try {
+    await pool.execute(`CREATE TABLE IF NOT EXISTS scan_history (
+      id INT NOT NULL AUTO_INCREMENT,
+      scan_id VARCHAR(36) NOT NULL,
+      avg_score INT NULL,
+      page_count INT NOT NULL DEFAULT 0,
+      critical_issues INT NOT NULL DEFAULT 0,
+      recorded_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (id),
+      KEY idx_scan_history_scan (scan_id)
+    )`);
+    console.log("[DB] scan_history 確認OK");
+  } catch (e) {
+    if (e.code !== "ER_TABLE_EXISTS_ERROR") console.warn("[DB] scan_history スキップ:", e?.message);
   }
   try {
     await pool.query("ALTER TABLE oauth_states MODIFY COLUMN state VARCHAR(128) NOT NULL");
@@ -341,6 +474,77 @@ app.use((err, req, res, next) => {
       console.warn("[DB] strategy_keywords 作成スキップ:", e.message);
     }
   }
+
+  // 前回異常終了で running/queued のまま残ったスキャンの復旧
+  // - scan_pages にデータあり → completed に復旧（結果を保持）
+  // - データなし → failed にリセット
+  try {
+    const [withPages] = await pool.query(
+      `SELECT s.id FROM scans s
+       INNER JOIN (SELECT scan_id, COUNT(*) AS cnt FROM scan_pages GROUP BY scan_id) p ON s.id = p.scan_id
+       WHERE s.status IN ('running', 'queued') AND p.cnt > 0`
+    );
+    for (const row of withPages || []) {
+      const [[avgRow]] = await pool.query(
+        `SELECT ROUND(AVG(score)) AS avg_score FROM scan_pages WHERE scan_id = ?`,
+        [row.id]
+      );
+      const avg = avgRow?.avg_score ?? null;
+      await pool.query(
+        `UPDATE scans SET status = 'completed', avg_score = ?, error_message = NULL, updated_at = NOW() WHERE id = ?`,
+        [avg, row.id]
+      );
+      console.log(`[DB] scan ${row.id} を completed に復旧（ページデータあり）`);
+    }
+    const [r] = await pool.query(
+      `UPDATE scans SET status = 'failed', error_message = '前回の実行が中断されました。再スキャンしてください。' 
+       WHERE status IN ('running', 'queued')`
+    );
+    if (r?.affectedRows > 0) {
+      console.log(`[DB] ${r.affectedRows} 件の stuck スキャン（データなし）を failed にリセット`);
+    }
+  } catch (e) {
+    console.warn("[DB] stuck スキャン復旧 スキップ:", e?.message);
+  }
+
+  // company_urls の重複統合（https://o-eighty.jp と https://o-eighty.jp/ を同一とみなす）
+  try {
+    const { normalizeUrlForKey } = require("./services/userUrlAccess");
+    const [rows] = await pool.query(
+      "SELECT id, company_id, url FROM company_urls ORDER BY company_id, id"
+    );
+    const byKey = new Map(); // (company_id, canonical_url) -> [rows]
+    for (const r of rows || []) {
+      const key = `${r.company_id}\t${normalizeUrlForKey(r.url)}`;
+      if (!byKey.has(key)) byKey.set(key, []);
+      byKey.get(key).push(r);
+    }
+    for (const [, group] of byKey) {
+      if (group.length <= 1) continue;
+      const keep = group.find((r) => normalizeUrlForKey(r.url) === r.url) || group[0];
+      const dupes = group.filter((r) => r.id !== keep.id);
+      const [cols] = await pool.query("SHOW COLUMNS FROM user_url_access");
+      const urlIdCol = cols?.find((c) => c.Field === "url_id" || c.Field === "company_url_id")?.Field || "url_id";
+      for (const dup of dupes) {
+        const [ua] = await pool.query(
+          `SELECT user_id FROM user_url_access WHERE ${urlIdCol} = ?`,
+          [dup.id]
+        );
+        for (const u of ua || []) {
+          await pool.query(
+            `INSERT IGNORE INTO user_url_access (user_id, ${urlIdCol}) VALUES (?, ?)`,
+            [u.user_id, keep.id]
+          ).catch(() => {});
+        }
+        await pool.query(`DELETE FROM user_url_access WHERE ${urlIdCol} = ?`, [dup.id]);
+        await pool.query("DELETE FROM company_urls WHERE id = ?", [dup.id]);
+        console.log(`[DB] company_urls 統合: ${dup.url} → ${keep.url} (id=${keep.id})`);
+      }
+    }
+  } catch (e) {
+    console.warn("[DB] company_urls 重複統合 スキップ:", e?.message);
+  }
+
   const server = app.listen(port, () => {
     console.log(`server running on :${port} (PID: ${process.pid})`);
   });

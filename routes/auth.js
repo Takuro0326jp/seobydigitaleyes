@@ -19,7 +19,7 @@ const ses = new SESClient({
   region: process.env.AWS_REGION || "ap-northeast-1"
 });
 
-const htmlTemplate = (code) => `
+const htmlTemplate = (code, loginUrl) => `
 <div style="background:#f8fafc;padding:40px 0;font-family:Arial,sans-serif;">
   <div style="max-width:480px;margin:0 auto;background:#ffffff;border-radius:16px;padding:40px;text-align:center;box-shadow:0 10px 30px rgba(0,0,0,0.06);">
     <div style="font-size:12px;font-weight:700;letter-spacing:2px;color:#6366f1;">DIGITALEYES</div>
@@ -28,6 +28,11 @@ const htmlTemplate = (code) => `
     <div style="margin-top:28px;font-size:34px;font-weight:900;letter-spacing:6px;background:#f1f5f9;padding:18px 24px;border-radius:12px;display:inline-block;color:#0f172a;">
       ${code}
     </div>
+    ${loginUrl ? `
+    <p style="margin-top:24px;">
+      <a href="${loginUrl}" style="display:inline-block;background:#6366f1;color:#ffffff;font-weight:700;font-size:14px;padding:14px 32px;border-radius:12px;text-decoration:none;box-shadow:0 4px 14px rgba(99,102,241,0.4);">ワンクリックでログイン</a>
+    </p>
+    ` : ""}
     <p style="margin-top:24px;font-size:13px;color:#94a3b8;">このコードの有効期限は10分です</p>
     <hr style="border:none;border-top:1px solid #f1f5f9;margin:32px 0;">
     <p style="font-size:12px;color:#94a3b8;">SEO Scan by DIGITALEYES</p>
@@ -35,10 +40,11 @@ const htmlTemplate = (code) => `
 </div>
 `;
 
-async function sendCodeEmail({ to, code }) {
+async function sendCodeEmail({ to, code, loginUrl }) {
   const sesFrom = process.env.SES_FROM;
   const emailUser = process.env.EMAIL_USER;
   const emailPass = process.env.EMAIL_PASS;
+  const html = htmlTemplate(code, loginUrl);
 
   // 1. SES が設定されていれば SES で送信
   if (sesFrom) {
@@ -48,8 +54,8 @@ async function sendCodeEmail({ to, code }) {
       Message: {
         Subject: { Data: "SEO Scan 認証コード", Charset: "UTF-8" },
         Body: {
-          Text: { Data: `SEO Scan 認証コード: ${code}`, Charset: "UTF-8" },
-          Html: { Data: htmlTemplate(code), Charset: "UTF-8" }
+          Text: { Data: `SEO Scan 認証コード: ${code}${loginUrl ? `\nワンクリックでログイン: ${loginUrl}` : ""}`, Charset: "UTF-8" },
+          Html: { Data: html, Charset: "UTF-8" }
         }
       }
     });
@@ -74,8 +80,8 @@ async function sendCodeEmail({ to, code }) {
         from: `"SEO Scan" <${emailUser}>`,
         to,
         subject: "SEO Scan 認証コード",
-        text: `SEO Scan 認証コード: ${code}`,
-        html: htmlTemplate(code)
+        text: `SEO Scan 認証コード: ${code}${loginUrl ? `\nワンクリックでログイン: ${loginUrl}` : ""}`,
+        html
       });
       console.log("[メール] 送信完了:", to);
       return;
@@ -133,23 +139,31 @@ router.post("/send-code", async (req, res) => {
 
     // 6桁コード生成
     const code = Math.floor(100000 + Math.random() * 900000).toString();
+    const oneTimeToken = crypto.randomBytes(32).toString("hex");
+    const baseUrl = (process.env.APP_URL || `${req.protocol}://${req.get("host")}`).replace(/\/+$/, "");
+    const loginUrl = `${baseUrl}/api/auth/verify?token=${encodeURIComponent(oneTimeToken)}`;
 
-    // auth_codesに保存（10分）
+    // auth_codesに保存（10分）+ ワンクリック用トークン
     await pool.query(
       `
-      INSERT INTO auth_codes (email, code, expires_at)
-      VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 10 MINUTE))
+      INSERT INTO auth_codes (email, code, expires_at, one_time_token)
+      VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 10 MINUTE), ?)
       ON DUPLICATE KEY UPDATE
         code = VALUES(code),
-        expires_at = VALUES(expires_at)
+        expires_at = VALUES(expires_at),
+        one_time_token = VALUES(one_time_token)
     `,
-      [email, code]
+      [email, code, oneTimeToken]
     );
 
     console.log("[auth] 認証コード:", code);
 
-    // メール送信（SES）
-    await sendCodeEmail({ to: email, code });
+    // メール送信（失敗してもコードはDBに保存済み・コンソール表示される）
+    try {
+      await sendCodeEmail({ to: email, code, loginUrl });
+    } catch (mailErr) {
+      console.error("[send-code] メール送信エラー（コードは発行済み）:", mailErr?.message || mailErr);
+    }
 
     return res.json({ success: true });
   } catch (e) {
@@ -157,9 +171,11 @@ router.post("/send-code", async (req, res) => {
     let msg =
       e.code === "ECONNREFUSED" || e.code === "ETIMEDOUT"
         ? "DB接続エラー。.env の DB_HOST/DB_USER/DB_PASSWORD を確認してください"
-        : e.name === "InvalidParameterValue" || e.code === "InvalidParameterValue"
-          ? "SES送信エラー。SES_FROM を未設定にするか、AWS認証情報を確認してください"
-          : "認証処理でエラーが発生しました";
+        : e.code === "ECONNRESET"
+          ? "接続が切断されました。ネットワーク・DBの状態を確認するか、少し待ってから再試行してください"
+          : e.name === "InvalidParameterValue" || e.code === "InvalidParameterValue"
+            ? "SES送信エラー。SES_FROM を未設定にするか、AWS認証情報を確認してください"
+            : "認証処理でエラーが発生しました";
     if (process.env.NODE_ENV !== "production" && e.message) {
       msg += ` (${e.message})`;
     }
@@ -168,6 +184,48 @@ router.post("/send-code", async (req, res) => {
 });
 
 // ② verify-code
+// ②' ワンクリック認証（メール内リンクから）
+router.get("/verify", async (req, res) => {
+  const token = (req.query.token || "").trim();
+  if (!token) {
+    return res.redirect("/?error=invalid_token");
+  }
+  try {
+    const [rows] = await pool.query(
+      "SELECT email FROM auth_codes WHERE one_time_token = ? AND expires_at > NOW() LIMIT 1",
+      [token]
+    );
+    if (!rows.length) {
+      return res.redirect("/?error=code_expired");
+    }
+    const email = rows[0].email;
+    const [users] = await pool.query("SELECT id FROM users WHERE email = ? LIMIT 1", [email]);
+    if (!users.length) {
+      return res.redirect("/?error=invalid_token");
+    }
+    const userId = users[0].id;
+    const sessionToken = crypto.randomBytes(32).toString("hex");
+    const expires = new Date();
+    expires.setDate(expires.getDate() + 7);
+    await pool.query(
+      "INSERT INTO sessions (session_token, user_id, expires_at) VALUES (?, ?, ?)",
+      [sessionToken, userId, expires]
+    );
+    await pool.query("DELETE FROM auth_codes WHERE email = ?", [email]);
+    res.cookie("session_id", sessionToken, {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      path: "/",
+      maxAge: 7 * 24 * 60 * 60 * 1000
+    });
+    return res.redirect("/seo.html");
+  } catch (e) {
+    console.error("[auth] verify token error:", e?.message || e);
+    return res.redirect("/?error=invalid_token");
+  }
+});
+
 router.post("/verify-code", async (req, res) => {
   const { email, code } = req.body || {};
 
@@ -241,6 +299,47 @@ router.post("/verify-code", async (req, res) => {
     return res
       .status(500)
       .json({ success: false, error: "verify error" });
+  }
+});
+
+// POST /api/auth/set-password - 招待ユーザーのパスワード設定
+router.post("/set-password", async (req, res) => {
+  const { token, password } = req.body || {};
+  if (!token || !password || password.length < 6) {
+    return res.status(400).json({ error: "トークンとパスワード（6文字以上）が必要です" });
+  }
+  try {
+    const [rows] = await pool.query(
+      `SELECT id, email FROM users WHERE invitation_token = ? AND invitation_expires_at > NOW() LIMIT 1`,
+      [token]
+    );
+    if (!rows.length) {
+      return res.status(401).json({ error: "招待リンクの有効期限が切れているか、無効です。管理者に再招待を依頼してください。" });
+    }
+    const user = rows[0];
+    const hash = await bcrypt.hash(password, 10);
+    await pool.query(
+      `UPDATE users SET password = ?, invitation_token = NULL, invitation_expires_at = NULL WHERE id = ?`,
+      [hash, user.id]
+    );
+    const sessionToken = crypto.randomBytes(32).toString("hex");
+    const expires = new Date();
+    expires.setDate(expires.getDate() + 7);
+    await pool.query(
+      "INSERT INTO sessions (session_token, user_id, expires_at) VALUES (?, ?, ?)",
+      [sessionToken, user.id, expires]
+    );
+    res.cookie("session_id", sessionToken, {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      path: "/",
+      maxAge: 7 * 24 * 60 * 60 * 1000
+    });
+    return res.json({ success: true });
+  } catch (e) {
+    console.error("[auth] set-password:", e);
+    return res.status(500).json({ error: "パスワード設定に失敗しました" });
   }
 });
 

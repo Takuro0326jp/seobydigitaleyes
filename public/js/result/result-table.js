@@ -113,7 +113,7 @@ window.renderTable = function (data) {
     if (!pages.length) {
         tbody.innerHTML = `
             <tr>
-                <td colspan="12" class="py-12 text-center text-slate-400">
+                <td colspan="13" class="py-12 text-center text-slate-400">
                     データが存在しません
                 </td>
             </tr>
@@ -163,6 +163,10 @@ window.renderTable = function (data) {
 
                 <td class="py-3 px-4 truncate">
                     ${escapeHtml(p.title || "-")}
+                </td>
+
+                <td class="py-3 px-2 text-center">
+                    ${p.title_char_count ?? (p.title || "").length}
                 </td>
 
                 <td class="py-3 px-2 text-center">
@@ -414,7 +418,7 @@ const LABEL_POINT_MAP = {
   "noindex": 30,
   "階層が深い": 5,
   "階層やや深い": 2,
-  "文字数不足": 15,
+  "タイトル文字数不足": 15,
   "キーワード不一致": 8,
   "キーワード部分一致": 3,
   "内部リンクなし": 10,

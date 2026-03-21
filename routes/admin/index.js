@@ -4,8 +4,15 @@
  */
 const express = require("express");
 const bcrypt = require("bcrypt");
+const crypto = require("crypto");
 const { getAdminUserFromRequest } = require("../../services/session");
 const pool = require("../../db");
+const { sendInviteEmail } = require("../../services/email");
+const {
+  getAccessibleUrls,
+  saveUserUrlAccess,
+  getAccessibleUrlsAsCompanyUrls,
+} = require("../../services/userUrlAccess");
 
 const router = express.Router();
 
@@ -51,10 +58,17 @@ router.get("/dashboard", async (req, res) => {
 // GET /api/admin/users - ユーザー一覧
 router.get("/users", async (req, res) => {
   try {
-    const [rows] = await pool.query(
-      `SELECT id, email, username, role, created_at, company_id
-       FROM users ORDER BY created_at DESC`
+    const [baseRows] = await pool.query(
+      `SELECT id, email, username, role, created_at, company_id FROM users ORDER BY created_at DESC`
     );
+    const rows = [];
+    for (const u of baseRows || []) {
+      const urls = u.company_id ? await getAccessibleUrls(u.id, u.company_id) : [];
+      rows.push({
+        ...u,
+        url_list: urls.length ? urls.join("\n") : null,
+      });
+    }
     return res.json(rows);
   } catch (e) {
     console.error("admin users:", e);
@@ -62,38 +76,44 @@ router.get("/users", async (req, res) => {
   }
 });
 
-// POST /api/admin/users - ユーザー作成
+// POST /api/admin/users - ユーザー作成（通常 or 招待）
 router.post("/users", async (req, res) => {
   try {
-    const { email, password, username, role, company_id, url_ids } = req.body || {};
-    if (!email || !password) {
-      return res.status(400).json({ error: "email/password が必要です" });
+    const { email, password, username, role, company_id, url_ids, invite } = req.body || {};
+    if (!email) {
+      return res.status(400).json({ error: "email が必要です" });
     }
-    const hash = await bcrypt.hash(password, 10);
+    const isInvite = !!invite;
+    if (!isInvite && !password) {
+      return res.status(400).json({ error: "password が必要です（招待の場合は invite: true を指定）" });
+    }
+
+    const invitationToken = isInvite ? crypto.randomBytes(32).toString("hex") : null;
+    const invitationExpires = isInvite ? new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) : null;
+    const hash = isInvite ? await bcrypt.hash(crypto.randomBytes(32).toString("hex"), 10) : await bcrypt.hash(password, 10);
+
     try {
       await pool.query(
-        `INSERT INTO users (email, password, username, role, company_id) VALUES (?, ?, ?, ?, ?)`,
-        [email, hash, username || null, role || "user", company_id || null]
+        `INSERT INTO users (email, password, username, role, company_id, invitation_token, invitation_expires_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [email, hash, username || null, role || "user", company_id || null, invitationToken, invitationExpires]
       );
-    } catch {
-      await pool.query(
-        `INSERT INTO users (email, password, username, role) VALUES (?, ?, ?, ?)`,
-        [email, hash, username || null, role || "user"]
-      );
+    } catch (colErr) {
+      if (colErr?.code === "ER_BAD_FIELD_ERROR" && isInvite) {
+        return res.status(500).json({ error: "招待機能を使うにはサーバーを再起動してください。（DBマイグレーションが必要）" });
+      }
+      throw colErr;
     }
     const [[row]] = await pool.query(
       "SELECT id, email, username, role, created_at FROM users WHERE email = ?",
       [email]
     );
     if (Array.isArray(url_ids) && row) {
-      for (const urlId of url_ids) {
-        if (urlId) {
-          await pool.query(
-            `INSERT IGNORE INTO user_url_access (user_id, url_id) VALUES (?, ?)`,
-            [row.id, urlId]
-          ).catch(() => {});
-        }
-      }
+      await saveUserUrlAccess(row.id, url_ids);
+    }
+    if (isInvite && row) {
+      const baseUrl = (process.env.APP_URL || `${req.protocol}://${req.get("host")}`).replace(/\/+$/, "");
+      const setPasswordUrl = `${baseUrl}/auth/set-password.html?token=${encodeURIComponent(invitationToken)}`;
+      await sendInviteEmail({ to: email, setPasswordUrl, username: username || null });
     }
     return res.status(201).json(row);
   } catch (e) {
@@ -105,13 +125,14 @@ router.post("/users", async (req, res) => {
   }
 });
 
-// PATCH /api/admin/users/:id - ユーザー更新
+// PATCH /api/admin/users/:id - ユーザー更新（招待再送対応）
 router.patch("/users/:id", async (req, res) => {
   try {
     const id = req.params.id;
-    const { email, username, role, password, company_id, url_ids } = req.body || {};
+    const { email, username, role, password, company_id, url_ids, invite } = req.body || {};
     const updates = [];
     const values = [];
+    const isInviteResend = !!invite;
 
     if (email !== undefined) {
       updates.push("email = ?");
@@ -134,6 +155,14 @@ router.patch("/users/:id", async (req, res) => {
       values.push(await bcrypt.hash(password, 10));
     }
 
+    let invitationToken = null;
+    if (isInviteResend) {
+      invitationToken = crypto.randomBytes(32).toString("hex");
+      const invitationExpires = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+      updates.push("invitation_token = ?", "invitation_expires_at = ?");
+      values.push(invitationToken, invitationExpires);
+    }
+
     if (updates.length > 0) {
       values.push(id);
       await pool.query(
@@ -143,15 +172,7 @@ router.patch("/users/:id", async (req, res) => {
     }
 
     if (Array.isArray(url_ids)) {
-      await pool.query(`DELETE FROM user_url_access WHERE user_id = ?`, [id]).catch(() => {});
-      for (const urlId of url_ids) {
-        if (urlId) {
-          await pool.query(
-            `INSERT IGNORE INTO user_url_access (user_id, url_id) VALUES (?, ?)`,
-            [id, urlId]
-          ).catch(() => {});
-        }
-      }
+      await saveUserUrlAccess(id, url_ids);
     }
 
     if (updates.length === 0 && !Array.isArray(url_ids)) {
@@ -163,6 +184,13 @@ router.patch("/users/:id", async (req, res) => {
       [id]
     );
     if (!row) return res.status(404).json({ error: "ユーザーが見つかりません" });
+
+    if (isInviteResend && row.email && invitationToken) {
+      const baseUrl = (process.env.APP_URL || `${req.protocol}://${req.get("host")}`).replace(/\/+$/, "");
+      const setPasswordUrl = `${baseUrl}/auth/set-password.html?token=${encodeURIComponent(invitationToken)}`;
+      await sendInviteEmail({ to: row.email, setPasswordUrl, username: username || row.username || null });
+    }
+
     return res.json(row);
   } catch (e) {
     console.error("admin users update:", e);
@@ -189,17 +217,43 @@ router.delete("/users/:id", async (req, res) => {
 });
 
 // GET /api/admin/companies/:id/urls - 企業のURL一覧
+// ?scanned_only=1: スキャン実行済みのURLのみ返す（ユーザー編集モーダルの閲覧可能URL用）
 router.get("/companies/:id/urls", async (req, res) => {
   try {
     const companyId = req.params.id;
+    const scannedOnly = req.query.scanned_only === "1" || req.query.scanned_only === "true";
+    if (scannedOnly) {
+      const [rows] = await pool.query(
+        `SELECT cu.id, cu.url, cu.created_at
+         FROM company_urls cu
+         INNER JOIN scans s ON s.company_id = cu.company_id
+           AND TRIM(TRAILING '/' FROM IFNULL(s.target_url, '')) = TRIM(TRAILING '/' FROM IFNULL(cu.url, ''))
+         WHERE cu.company_id = ?
+         GROUP BY cu.id, cu.url, cu.created_at
+         ORDER BY cu.url`,
+        [companyId]
+      );
+      // 同一URL（末尾スラッシュ違い）の重複を除去（正規形を1件だけ返す）
+      const { normalizeUrlForKey } = require("../../services/userUrlAccess");
+      const byKey = new Map();
+      for (const r of rows || []) {
+        const key = normalizeUrlForKey(r.url);
+        if (!key) continue;
+        const existing = byKey.get(key);
+        if (!existing || !r.url.endsWith("/")) {
+          byKey.set(key, r); // 末尾スラッシュなしを優先
+        }
+      }
+      return res.json([...byKey.values()]);
+    }
     const [rows] = await pool.query(
       `SELECT id, url, created_at FROM company_urls WHERE company_id = ? ORDER BY url`,
       [companyId]
     );
-    return res.json(rows);
+    return res.json(rows || []);
   } catch (e) {
-    console.error("admin company urls:", e);
-    return res.status(500).json({ error: e.message });
+    console.warn("[admin] company urls:", e?.code, e?.message);
+    return res.json([]);
   }
 });
 
@@ -211,10 +265,21 @@ router.post("/companies/:id/urls", async (req, res) => {
     if (!url || !String(url).trim()) {
       return res.status(400).json({ error: "url が必要です" });
     }
-    const normalized = String(url).trim();
+    const raw = String(url).trim();
+    const { normalizeUrlForKey } = require("../../services/userUrlAccess");
+    const canonical = normalizeUrlForKey(raw) || raw;
+    // 同一URL（末尾スラッシュ違い等）が既にあればそれを返す
+    const [existing] = await pool.query(
+      `SELECT id, url, created_at FROM company_urls WHERE company_id = ?
+       AND (url = ? OR TRIM(TRAILING '/' FROM url) = TRIM(TRAILING '/' FROM ?)) LIMIT 1`,
+      [companyId, canonical, raw]
+    );
+    if (existing.length > 0) {
+      return res.status(200).json(existing[0]);
+    }
     const [r] = await pool.query(
       `INSERT INTO company_urls (company_id, url) VALUES (?, ?)`,
-      [companyId, normalized]
+      [companyId, canonical]
     );
     const [[row]] = await pool.query(
       `SELECT id, url, created_at FROM company_urls WHERE id = ?`,
@@ -234,22 +299,17 @@ router.post("/companies/:id/urls", async (req, res) => {
   }
 });
 
-// GET /api/admin/users/:id/url-access - ユーザーの閲覧可能URL一覧
+// GET /api/admin/users/:id/url-access - ユーザーの閲覧可能URL一覧（company_id でフィルタ）
 router.get("/users/:id/url-access", async (req, res) => {
   try {
     const userId = req.params.id;
-    const [rows] = await pool.query(
-      `SELECT cu.id, cu.url, cu.company_id
-       FROM user_url_access ua
-       JOIN company_urls cu ON ua.url_id = cu.id
-       WHERE ua.user_id = ?
-       ORDER BY cu.url`,
-      [userId]
-    );
-    return res.json(rows);
+    const companyId = req.query.company_id;
+    if (!companyId) return res.json([]);
+    const rows = await getAccessibleUrlsAsCompanyUrls(userId, companyId);
+    return res.json(rows || []);
   } catch (e) {
-    console.error("admin user url-access:", e);
-    return res.status(500).json({ error: e.message });
+    console.warn("[admin] url-access:", e?.code, e?.message);
+    return res.json([]);
   }
 });
 
@@ -343,6 +403,42 @@ router.get("/scans", async (req, res) => {
     return res.json(rows);
   } catch (e) {
     console.error("admin scans:", e);
+    return res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/admin/scans/reset-stuck - running/queued のまま残ったスキャンを failed にリセット
+router.post("/scans/reset-stuck", async (req, res) => {
+  try {
+    const [r] = await pool.query(
+      `UPDATE scans SET status = 'failed', error_message = '手動でリセットしました。再スキャンしてください。'
+       WHERE status IN ('running', 'queued')`
+    );
+    return res.json({
+      reset: r?.affectedRows ?? 0,
+      message: `${r?.affectedRows ?? 0} 件をリセットしました`,
+    });
+  } catch (e) {
+    console.error("admin reset-stuck:", e);
+    return res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/admin/scans/:id/reset - 指定スキャンを failed にリセット（再スキャン用）
+router.post("/scans/:id/reset", async (req, res) => {
+  try {
+    const scanId = req.params.id;
+    const [r] = await pool.query(
+      `UPDATE scans SET status = 'failed', error_message = 'リセットしました。再スキャンしてください。'
+       WHERE id = ? AND status IN ('running', 'queued')`,
+      [scanId]
+    );
+    if (r?.affectedRows === 0) {
+      return res.status(404).json({ error: "対象スキャンが見つからないか、既に完了/失敗済みです" });
+    }
+    return res.json({ ok: true, message: "リセットしました" });
+  } catch (e) {
+    console.error("admin scan reset:", e);
     return res.status(500).json({ error: e.message });
   }
 });

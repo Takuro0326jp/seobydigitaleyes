@@ -16,7 +16,7 @@ const {
 } = require("../services/accessControl");
 const pool = require("../db");
 const { runScanCrawl } = require("../services/scanCrawl");
-const { enqueueCrawl } = require("../services/crawlQueue");
+const { enqueueCrawl, setScanStartTime } = require("../services/crawlQueue");
 
 const router = express.Router();
 
@@ -89,7 +89,7 @@ const LABEL_POINT_MAP = {
   "noindex": 30,
   "階層が深い": 5,
   "階層やや深い": 2,
-  "文字数不足": 15,
+  "タイトル文字数不足": 15,
   "キーワード不一致": 8,
   "キーワード部分一致": 3,
   "内部リンクなし": 10,
@@ -127,9 +127,9 @@ function reconstructDeductionsFromRow(r, titleCount, issues) {
   const isNoindex = r.is_noindex || issues.some((i) => i.code === "noindex");
   const statusCode = r.status_code ?? 0;
 
-  if (titleLen === 0) deductions.push({ label: "文字数不足", value: -15, reason: "0文字（タイトルなし）" });
-  else if (titleLen < 200) deductions.push({ label: "文字数不足", value: -10, reason: `${titleLen}文字（200文字未満）` });
-  else if (titleLen < 500) deductions.push({ label: "文字数不足", value: -5, reason: `${titleLen}文字（200〜499文字）` });
+  if (titleLen === 0) deductions.push({ label: "タイトル文字数不足", value: -15, reason: "0文字（タイトルなし）" });
+  else if (titleLen < 200) deductions.push({ label: "タイトル文字数不足", value: -10, reason: `${titleLen}文字（200文字未満）` });
+  else if (titleLen < 500) deductions.push({ label: "タイトル文字数不足", value: -5, reason: `${titleLen}文字（200〜499文字）` });
 
   if (h1Count === 0) deductions.push({ label: "H1未設定", value: -10, reason: "H1タグなし" });
   else if (h1Count > 1) deductions.push({ label: "H1複数", value: -5, reason: `${h1Count}個のH1タグ` });
@@ -263,29 +263,37 @@ async function handleStart(req, res) {
       await pool.query(`DELETE FROM scan_pages WHERE scan_id = ?`, [scanId]);
       try {
         await pool.query(
-          `UPDATE scans SET target_url = ?, status = 'queued', avg_score = NULL,
-           created_at = ?, updated_at = NOW() WHERE id = ?`,
+          `UPDATE scans SET target_url = ?, status = 'queued', avg_score = NULL, error_message = NULL,
+           created_at = ?, started_at = NOW(), updated_at = NOW() WHERE id = ?`,
           [normalized, earliest, scanId]
         );
       } catch {
-        await pool.query(
-          `UPDATE scans SET target_url = ?, status = 'queued', avg_score = NULL,
-           created_at = ? WHERE id = ?`,
-          [normalized, earliest, scanId]
-        );
+        try {
+          await pool.query(
+            `UPDATE scans SET target_url = ?, status = 'queued', avg_score = NULL, error_message = NULL,
+             created_at = ?, started_at = NOW() WHERE id = ?`,
+            [normalized, earliest, scanId]
+          );
+        } catch {
+          await pool.query(
+            `UPDATE scans SET target_url = ?, status = 'queued', avg_score = NULL, error_message = NULL,
+             created_at = ?, updated_at = NOW() WHERE id = ?`,
+            [normalized, earliest, scanId]
+          );
+        }
       }
     } else {
       scanId = crypto.randomUUID();
       try {
         await pool.query(
-          `INSERT INTO scans (id, user_id, company_id, target_url, status, created_at, updated_at)
-           VALUES (?, ?, ?, ?, 'queued', NOW(), NOW())`,
+          `INSERT INTO scans (id, user_id, company_id, target_url, status, created_at, started_at, updated_at)
+           VALUES (?, ?, ?, ?, 'queued', NOW(), NOW(), NOW())`,
           [scanId, user.id, user.company_id, normalized]
         );
       } catch {
         await pool.query(
-          `INSERT INTO scans (id, user_id, company_id, target_url, status, created_at)
-           VALUES (?, ?, ?, ?, 'queued', NOW())`,
+          `INSERT INTO scans (id, user_id, company_id, target_url, status, created_at, started_at)
+           VALUES (?, ?, ?, ?, 'queued', NOW(), NOW())`,
           [scanId, user.id, user.company_id, normalized]
         );
       }
@@ -297,9 +305,8 @@ async function handleStart(req, res) {
       /* scan_queue なし */
     }
 
-    setImmediate(() => {
-      enqueueCrawl(() => runScanCrawl(scanId, normalized));
-    });
+    setScanStartTime(scanId);
+    enqueueCrawl(() => runScanCrawl(scanId, normalized));
 
     return res.status(202).json({
       scanId,
@@ -415,6 +422,7 @@ async function handleResult(req, res) {
     return {
       url: r.url,
       title: titleStr,
+      title_char_count: titleStr.length,
       score: scoreFromDeductions,
       score_breakdown: scoreBreakdown,
       issues,
@@ -543,26 +551,26 @@ async function handleTrends(req, res) {
         .reverse();
     } else {
       if (user.company_id == null) return res.json([]);
+      const { getAccessibleUrls } = require("../services/userUrlAccess");
+      const urls = await getAccessibleUrls(user.id, user.company_id);
+      const allowedCanons = new Set(urls.map((u) => canonicalDomainKey(u)));
+      if (!allowedCanons.has(key)) return res.json([]);
       let rows;
       try {
         rows = await runQuery(
           `SELECT ${baseSelect} ${withCritical}
            FROM scans s
-           JOIN company_urls cu ON s.target_url = cu.url AND s.company_id = cu.company_id
-           JOIN user_url_access ua ON ua.url_id = cu.id
-           WHERE ua.user_id = ? AND s.company_id = ? AND s.status IN ('completed', 'failed')
+           WHERE s.company_id = ? AND s.status IN ('completed', 'failed')
            ORDER BY s.created_at ASC`,
-          [user.id, user.company_id]
+          [user.company_id]
         );
       } catch {
         rows = await runQuery(
           `SELECT ${baseSelect}, 0 AS critical_issues
            FROM scans s
-           JOIN company_urls cu ON s.target_url = cu.url AND s.company_id = cu.company_id
-           JOIN user_url_access ua ON ua.url_id = cu.id
-           WHERE ua.user_id = ? AND s.company_id = ? AND s.status IN ('completed', 'failed')
+           WHERE s.company_id = ? AND s.status IN ('completed', 'failed')
            ORDER BY s.created_at ASC`,
-          [user.id, user.company_id]
+          [user.company_id]
         );
       }
       scans = rows.filter((r) => canonicalDomainKey(r.target_url) === key);

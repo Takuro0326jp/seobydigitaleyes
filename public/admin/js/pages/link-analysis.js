@@ -6,26 +6,31 @@ import { adminApi } from "../api.js";
 export async function render(container) {
   const scans = await adminApi.scans.scanList();
   container.innerHTML = `
-    <h2 class="text-2xl font-bold text-slate-900 mb-6">リンク分析（PageRank）</h2>
-    <div class="mb-6">
-      <label class="block text-sm font-medium text-slate-700 mb-2">スキャンを選択</label>
-      <select id="scan-select" class="px-4 py-2 border border-slate-200 rounded-lg w-full max-w-md">
-        <option value="">-- スキャンを選択 --</option>
-        ${scans.map((s) => `
-          <option value="${escapeHtml(s.id)}">${escapeHtml(s.target_url || s.id)} (${s.status})</option>
-        `).join("")}
-      </select>
-      <button id="btn-analyze" class="mt-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700">分析実行</button>
+    <div class="mb-8">
+      <h2 class="text-3xl font-extrabold text-slate-900 tracking-tight">リンク分析</h2>
+      <p class="text-slate-500 mt-2 font-medium">PageRank による内部リンク構造の分析。</p>
     </div>
-    <div id="link-result" class="bg-white rounded-xl border border-slate-200 overflow-hidden hidden">
+    <div class="mb-6 p-6 bg-white rounded-2xl border border-slate-200/60 shadow-sm">
+      <label class="block text-sm font-medium text-slate-700 mb-2">スキャンを選択</label>
+      <div class="flex gap-3 items-center flex-wrap">
+        <select id="scan-select" class="px-4 py-2.5 border border-slate-200 rounded-xl w-full max-w-md text-sm font-medium focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500">
+          <option value="">-- スキャンを選択 --</option>
+          ${scans.map((s) => `
+            <option value="${escapeHtml(s.id)}">${escapeHtml(s.target_url || s.id)} (${s.status})</option>
+          `).join("")}
+        </select>
+        <button id="btn-analyze" class="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-bold shadow-lg shadow-indigo-100 transition-all active:scale-95">分析実行</button>
+      </div>
+    </div>
+    <div id="link-result" class="bg-white rounded-2xl border border-slate-200/60 shadow-sm overflow-hidden hidden">
       <table class="w-full text-left">
-        <thead class="bg-slate-50 border-b border-slate-200">
+        <thead class="bg-slate-50/50 border-b border-slate-200/60">
           <tr>
-            <th class="px-6 py-4 text-xs font-semibold text-slate-500 uppercase">PageRank</th>
-            <th class="px-6 py-4 text-xs font-semibold text-slate-500 uppercase">URL</th>
-            <th class="px-6 py-4 text-xs font-semibold text-slate-500 uppercase">Depth</th>
-            <th class="px-6 py-4 text-xs font-semibold text-slate-500 uppercase">Internal</th>
-            <th class="px-6 py-4 text-xs font-semibold text-slate-500 uppercase">External</th>
+            <th class="px-6 py-4 text-[11px] font-bold text-slate-500 uppercase tracking-widest">PageRank</th>
+            <th class="px-6 py-4 text-[11px] font-bold text-slate-500 uppercase tracking-widest">URL</th>
+            <th class="px-6 py-4 text-[11px] font-bold text-slate-500 uppercase tracking-widest">Depth</th>
+            <th class="px-6 py-4 text-[11px] font-bold text-slate-500 uppercase tracking-widest">Internal</th>
+            <th class="px-6 py-4 text-[11px] font-bold text-slate-500 uppercase tracking-widest">External</th>
           </tr>
         </thead>
         <tbody id="link-tbody" class="divide-y divide-slate-100"></tbody>
@@ -57,7 +62,7 @@ export async function render(container) {
         msgEl.classList.add("hidden");
         resultDiv.classList.remove("hidden");
         tbody.innerHTML = data.pages.map((p, i) => `
-          <tr class="hover:bg-slate-50">
+          <tr class="hover:bg-slate-50/80 transition-colors">
             <td class="px-6 py-4 text-sm font-bold text-indigo-600">${p.page_rank.toFixed(4)}</td>
             <td class="px-6 py-4 text-sm text-slate-900 max-w-md truncate" title="${escapeHtml(p.url)}">${escapeHtml(p.url)}</td>
             <td class="px-6 py-4 text-sm text-slate-600">${p.depth ?? "—"}</td>

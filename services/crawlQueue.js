@@ -1,18 +1,39 @@
 /**
  * クロールキュー: 同時実行数制限（最大3件）、超過分は待機
+ * ジョブがハングしてもスロットを解放（6分で強制タイムアウト）
  */
-const MAX_CONCURRENT = 3;
+const MAX_CONCURRENT = Number(process.env.CRAWL_MAX_CONCURRENT || 1); // 同時実行数（DB負荷軽減のため1推奨）
+const JOB_TIMEOUT_MS = Number(process.env.CRAWL_JOB_TIMEOUT_MS || 900000); // 15分（scanCrawl の RUN_TIMEOUT_MS と揃える）
 
 let activeCount = 0;
 const pending = [];
+
+/** 診断開始時刻（メモリ上・DB不要）。scanId → 開始 timestamp */
+const scanStartTimes = new Map();
+
+function setScanStartTime(scanId, ms = Date.now()) {
+  if (scanId) scanStartTimes.set(scanId, ms);
+}
+
+function getScanStartTime(scanId) {
+  return scanId ? scanStartTimes.get(scanId) : undefined;
+}
+
+function clearScanStartTime(scanId) {
+  if (scanId) scanStartTimes.delete(scanId);
+}
 
 function processNext() {
   if (activeCount >= MAX_CONCURRENT || pending.length === 0) return;
   const job = pending.shift();
   activeCount++;
-  Promise.resolve()
-    .then(() => job())
-    .catch((err) => console.error("[crawlQueue] job error:", err))
+  const timeoutPromise = new Promise((_, reject) =>
+    setTimeout(() => reject(new Error("ジョブタイムアウト")), JOB_TIMEOUT_MS)
+  );
+  Promise.race([Promise.resolve().then(() => job()), timeoutPromise])
+    .catch((err) => {
+      console.error("[crawlQueue] job error or timeout:", err?.message || err);
+    })
     .finally(() => {
       activeCount--;
       processNext();
@@ -29,4 +50,8 @@ function enqueueCrawl(fn) {
   processNext();
 }
 
-module.exports = { enqueueCrawl, MAX_CONCURRENT };
+function getQueueStatus() {
+  return { activeCount, pendingLength: pending.length };
+}
+
+module.exports = { enqueueCrawl, MAX_CONCURRENT, setScanStartTime, getScanStartTime, clearScanStartTime, getQueueStatus };

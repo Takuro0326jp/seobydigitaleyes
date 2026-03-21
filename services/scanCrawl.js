@@ -4,10 +4,17 @@
  */
 const cheerio = require("cheerio");
 const pool = require("../db");
+const { clearScanStartTime } = require("./crawlQueue");
 const { calculateScore } = require("./scoreCalculator");
 
-const MAX_PAGES = Number(process.env.MAX_CRAWL_PAGES || 1000);
+const MAX_PAGES = Number(
+  process.env.MAX_CRAWL_PAGES ||
+  (process.env.NODE_ENV === "production" ? 5000 : 1000)
+);
 const CONCURRENCY = 5; // 並列取得数
+const INCREMENTAL_SAVE_INTERVAL = 50; // 増分保存の間隔（この件数ごとに scan_pages へ INSERT）
+const FETCH_TIMEOUT_MS = Number(process.env.CRAWL_FETCH_TIMEOUT_MS || 30000); // 1URLあたりのタイムアウト（デフォルト30秒）
+const RUN_TIMEOUT_MS = Number(process.env.CRAWL_RUN_TIMEOUT_MS || 900000); // 全体タイムアウト（デフォルト15分・500ページ規模まで対応）
 
 // ボットブロック対策: ブラウザ風UA（SEOScanBotだと403を返すサイトあり）
 const CRAWL_USER_AGENT =
@@ -36,6 +43,28 @@ function sameHost(base, candidate) {
   } catch {
     return false;
   }
+}
+
+/** ページネーションURLの次ページを生成（?page=2 → ?page=3）。最大50ページまで */
+function getNextPaginationUrl(url, maxPage = 50) {
+  try {
+    const u = new URL(url);
+    const keys = ["page", "p", "pg", "paged"];
+    for (const key of keys) {
+      const val = u.searchParams.get(key);
+      if (val != null) {
+        const num = parseInt(val, 10);
+        if (!Number.isNaN(num) && num >= 1 && num < maxPage) {
+          u.searchParams.set(key, String(num + 1));
+          return normalizeUrl(u.toString());
+        }
+        break;
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+  return null;
 }
 
 async function fetchFromUrl(url, options = {}) {
@@ -174,9 +203,9 @@ function calcOnPageDeductions(title, titleCharCount, h1Count, h1Text, metaDesc, 
 
   // 文字数（title文字数）: 0=-15, 1-199=-10, 200-499=-5, 500+=0（仕様表準拠）
   const len = titleCharCount ?? (title || "").length;
-  if (len === 0) deductions.push({ label: "文字数不足", value: -15, reason: "0文字（タイトルなし）" });
-  else if (len < 200) deductions.push({ label: "文字数不足", value: -10, reason: `${len}文字（1〜199文字）` });
-  else if (len < 500) deductions.push({ label: "文字数不足", value: -5, reason: `${len}文字（200〜499文字）` });
+  if (len === 0) deductions.push({ label: "タイトル文字数不足", value: -15, reason: "0文字（タイトルなし）" });
+  else if (len < 200) deductions.push({ label: "タイトル文字数不足", value: -10, reason: `${len}文字（1〜199文字）` });
+  else if (len < 500) deductions.push({ label: "タイトル文字数不足", value: -5, reason: `${len}文字（200〜499文字）` });
 
   // H1: なし=-10, 複数=-5, 1つ=0
   if (h1Count === 0) deductions.push({ label: "H1未設定", value: -10, reason: "H1タグなし" });
@@ -229,12 +258,14 @@ async function fetchAndParse(url, depth) {
   let onPageDeductions = [];
 
   try {
+    const ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
+    const timeoutId = ctrl ? setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS) : null;
     const res = await fetch(normalized, {
       redirect: "follow",
-      headers: {
-        "User-Agent": CRAWL_USER_AGENT,
-      },
+      headers: { "User-Agent": CRAWL_USER_AGENT },
+      signal: ctrl?.signal,
     });
+    if (timeoutId) clearTimeout(timeoutId);
     statusCode = res.status;
     const ct = res.headers.get("content-type") || "";
     const body = await res.text();
@@ -378,6 +409,72 @@ function calcPerformanceScore(gscRow) {
   return Math.min(30, s);
 }
 
+function runWithTimeout(promise, ms, scanId) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error(`診断がタイムアウトしました（${Math.round(ms / 1000)}秒）`)), ms)
+    ),
+  ]);
+}
+
+/** クロール中に buffer の一部を scan_pages へ増分保存（プレースホルダースコア。完了時に UPDATE） */
+async function insertPagesIncremental(scanId, pages) {
+  if (!pages || pages.length === 0) return;
+  const PLACEHOLDER_SCORE = 50;
+  for (const p of pages) {
+    const wordCount = p.word_count ?? 0;
+    try {
+      await pool.query(
+        `INSERT INTO scan_pages
+         (scan_id, url, depth, score, status_code, internal_links, external_links,
+          title, issues, h1_count, word_count, is_noindex, score_breakdown)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        [
+          scanId,
+          p.url,
+          p.depth,
+          PLACEHOLDER_SCORE,
+          p.status_code,
+          p.internal_links,
+          p.external_links,
+          p.title,
+          JSON.stringify(p.issues),
+          p.h1_count,
+          wordCount,
+          p.is_noindex,
+          null,
+        ]
+      );
+    } catch (e) {
+      if (e?.message && /score_breakdown|Unknown column/.test(e.message)) {
+        await pool.query(
+          `INSERT INTO scan_pages
+           (scan_id, url, depth, score, status_code, internal_links, external_links,
+            title, issues, h1_count, word_count, is_noindex)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+          [
+            scanId,
+            p.url,
+            p.depth,
+            PLACEHOLDER_SCORE,
+            p.status_code,
+            p.internal_links,
+            p.external_links,
+            p.title,
+            JSON.stringify(p.issues),
+            p.h1_count,
+            wordCount,
+            p.is_noindex,
+          ]
+        ).catch((err) => console.warn("[scanCrawl] incremental insert err:", err?.message));
+      } else {
+        console.warn("[scanCrawl] incremental insert err:", e?.message);
+      }
+    }
+  }
+}
+
 async function runScanCrawl(scanId, startUrl) {
   const normalizedStart = normalizeUrl(startUrl);
 
@@ -399,7 +496,9 @@ async function runScanCrawl(scanId, startUrl) {
 
   let sitemapUrls = [];
   try {
+    console.log("[scanCrawl] fetchSitemapUrls start:", scanId);
     sitemapUrls = await fetchSitemapUrls(normalizedStart);
+    console.log("[scanCrawl] fetchSitemapUrls done:", scanId, sitemapUrls.length);
   } catch (sitemapErr) {
     console.warn("[scanCrawl] fetchSitemapUrls error:", sitemapErr?.message || sitemapErr);
   }
@@ -408,12 +507,28 @@ async function runScanCrawl(scanId, startUrl) {
     if (!visited.has(norm) && queue.length < MAX_PAGES) {
       queue.push({ url: norm, depth: 2 });
     }
+    const nextPage = getNextPaginationUrl(norm);
+    if (nextPage && !visited.has(nextPage) && queue.length < MAX_PAGES) {
+      queue.push({ url: nextPage, depth: 2 });
+    }
+  }
+  const nextStart = getNextPaginationUrl(normalizedStart);
+  if (nextStart && !visited.has(nextStart) && queue.length < MAX_PAGES) {
+    queue.push({ url: nextStart, depth: 1 });
   }
 
   const buffer = [];
+  let lastInsertedIndex = 0;
 
+  const doCrawl = async () => {
+    console.log("[scanCrawl] start:", scanId, normalizedStart);
   try {
+    let batchNum = 0;
     while (queue.length && buffer.length < MAX_PAGES) {
+      batchNum++;
+      if (batchNum <= 3 || batchNum % 10 === 0) {
+        console.log("[scanCrawl] batch:", scanId, batchNum, "queue=" + queue.length, "buffer=" + buffer.length);
+      }
       const batch = [];
       while (batch.length < CONCURRENCY && queue.length && buffer.length + batch.length < MAX_PAGES) {
         const item = queue.shift();
@@ -425,8 +540,30 @@ async function runScanCrawl(scanId, startUrl) {
 
       if (batch.length === 0) break;
 
+      const fetchWithTimeout = (url, depth) =>
+        Promise.race([
+          fetchAndParse(url, depth),
+          new Promise((_, reject) =>
+            setTimeout(() => reject(new Error("FETCH_TIMEOUT")), FETCH_TIMEOUT_MS)
+          ),
+        ]).catch((e) => ({
+          url: normalizeUrl(url),
+          depth,
+          onPageDeductions: [],
+          status_code: 0,
+          internal_links: 0,
+          external_links: 0,
+          title: "",
+          h1_count: 0,
+          word_count: 0,
+          title_char_count: 0,
+          is_noindex: 0,
+          issues: [{ code: "fetch_error", label: "取得エラー（タイムアウト）" }],
+          newLinks: [],
+        }));
+
       const results = await Promise.all(
-        batch.map((b) => fetchAndParse(b.url, b.depth))
+        batch.map((b) => fetchWithTimeout(b.url, b.depth))
       );
 
       for (let i = 0; i < results.length; i++) {
@@ -455,9 +592,35 @@ async function runScanCrawl(scanId, startUrl) {
           ) {
             queue.push({ url: absNorm, depth: batchItem.depth + 1 });
           }
+          const nextPage = getNextPaginationUrl(absNorm);
+          if (nextPage && !visited.has(nextPage) && buffer.length + queue.length < MAX_PAGES) {
+            queue.push({ url: nextPage, depth: batchItem.depth + 1 });
+          }
         }
       }
+
+      // 増分保存: INCREMENTAL_SAVE_INTERVAL 件ごとに scan_pages へ INSERT（3秒ポーリングで取得数表示）
+      if (buffer.length - lastInsertedIndex >= INCREMENTAL_SAVE_INTERVAL) {
+        const slice = buffer.slice(lastInsertedIndex, lastInsertedIndex + INCREMENTAL_SAVE_INTERVAL);
+        lastInsertedIndex += slice.length;
+        insertPagesIncremental(scanId, slice).catch((e) =>
+          console.warn("[scanCrawl] incremental save:", e?.message)
+        );
+      }
     }
+
+    // 残りを保存
+    if (lastInsertedIndex < buffer.length) {
+      const remainder = buffer.slice(lastInsertedIndex);
+      await insertPagesIncremental(scanId, remainder);
+    }
+
+    const exitReason = buffer.length >= MAX_PAGES
+      ? "MAX_PAGES到達"
+      : queue.length === 0
+        ? "キュー枯渇（クロール済みページから新リンク発見なし）"
+        : "不明";
+    console.log("[scanCrawl] while終了:", scanId, "buffer=" + buffer.length, "queue残=" + queue.length, "理由:", exitReason);
 
     const titleCount = {};
     for (const p of buffer) {
@@ -528,68 +691,37 @@ async function runScanCrawl(scanId, startUrl) {
       };
     }
 
+    console.log("[scanCrawl] DB getConnection:", scanId);
     const conn = await pool.getConnection();
+    console.log("[scanCrawl] DB updating scores:", scanId, buffer.length);
     let useScoreBreakdown = true;
     try {
       for (const p of buffer) {
         const breakdown = p.score_breakdown
           ? JSON.stringify(p.score_breakdown)
           : null;
-        const titleCharCount = p.title_char_count ?? (p.title || "").length;
         if (useScoreBreakdown) {
           try {
             await conn.query(
-              `INSERT INTO scan_pages
-              (scan_id, url, depth, score, status_code, internal_links, external_links,
-               title, issues, h1_count, word_count, is_noindex, score_breakdown)
-              VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-              [
-                scanId,
-                p.url,
-                p.depth,
-                p.score,
-                p.status_code,
-                p.internal_links,
-                p.external_links,
-                p.title,
-                JSON.stringify(p.issues),
-                p.h1_count,
-                titleCharCount,
-                p.is_noindex,
-                breakdown,
-              ]
+              `UPDATE scan_pages SET score = ?, score_breakdown = ? WHERE scan_id = ? AND url = ?`,
+              [p.score, breakdown, scanId, p.url]
             );
-          } catch (insErr) {
-            if (insErr?.message && /score_breakdown|Unknown column/.test(insErr.message)) {
+          } catch (updErr) {
+            if (updErr?.message && /score_breakdown|Unknown column/.test(updErr.message)) {
               useScoreBreakdown = false;
             } else {
-              throw insErr;
+              throw updErr;
             }
           }
         }
         if (!useScoreBreakdown) {
           await conn.query(
-            `INSERT INTO scan_pages
-            (scan_id, url, depth, score, status_code, internal_links, external_links,
-             title, issues, h1_count, word_count, is_noindex)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
-            [
-              scanId,
-              p.url,
-              p.depth,
-              p.score,
-              p.status_code,
-              p.internal_links,
-              p.external_links,
-              p.title,
-              JSON.stringify(p.issues),
-              p.h1_count,
-              titleCharCount,
-              p.is_noindex,
-            ]
+            `UPDATE scan_pages SET score = ? WHERE scan_id = ? AND url = ?`,
+            [p.score, scanId, p.url]
           );
         }
       }
+      console.log("[scanCrawl] DB inserting links:", scanId, linkEdges.length);
       for (const { from: fromUrl, to: toUrl } of linkEdges) {
         await conn.query(
           `INSERT INTO scan_links (scan_id, from_url, to_url) VALUES (?, ?, ?)`,
@@ -598,6 +730,7 @@ async function runScanCrawl(scanId, startUrl) {
       }
     } finally {
       conn.release();
+      console.log("[scanCrawl] DB conn released:", scanId);
     }
 
     const totalScore = buffer.reduce((a, p) => a + p.score, 0);
@@ -614,6 +747,7 @@ async function runScanCrawl(scanId, startUrl) {
       /* scan_history 未作成時はスキップ */
     }
 
+    console.log("[scanCrawl] completed:", scanId, buffer.length, "pages");
     try {
       await pool.query(
         `UPDATE scans SET status = 'completed', avg_score = ?, updated_at = NOW() WHERE id = ?`,
@@ -640,6 +774,27 @@ async function runScanCrawl(scanId, startUrl) {
         await pool.query(`UPDATE scans SET status = 'failed' WHERE id = ?`, [scanId]);
       }
     }
+  }
+  };
+
+  try {
+    await runWithTimeout(doCrawl(), RUN_TIMEOUT_MS, scanId);
+  } catch (e) {
+    if (e?.message?.includes("タイムアウト")) {
+      console.error("[scanCrawl] run timeout:", scanId);
+      try {
+        await pool.query(
+          `UPDATE scans SET status = 'failed', error_message = ?, updated_at = NOW() WHERE id = ?`,
+          [e.message, scanId]
+        );
+      } catch {
+        await pool.query(`UPDATE scans SET status = 'failed' WHERE id = ?`, [scanId]);
+      }
+    } else {
+      throw e;
+    }
+  } finally {
+    clearScanStartTime(scanId);
   }
 }
 

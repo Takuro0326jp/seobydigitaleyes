@@ -115,6 +115,15 @@ export async function fetchCompanies() {
   return jsonOrThrow(res);
 }
 
+/** POST /api/admin/scans/:id/reset — 進行中のスキャンを強制リセット（管理者のみ） */
+export async function resetStuckScan(scanId) {
+  const res = await fetch(`/api/admin/scans/${encodeURIComponent(scanId)}/reset`, {
+    method: "POST",
+    credentials: "include",
+  });
+  return jsonOrThrow(res);
+}
+
 /** PATCH /api/scans/:scanId — 設定更新（company_id, gsc_property_url） */
 export async function patchScanSettings(scanId, { company_id, gsc_property_url }) {
   const body = {};

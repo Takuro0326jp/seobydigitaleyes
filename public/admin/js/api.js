@@ -17,14 +17,18 @@ export const adminApi = {
     create: (body) => fetchJson(`${base}/users`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }),
     update: (id, body) => fetchJson(`${base}/users/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }),
     delete: (id) => fetchJson(`${base}/users/${id}`, { method: "DELETE" }),
-    urlAccess: (userId) => fetchJson(`${base}/users/${userId}/url-access`),
+    urlAccess: (userId, companyId) =>
+      fetchJson(`${base}/users/${userId}/url-access${companyId ? `?company_id=${encodeURIComponent(companyId)}` : ""}`),
   },
   companies: {
     list: () => fetchJson(`${base}/companies`),
     create: (body) => fetchJson(`${base}/companies`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }),
     update: (id, body) => fetchJson(`${base}/companies/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }),
     delete: (id) => fetchJson(`${base}/companies/${id}`, { method: "DELETE" }),
-    urls: (companyId) => fetchJson(`${base}/companies/${companyId}/urls`),
+    urls: (companyId, opts = {}) => {
+        const qs = opts.scannedOnly ? "?scanned_only=1" : "";
+        return fetchJson(`${base}/companies/${companyId}/urls${qs}`);
+      },
     addUrl: (companyId, url) => fetchJson(`${base}/companies/${companyId}/urls`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url }) }),
   },
   scans: {
