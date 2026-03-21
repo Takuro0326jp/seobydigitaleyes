@@ -177,14 +177,8 @@ async function fetchGoogleAdsReportWithMeta(startDate, endDate, userId = null, o
     FROM campaign
     WHERE segments.date DURING LAST_30_DAYS
       AND campaign.status != 'REMOVED'`;
-    const gaqlLast90 = `SELECT campaign.id, campaign.name, segments.date,
-      metrics.impressions, metrics.clicks, metrics.cost_micros, metrics.conversions, metrics.all_conversions
-    FROM campaign
-    WHERE segments.date DURING LAST_90_DAYS
-      AND campaign.status != 'REMOVED'`;
-
     let lastQueryError = null;
-    for (const [gaql, label] of [[gaqlPrimary, "BETWEEN"], [gaqlCompact, "BETWEEN_compact"], [gaqlLast30, "LAST_30_DAYS"], [gaqlLast90, "LAST_90_DAYS"]]) {
+    for (const [gaql, label] of [[gaqlPrimary, "BETWEEN"], [gaqlCompact, "BETWEEN_compact"], [gaqlLast30, "LAST_30_DAYS"]]) {
       try {
         result = await customer.query(gaql);
         if (Array.isArray(result)) {

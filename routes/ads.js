@@ -46,11 +46,32 @@ router.get("/test-api", async (req, res) => {
   const clientSecret = (process.env.GOOGLE_ADS_CLIENT_SECRET || process.env.GOOGLE_CLIENT_SECRET || "").trim();
 
   let refreshToken = (process.env.GOOGLE_ADS_REFRESH_TOKEN || "").trim();
+  let mccFromDb = mcc;
   if (!refreshToken) {
     const [rows] = await pool.query(
-      "SELECT refresh_token FROM api_auth_sources WHERE platform = 'google' AND refresh_token IS NOT NULL ORDER BY id DESC LIMIT 1"
+      `SELECT a.refresh_token, a.login_customer_id
+       FROM api_auth_sources a
+       INNER JOIN google_ads_accounts g ON g.api_auth_source_id = a.id AND g.user_id = a.user_id
+       WHERE a.platform = 'google' AND a.refresh_token IS NOT NULL AND a.user_id = ?
+       ORDER BY g.is_selected DESC, a.id DESC LIMIT 1`,
+      [user.id]
     );
-    if (rows.length) refreshToken = rows[0].refresh_token || "";
+    if (rows.length) {
+      refreshToken = rows[0].refresh_token || "";
+      const lid = (rows[0].login_customer_id || "").trim().replace(/-/g, "");
+      if (lid) mccFromDb = lid;
+    }
+    if (!refreshToken) {
+      const [fallback] = await pool.query(
+        "SELECT refresh_token, login_customer_id FROM api_auth_sources WHERE platform = 'google' AND refresh_token IS NOT NULL AND user_id = ? ORDER BY id DESC LIMIT 1",
+        [user.id]
+      );
+      if (fallback.length) {
+        refreshToken = fallback[0].refresh_token || "";
+        const lid = (fallback[0].login_customer_id || "").trim().replace(/-/g, "");
+        if (lid) mccFromDb = lid;
+      }
+    }
   }
 
   if (!developerToken || !clientId || !clientSecret || !refreshToken) {
@@ -66,7 +87,13 @@ router.get("/test-api", async (req, res) => {
   const startDate = new Date(today.getFullYear(), today.getMonth() - 1, 1).toISOString().slice(0, 10);
   const endDate = new Date(today.getFullYear(), today.getMonth(), 0).toISOString().slice(0, 10);
 
-  const result = { mcc, customer_id: customerIdParam, period: { startDate, endDate }, tests: {} };
+  const result = {
+    mcc_used: mccFromDb || mcc,
+    mcc_param: mcc,
+    customer_id: customerIdParam,
+    period: { startDate, endDate },
+    tests: {},
+  };
 
   try {
     const { GoogleAdsApi } = require("google-ads-api");
@@ -75,10 +102,11 @@ router.get("/test-api", async (req, res) => {
       client_secret: clientSecret,
       developer_token: developerToken,
     });
+    const loginCid = (mccFromDb || mcc) || undefined;
     const customer = client.Customer({
       customer_id: customerIdParam,
-      login_customer_id: mcc,
       refresh_token: refreshToken,
+      ...(loginCid && { login_customer_id: loginCid }),
     });
 
     const toArr = (r) => (Array.isArray(r) ? r : r?.results || r?.rows || []);
