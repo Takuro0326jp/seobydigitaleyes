@@ -30,56 +30,34 @@ const {
 } = require("../services/googleAdsAccounts");
 const apiAuthSources = require("../services/apiAuthSources");
 
-/** GET /api/ads/test-api - 指定IDでGoogle Ads APIを直接叩いてテスト（digital-eyes.site等から実行用）
- * 例: /api/ads/test-api?mcc=9838710115&customer_id=4211317572
+/** GET /api/ads/test-api - report-debug と同じ認証でAPIを直接叩いてテスト
+ * 例: /api/ads/test-api
+ * report-debug と完全に同じ credential を使用（getSelectedAccount 経由）
  */
 router.get("/test-api", async (req, res) => {
   const user = await getUserWithContext(req);
   if (!user) {
     return res.status(401).json({ error: "ログインが必要です" });
   }
-  const mcc = (req.query.mcc || "9838710115").trim().replace(/-/g, "");
-  const customerIdParam = (req.query.customer_id || "4211317572").trim().replace(/-/g, "");
 
   const developerToken = (process.env.GOOGLE_ADS_DEVELOPER_TOKEN || "").trim();
   const clientId = (process.env.GOOGLE_ADS_CLIENT_ID || process.env.GOOGLE_CLIENT_ID || "").trim();
   const clientSecret = (process.env.GOOGLE_ADS_CLIENT_SECRET || process.env.GOOGLE_CLIENT_SECRET || "").trim();
 
-  let refreshToken = (process.env.GOOGLE_ADS_REFRESH_TOKEN || "").trim();
-  let mccFromDb = mcc;
-  if (!refreshToken) {
-    const [rows] = await pool.query(
-      `SELECT a.refresh_token, a.login_customer_id
-       FROM api_auth_sources a
-       INNER JOIN google_ads_accounts g ON g.api_auth_source_id = a.id AND g.user_id = a.user_id
-       WHERE a.platform = 'google' AND a.refresh_token IS NOT NULL AND a.user_id = ?
-       ORDER BY g.is_selected DESC, a.id DESC LIMIT 1`,
-      [user.id]
-    );
-    if (rows.length) {
-      refreshToken = rows[0].refresh_token || "";
-      const lid = (rows[0].login_customer_id || "").trim().replace(/-/g, "");
-      if (lid) mccFromDb = lid;
-    }
-    if (!refreshToken) {
-      const [fallback] = await pool.query(
-        "SELECT refresh_token, login_customer_id FROM api_auth_sources WHERE platform = 'google' AND refresh_token IS NOT NULL AND user_id = ? ORDER BY id DESC LIMIT 1",
-        [user.id]
-      );
-      if (fallback.length) {
-        refreshToken = fallback[0].refresh_token || "";
-        const lid = (fallback[0].login_customer_id || "").trim().replace(/-/g, "");
-        if (lid) mccFromDb = lid;
-      }
-    }
-  }
+  const acc = await getSelectedAccount(user.id);
+  const refreshToken = acc?.refresh_token || (process.env.GOOGLE_ADS_REFRESH_TOKEN || "").trim();
+  const customerIdParam = (acc?.customer_id || req.query.customer_id || "").trim().replace(/-/g, "");
+  const loginCid = (acc?.login_customer_id || req.query.mcc || "").trim().replace(/-/g, "") || undefined;
 
-  if (!developerToken || !clientId || !clientSecret || !refreshToken) {
+  if (!developerToken || !clientId || !clientSecret || !refreshToken || !customerIdParam) {
     return res.status(400).json({
-      error: "GOOGLE_ADS_* の設定が不足しています",
+      error: "設定が不足しています。API設定でアカウントを連携してください。",
       has_token: !!developerToken,
       has_client: !!(clientId && clientSecret),
       has_refresh: !!refreshToken,
+      has_customer_id: !!customerIdParam,
+      has_login_customer_id: !!loginCid,
+      account: acc ? { id: acc.id, name: acc.name, customer_id: acc.customer_id, login_customer_id: acc.login_customer_id } : null,
     });
   }
 
@@ -88,9 +66,8 @@ router.get("/test-api", async (req, res) => {
   const endDate = new Date(today.getFullYear(), today.getMonth(), 0).toISOString().slice(0, 10);
 
   const result = {
-    mcc_used: mccFromDb || mcc,
-    mcc_param: mcc,
     customer_id: customerIdParam,
+    login_customer_id: loginCid,
     period: { startDate, endDate },
     tests: {},
   };
@@ -102,12 +79,9 @@ router.get("/test-api", async (req, res) => {
       client_secret: clientSecret,
       developer_token: developerToken,
     });
-    const loginCid = (mccFromDb || mcc) || undefined;
-    const customer = client.Customer({
-      customer_id: customerIdParam,
-      refresh_token: refreshToken,
-      ...(loginCid && { login_customer_id: loginCid }),
-    });
+    const customerOptions = { customer_id: customerIdParam, refresh_token: refreshToken };
+    if (loginCid) customerOptions.login_customer_id = loginCid;
+    const customer = client.Customer(customerOptions);
 
     const toArr = (r) => (Array.isArray(r) ? r : r?.results || r?.rows || []);
 
@@ -160,8 +134,8 @@ router.get("/test-api", async (req, res) => {
     console.error("[ads] test-api error:", e.message);
     res.status(500).json({
       error: e.message,
-      mcc,
       customer_id: customerIdParam,
+      login_customer_id: loginCid,
     });
   }
 });
