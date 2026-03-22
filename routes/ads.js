@@ -79,8 +79,25 @@ router.get("/test-api", async (req, res) => {
       client_secret: clientSecret,
       developer_token: developerToken,
     });
+
+    result.tests.list_accessible = { status: "pending" };
+    try {
+      const accessible = await client.listAccessibleCustomers(refreshToken);
+      const names = accessible?.resource_names || (Array.isArray(accessible) ? accessible : []);
+      const ids = names.map((n) => String(n).replace(/^customers\//, "").replace(/\/.*$/, "")).filter(Boolean);
+      result.tests.list_accessible = {
+        status: "ok",
+        count: ids.length,
+        customer_ids: ids.slice(0, 30),
+        has_4211317572: ids.some((id) => String(id) === "4211317572"),
+        has_9838710115: ids.some((id) => String(id) === "9838710115"),
+      };
+    } catch (e) {
+      result.tests.list_accessible = { status: "error", message: e.message, errors: e.errors };
+    }
+
     const customerOptions = { customer_id: customerIdParam, refresh_token: refreshToken };
-    if (loginCid) customerOptions.login_customer_id = loginCid;
+    if (loginCid) customerOptions.login_customer_id = String(loginCid);
     const customer = client.Customer(customerOptions);
 
     const toArr = (r) => (Array.isArray(r) ? r : r?.results || r?.rows || []);
