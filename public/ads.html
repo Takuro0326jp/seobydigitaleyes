@@ -6,28 +6,25 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link href="/css/tailwind.css" rel="stylesheet">
   <link href="/css/style.css" rel="stylesheet">
-  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap');
-
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     :root {
-      --bg: #f5f4f0;
       --surface: #ffffff;
-      --surface2: #f9f8f5;
-      --border: #e8e6e0;
-      --text-primary: #1a1917;
-      --text-secondary: #6b6860;
-      --text-muted: #a09e99;
-      --accent: #2a5cdb;
-      --accent-light: #eef2fd;
+      --surface2: #f8fafc;
+      --border: #e2e8f0;
+      --text-primary: #0f172a;
+      --text-secondary: #475569;
+      --text-muted: #94a3b8;
+      --accent: #4f46e5;
+      --accent-light: #eef2ff;
       --good: #0f7a4a;
-      --good-light: #e8f5ee;
+      --good-light: #ecfdf5;
       --warn: #c45e00;
-      --warn-light: #fff3e8;
+      --warn-light: #fff7ed;
       --bad: #cc2c2c;
-      --bad-light: #fdeaea;
+      --bad-light: #fef2f2;
       --google: #4285f4;
       --yahoo: #ff0033;
       --meta: #1877f2;
@@ -35,26 +32,6 @@
       --line: #06c755;
     }
 
-    body {
-      font-family: 'DM Sans', sans-serif;
-      background: var(--bg);
-      color: var(--text-primary);
-      font-size: 14px;
-      min-height: 100vh;
-    }
-
-    .header {
-      background: var(--surface);
-      border-bottom: 1px solid var(--border);
-      padding: 0 28px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      height: 56px;
-    }
-    .header-left { display: flex; align-items: center; gap: 16px; }
-    .logo { font-size: 15px; font-weight: 600; letter-spacing: -0.3px; }
-    .logo span { color: var(--accent); }
     .badge-integrated { font-size: 11px; background: var(--accent-light); color: var(--accent); padding: 2px 8px; border-radius: 20px; font-weight: 500; display: inline-flex; align-items: center; gap: 4px; }
     .badge-integrated.connected { background: var(--good-light); color: var(--good); }
 
@@ -75,7 +52,7 @@
       padding: 6px 10px;
       border-radius: 8px;
       font-size: 13px;
-      font-family: 'DM Sans', sans-serif;
+      font-family: 'Inter', sans-serif;
       outline: none;
       cursor: pointer;
       transition: border-color .15s;
@@ -91,7 +68,7 @@
       padding: 7px 16px;
       border-radius: 8px;
       font-size: 13px;
-      font-family: 'DM Sans', sans-serif;
+      font-family: 'Inter', sans-serif;
       font-weight: 500;
       cursor: pointer;
       transition: opacity .15s;
@@ -104,7 +81,7 @@
       padding: 7px 14px;
       border-radius: 8px;
       font-size: 13px;
-      font-family: 'DM Sans', sans-serif;
+      font-family: 'Inter', sans-serif;
       cursor: pointer;
       transition: background .15s;
       display: flex; align-items: center; gap: 6px;
@@ -118,7 +95,7 @@
       display: flex;
       gap: 0;
     }
-    .tab-btn {
+    .tabs-bar .tab-btn {
       padding: 12px 18px;
       font-size: 13px;
       font-weight: 500;
@@ -128,10 +105,10 @@
       cursor: pointer;
       border-bottom: 2px solid transparent;
       transition: color .15s, border-color .15s;
-      font-family: 'DM Sans', sans-serif;
+      font-family: 'Inter', sans-serif;
     }
-    .tab-btn:hover { color: var(--text-primary); }
-    .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+    .tabs-bar .tab-btn:hover { color: var(--text-primary); }
+    .tabs-bar .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
 
     .tab-panel { display: none; padding: 24px 28px; }
     .tab-panel.active { display: block; }
@@ -299,28 +276,11 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </head>
-<body>
+<body class="antialiased bg-slate-50/30 min-h-screen text-slate-900 flex flex-col" style="font-family:'Inter',sans-serif;font-size:14px">
 
 <div id="header-container"></div>
 
-<!-- Header -->
-<header class="header">
-  <div class="header-left">
-    <div class="logo">ADs <span>Dashboard</span></div>
-    <span class="badge-integrated" id="badge-integrated" title="API連携状態">—</span>
-  </div>
-  <div style="display:flex;gap:10px;align-items:center">
-    <button class="btn-dl" onclick="openSettings()">
-      <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M8 2a1 1 0 100 2 1 1 0 000-2zM3 8a5 5 0 1010 0A5 5 0 003 8zm5-3a3 3 0 110 6 3 3 0 010-6z" fill="none" stroke="currentColor" stroke-width="1.3"/><circle cx="8" cy="8" r="1.5" fill="currentColor"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.22 3.22l1.42 1.42M11.36 11.36l1.42 1.42M3.22 12.78l1.42-1.42M11.36 4.64l1.42-1.42" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
-      API設定
-    </button>
-    <button class="btn-dl" onclick="downloadExcel()">
-      <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M8 2v8M5 7l3 3 3-3M2 12h12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      Excelレポート DL
-    </button>
-  </div>
-</header>
-
+<main class="flex-grow max-w-[1600px] mx-auto w-full px-4 sm:px-6 lg:px-8 py-6">
 <!-- Filter bar -->
 <div class="filter-bar">
   <select id="period-type-select" title="期間の指定方法">
@@ -347,6 +307,17 @@
   <select id="media-filter">
     <option value="">媒体：ALL</option>
   </select>
+  <span class="badge-integrated" id="badge-integrated" title="API連携状態" style="margin-left:8px">—</span>
+  <div style="margin-left:auto;display:flex;gap:10px;align-items:center">
+    <button class="btn-dl" onclick="openSettings()">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M8 2a1 1 0 100 2 1 1 0 000-2zM3 8a5 5 0 1010 0A5 5 0 003 8zm5-3a3 3 0 110 6 3 3 0 010-6z" fill="none" stroke="currentColor" stroke-width="1.3"/><circle cx="8" cy="8" r="1.5" fill="currentColor"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.22 3.22l1.42 1.42M11.36 11.36l1.42 1.42M3.22 12.78l1.42-1.42M11.36 4.64l1.42-1.42" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+      API設定
+    </button>
+    <button class="btn-dl" onclick="downloadExcel()">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M8 2v8M5 7l3 3 3-3M2 12h12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      Excelレポート DL
+    </button>
+  </div>
   <button class="btn-update" id="btn-update">更新</button>
 </div>
 
@@ -554,6 +525,8 @@
   </div>
 </div>
 
+</main>
+
 <div class="tooltip" id="tooltip"></div>
 
 <!-- API Settings Modal -->
@@ -576,14 +549,14 @@
     <div style="padding:16px 24px;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;background:var(--surface2)">
       <div id="save-status" style="font-size:12px;color:var(--good);display:none">✓ 保存しました</div>
       <div style="display:flex;gap:10px;margin-left:auto">
-        <button onclick="closeSettings()" style="border:1px solid var(--border);background:#fff;padding:8px 18px;border-radius:8px;font-size:13px;cursor:pointer;font-family:'DM Sans',sans-serif">キャンセル</button>
-        <button onclick="saveSettings()" style="background:var(--accent);color:#fff;border:none;padding:8px 20px;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer;font-family:'DM Sans',sans-serif">保存する</button>
+        <button onclick="closeSettings()" style="border:1px solid var(--border);background:#fff;padding:8px 18px;border-radius:8px;font-size:13px;cursor:pointer;font-family:'Inter',sans-serif">キャンセル</button>
+        <button onclick="saveSettings()" style="background:var(--accent);color:#fff;border:none;padding:8px 20px;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer;font-family:'Inter',sans-serif">保存する</button>
       </div>
     </div>
   </div>
 </div>
 
-<script src="/js/header.js"></script>
+<script src="/js/header.js?v=3"></script>
 <script src="/js/ads.js"></script>
 </body>
 </html>

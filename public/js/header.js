@@ -149,7 +149,7 @@ class="block px-4 py-3 text-[11px] font-bold text-slate-600 hover:bg-slate-50 ho
 
     const isActive = (target) => {
       const isSeoActive = target === "seo" && path.includes("result.html");
-      const isGscActive = target === "gsc" && (path.includes("gsc.html") || path.includes("gsc-indexhealth.html") || path.includes("gsc-technical.html") || path.includes("gsc-monitoring.html"));
+      const isGscActive = target === "gsc" && (path.includes("gsc.html") || path.includes("gsc-indexhealth.html") || path.includes("gsc-technical.html") || path.includes("gsc-opportunities.html") || path.includes("gsc-monitoring.html"));
       const isAdsActive = target === "ads" && path.includes("ads.html");
       const isLinkStructureActive = target === "link-structure" && path.includes("link-structure.html");
       const isOtherActive = target !== "seo" && target !== "gsc" && target !== "ads" && (path.includes(target) || (target === "link-structure" && path.includes("link-structure.html")));
@@ -175,8 +175,8 @@ class="block px-4 py-3 text-[11px] font-bold text-slate-600 hover:bg-slate-50 ho
                 <div id="header-user-nav" class="flex items-center gap-4"></div>
             </div>
         </div>
-        <div class="px-8 flex items-center bg-white overflow-x-auto scrollbar-hide ${isHideNavPage ? "hidden" : ""}">
-            <div class="flex items-center gap-8 whitespace-nowrap pt-4">
+        <div class="px-8 flex items-center bg-white overflow-x-auto ${isHideNavPage ? "hidden" : ""}" style="scrollbar-gutter:stable">
+            <div class="flex items-center gap-4 sm:gap-6 whitespace-nowrap pt-4">
                 <a href="result.html${urlSuffix}" class="tab-btn pb-4 text-sm font-bold border-b-2 transition-colors ${isActive("seo")}">SEO & Structure</a>
                 <a href="link-structure.html${urlSuffix}" class="tab-btn pb-4 text-sm font-bold border-b-2 transition-colors ${isActive("link-structure")}">Link Structure</a>
                 <a href="mobile.html${urlSuffix}" class="tab-btn pb-4 text-sm font-bold border-b-2 transition-colors ${isActive("mobile")}">Mobile Friendly</a>
