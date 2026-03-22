@@ -27,7 +27,18 @@ const pool = mysql.createPool({
   queueLimit: 0,
   enableKeepAlive: true,
   keepAliveInitialDelay: 10000,
-  connectTimeout: 10000,
+  connectTimeout: 15000,
+});
+
+// 未処理の接続エラーをキャッチ（EHOSTUNREACH, ECONNRESET 等）
+pool.on("error", (err) => {
+  const code = err.code || err.errno;
+  const msg = `[DB] 接続エラー: ${code || err.message}`;
+  if (code === "EHOSTUNREACH" || code === "ENOTFOUND" || code === "ECONNRESET" || code === "ETIMEDOUT") {
+    console.warn("⚠️ MySQL keepalive error:", err.message);
+  } else {
+    console.error(msg, err.message);
+  }
 });
 
 module.exports = pool;

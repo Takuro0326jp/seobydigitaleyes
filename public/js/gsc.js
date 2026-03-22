@@ -7,6 +7,8 @@
 
   let rawGscData = [];
   let gscConnected = false;
+  let performanceChart = null;
+  let gscPropertyUrlForChart = null;
 
   const params = new URLSearchParams(window.location.search);
   const scanId = params.get("scan") || params.get("scanId");
@@ -46,6 +48,10 @@
     ["totalClicks", "totalImpressions", "avgCtr", "avgPosition"].forEach((id) => {
       const el = document.getElementById(id);
       if (el) el.textContent = "--";
+    });
+    ["clicksDelta", "impressionsDelta", "ctrDelta", "positionDelta"].forEach((id) => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = id === "ctrDelta" ? "※ 全取得URLの平均" : "GSC 接続時に表示";
     });
 
     const reviewEl = document.getElementById("aiTrafficReview");
@@ -117,6 +123,18 @@
     });
   }
 
+  function formatDelta(current, previous, isPosition = false) {
+    if (previous == null || previous === 0) return `先月 --`;
+    if (isPosition) {
+      const arrow = current > previous ? "▼" : "▲";
+      const label = current > previous ? "（悪化）" : "（改善）";
+      return `${arrow} 先月 ${previous.toFixed(1)}${label}`;
+    }
+    const pct = Math.round(((current - previous) / previous) * 100);
+    const arrow = pct >= 0 ? "▲" : "▼";
+    return `${arrow} ${Math.abs(pct)}%　先月 ${previous.toLocaleString("ja-JP")}`;
+  }
+
   function updateSummaryCards(rows) {
     if (!rows || rows.length === 0) return;
 
@@ -130,16 +148,26 @@
 
     const avgCtr = (sumCtr / rows.length) * 100;
     const avgPos = sumPosition / rows.length;
-    const formatNum = (num) => num >= 1000 ? (num / 1000).toFixed(1) + "K" : num.toLocaleString();
+    const prev = window.gscPreviousPeriod || null;
 
     const elClicks = document.getElementById("totalClicks");
     const elImps = document.getElementById("totalImpressions");
     const elCtr = document.getElementById("avgCtr");
     const elPos = document.getElementById("avgPosition");
-    if (elClicks) elClicks.textContent = formatNum(totalClicks);
-    if (elImps) elImps.textContent = formatNum(totalImpressions);
+    const elClicksD = document.getElementById("clicksDelta");
+    const elImpsD = document.getElementById("impressionsDelta");
+    const elCtrD = document.getElementById("ctrDelta");
+    const elPosD = document.getElementById("positionDelta");
+
+    if (elClicks) elClicks.textContent = totalClicks.toLocaleString("ja-JP");
+    if (elImps) elImps.textContent = totalImpressions.toLocaleString("ja-JP");
     if (elCtr) elCtr.textContent = avgCtr.toFixed(1) + "%";
     if (elPos) elPos.textContent = avgPos.toFixed(1);
+
+    if (elClicksD) elClicksD.textContent = prev ? formatDelta(totalClicks, prev.clicks) : "先月 --";
+    if (elImpsD) elImpsD.textContent = prev ? formatDelta(totalImpressions, prev.impressions) : "先月 --";
+    if (elCtrD) elCtrD.textContent = prev ? `先月 ${(prev.ctr * 100).toFixed(1)}%` : "※ 全取得URLの平均";
+    if (elPosD) elPosD.textContent = prev ? formatDelta(avgPos, prev.position, true) : "※ スコアから算出";
   }
 
   function renderGSCTable(data) {
@@ -194,9 +222,66 @@
     if (elLast) elLast.innerText = s;
   }
 
+  async function fetchAndRenderChart(propertyUrl, days) {
+    const section = document.getElementById("performanceChartSection");
+    const canvas = document.getElementById("performanceChart");
+    if (!section || !canvas) return;
+    try {
+      const res = await fetch("/api/gsc/performance", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ propertyUrl, scanId, dimensions: ["date"] }),
+      });
+      if (!res.ok) return;
+      let rows = await res.json();
+      if (!Array.isArray(rows) || rows.length === 0) return;
+      const endDate = new Date();
+      const startDate = new Date();
+      startDate.setDate(startDate.getDate() - (days || 30));
+      const startStr = startDate.toISOString().slice(0, 10);
+      const endStr = endDate.toISOString().slice(0, 10);
+      rows = rows.filter((r) => {
+        const d = r.keys?.[0] || "";
+        return d >= startStr && d <= endStr;
+      });
+      rows.sort((a, b) => new Date(a.keys[0]) - new Date(b.keys[0]));
+      if (rows.length === 0) return;
+      section.classList.remove("hidden");
+      if (performanceChart) performanceChart.destroy();
+      const ctx = canvas.getContext("2d");
+      const labels = rows.map((r) => (r.keys?.[0] || "").split("-").slice(1).join("/"));
+      performanceChart = new Chart(ctx, {
+        type: "line",
+        data: {
+          labels,
+          datasets: [
+            { label: "Clicks", data: rows.map((r) => r.clicks || 0), borderColor: "#4f46e5", backgroundColor: "rgba(79,70,229,0.05)", fill: true, tension: 0.4, borderWidth: 2, pointRadius: 0, yAxisID: "y" },
+            { label: "Impressions", data: rows.map((r) => r.impressions || 0), borderColor: "#94a3b8", borderDash: [5, 5], fill: false, tension: 0.4, borderWidth: 2, pointRadius: 0, yAxisID: "y1" },
+          ],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          interaction: { mode: "index", intersect: false },
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { grid: { display: false }, ticks: { font: { weight: "bold", size: 10 }, maxRotation: 45 } },
+            y: { type: "linear", display: true, position: "left", grid: { color: "#f1f5f9" } },
+            y1: { type: "linear", display: true, position: "right", grid: { display: false } },
+          },
+        },
+      });
+    } catch (e) {
+      console.warn("Chart fetch failed", e);
+    }
+  }
+
   /* ==========================================
    * 3. 初期化
    * ========================================== */
+  let quickFilterState = "all";
+
   window.addEventListener("DOMContentLoaded", () => {
     const suffix = "?scan=" + encodeURIComponent(scanId);
     const perfLink = document.querySelector('a[href="gsc.html"]');
@@ -205,8 +290,31 @@
     if (indexLink) indexLink.setAttribute("href", "gsc-indexhealth.html" + suffix);
     const techLink = document.getElementById("nav-technical");
     if (techLink) techLink.setAttribute("href", "gsc-technical.html" + suffix);
-    const monitorLink = document.getElementById("nav-monitoring");
-    if (monitorLink) monitorLink.setAttribute("href", "gsc-monitoring.html" + suffix);
+    const oppLink = document.getElementById("nav-opportunities");
+    if (oppLink) oppLink.setAttribute("href", "gsc-opportunities.html" + suffix);
+
+    document.querySelectorAll(".quick-filter").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        quickFilterState = btn.dataset.quick || "all";
+        document.querySelectorAll(".quick-filter").forEach((b) => {
+          b.classList.toggle("bg-white", b.dataset.quick === quickFilterState);
+          b.classList.toggle("text-indigo-600", b.dataset.quick === quickFilterState);
+          b.classList.toggle("shadow-sm", b.dataset.quick === quickFilterState);
+          b.classList.toggle("text-slate-500", b.dataset.quick !== quickFilterState);
+        });
+        if (window.filterGSCTable) window.filterGSCTable();
+      });
+    });
+    document.getElementById("chart-30d")?.addEventListener("click", () => {
+      document.getElementById("chart-30d")?.classList.add("bg-white", "shadow-sm");
+      document.getElementById("chart-90d")?.classList.remove("bg-white", "shadow-sm");
+      if (gscPropertyUrlForChart) void fetchAndRenderChart(gscPropertyUrlForChart, 30);
+    });
+    document.getElementById("chart-90d")?.addEventListener("click", () => {
+      document.getElementById("chart-90d")?.classList.add("bg-white", "shadow-sm");
+      document.getElementById("chart-30d")?.classList.remove("bg-white", "shadow-sm");
+      if (gscPropertyUrlForChart) void fetchAndRenderChart(gscPropertyUrlForChart, 90);
+    });
     void init();
   });
 
@@ -264,12 +372,14 @@
       }
 
       gscConnected = true;
+      gscPropertyUrlForChart = propertyUrl;
       rawGscData = processGscData(rows);
       updateSummaryCards(rawGscData);
       renderGSCTable(rawGscData);
       updateOverallAiInsight();
       updateDateDisplay();
       setDataSectionEnabled(true);
+      void fetchAndRenderChart(propertyUrl, 30);
     } catch (e) {
       console.warn("GSC API not available", e);
       showEmptyState();
@@ -333,11 +443,14 @@
     if (!gscConnected) return;
     const keyword = (document.getElementById("gscSearchInput")?.value || "").toLowerCase();
     const priorityFilter = document.getElementById("priorityFilter")?.value || "";
-    const filtered = rawGscData.filter((item) => {
+    let filtered = rawGscData.filter((item) => {
       const matchK = item.url.toLowerCase().includes(keyword);
       const matchP = priorityFilter === "" || item.priority === priorityFilter;
       return matchK && matchP;
     });
+    if (quickFilterState === "high") filtered = filtered.filter((i) => i.priority === "HIGH");
+    if (quickFilterState === "ctr") filtered = filtered.filter((i) => (i.ctrNum || 0) < 0.01);
+    if (quickFilterState === "drop") filtered = filtered.filter((i) => parseFloat(i.position) >= 15);
     renderGSCTable(filtered);
   };
 

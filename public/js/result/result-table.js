@@ -113,7 +113,7 @@ window.renderTable = function (data) {
     if (!pages.length) {
         tbody.innerHTML = `
             <tr>
-                <td colspan="13" class="py-12 text-center text-slate-400">
+                <td colspan="16" class="py-12 text-center text-slate-400">
                     データが存在しません
                 </td>
             </tr>
@@ -121,9 +121,32 @@ window.renderTable = function (data) {
         return;
     }
 
-    tbody.innerHTML = pages.map((p, index) => {
+    // PageRank 降順ソート（page_rank が存在する場合）
+    const hasPageRank = pages.some((p) => p.page_rank != null);
+    const sorted = hasPageRank
+      ? [...pages].sort((a, b) => {
+          const pa = Number(a.page_rank) ?? 0;
+          const pb = Number(b.page_rank) ?? 0;
+          return pb - pa;
+        })
+      : pages;
+
+    const scanId = (typeof getScanIdFromURL === "function" ? getScanIdFromURL() : null) || (window.SEOState?.scanId || "");
+    const linkBase = scanId ? `link-structure.html?scan=${encodeURIComponent(scanId)}` : "link-structure.html";
+
+    tbody.innerHTML = sorted.map((p, index) => {
 
         const safeIndex = urlIndexMap.get(p.url) ?? index;
+
+        const pr = Number(p.page_rank);
+        const prColor =
+          pr >= 0.7 ? "text-[#059669]" :
+          pr >= 0.4 ? "text-[#D97706]" :
+          pr > 0 || p.page_rank != null ? "text-[#DC2626]" : "text-slate-400";
+
+        const focusUrl = encodeURIComponent(p.url || "");
+        const inboundCnt = p.inbound_link_count != null ? Number(p.inbound_link_count) : null;
+        const outboundCnt = p.outbound_link_count != null ? Number(p.outbound_link_count) : (p.internal_links ?? null);
 
         const statusColor =
             p.status >= 400 ? 'text-red-500' :
@@ -183,6 +206,18 @@ window.renderTable = function (data) {
 
                 <td class="py-3 px-2 text-center font-bold ${scoreColor}">
                     ${p.score || 0}
+                </td>
+
+                <td class="py-3 px-2 text-center font-mono text-xs font-bold ${prColor}">
+                    ${p.page_rank != null ? pr.toFixed(2) : "-"}
+                </td>
+
+                <td class="py-3 px-2 text-center">
+                    ${inboundCnt != null ? `<a href="${linkBase}${linkBase.includes("?") ? "&" : "?"}focus=${focusUrl}" class="text-blue-600 hover:underline font-bold">${inboundCnt}</a>` : "-"}
+                </td>
+
+                <td class="py-3 px-2 text-center">
+                    ${outboundCnt != null ? `<a href="${linkBase}${linkBase.includes("?") ? "&" : "?"}focus=${focusUrl}" class="text-blue-600 hover:underline font-bold">${outboundCnt}</a>` : "-"}
                 </td>
 
                 <td class="py-3 px-4 text-center">
@@ -648,10 +683,9 @@ function updateStatsCards(pages){
   document.getElementById("stat-duplicate-title").innerText = duplicateTitle;
 
   // Orphan
-  const orphan =
-    pages.filter(p =>
-      (p.deductions || []).some(d => d.label.includes("孤立"))
-    ).length;
+  const orphan = pages.some((p) => p.is_orphan != null)
+    ? pages.filter((p) => p.is_orphan).length
+    : pages.filter((p) => (p.deductions || []).some((d) => d.label && d.label.includes("孤立"))).length;
 
   document.getElementById("stat-orphan").innerText = orphan;
 

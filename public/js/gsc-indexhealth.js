@@ -6,7 +6,7 @@
   "use strict";
 
   let fullIndexData = [];
-  let currentViewTab = "all";
+  let currentViewTab = "error_warning";
 
   const INDEX_ERROR_MASTER = {
     "404": {
@@ -148,6 +148,7 @@
       });
 
       renderStats();
+      switchTableTab("error_warning");
       filterIndexTable();
       updateAiReview();
     } catch (e) {
@@ -162,7 +163,7 @@
     if (body) {
       body.innerHTML = `<tr><td colspan="3" class="p-16 text-center text-slate-400 font-bold">${msg || "GSC が連携されていません。seo.html の設定からプロパティを選択してください。"}</td></tr>`;
     }
-    ["indexHealthScore", "duplicateCount", "unindexedCount", "errorCount"].forEach((id) => {
+    ["indexHealthScore", "warningCount", "unindexedCount", "errorCount"].forEach((id) => {
       const el = document.getElementById(id);
       if (el) el.textContent = "--";
     });
@@ -203,21 +204,18 @@
     }
   }
 
+  const FILTER_TABS = ["error_warning", "all", "404", "canonical", "noindex"];
+
   window.switchTableTab = function (tab) {
     currentViewTab = tab;
-    const btnAll = document.getElementById("tab-all");
-    const btnDup = document.getElementById("tab-duplicate");
-    const downloadBtn = document.getElementById("gscExcelBtn");
-
-    if (tab === "all") {
-      if (btnAll) btnAll.className = "px-4 py-1.5 rounded-lg text-[10px] font-black transition-all bg-white text-indigo-600 shadow-sm";
-      if (btnDup) btnDup.className = "px-4 py-1.5 rounded-lg text-[10px] font-black transition-all text-slate-400 hover:text-slate-600";
-      if (downloadBtn) downloadBtn.innerHTML = '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg> 分析レポートをエクセルで書き出す (.xlsx)';
-    } else {
-      if (btnDup) btnDup.className = "px-4 py-1.5 rounded-lg text-[10px] font-black transition-all bg-white text-indigo-600 shadow-sm";
-      if (btnAll) btnAll.className = "px-4 py-1.5 rounded-lg text-[10px] font-black transition-all text-slate-400 hover:text-slate-600";
-      if (downloadBtn) downloadBtn.innerHTML = '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg> 重複ページリストを書き出す (.xlsx)';
-    }
+    FILTER_TABS.forEach((t) => {
+      const btn = document.getElementById("tab-" + t);
+      if (btn) {
+        btn.className = t === tab
+          ? "px-3 py-1.5 rounded-lg text-[9px] font-black transition-all bg-white text-indigo-600 shadow-sm"
+          : "px-3 py-1.5 rounded-lg text-[9px] font-black transition-all text-slate-400 hover:text-slate-600";
+      }
+    });
     filterIndexTable();
   };
 
@@ -226,11 +224,17 @@
     const filtered = fullIndexData.filter((p) => {
       const matchQuery = p.url.toLowerCase().includes(query);
       let matchTab = true;
-      if (currentViewTab === "duplicate") {
+      if (currentViewTab === "error_warning") {
+        matchTab = ["404", "noindex", "canonical", "redirect"].includes(p.reasonKey);
+      } else if (currentViewTab === "all") {
+        matchTab = true;
+      } else if (currentViewTab === "404") {
+        matchTab = p.reasonKey === "404";
+      } else if (currentViewTab === "canonical") {
         const analysis = analyzeUrlContext(p.url, {});
         matchTab = p.reasonKey === "canonical" || analysis.isDuplicate === true;
-      } else {
-        matchTab = p.reasonKey !== "ok";
+      } else if (currentViewTab === "noindex") {
+        matchTab = p.reasonKey === "noindex";
       }
       return matchQuery && matchTab;
     });
@@ -277,27 +281,29 @@
 
   function renderStats() {
     const stats = {
+      err: fullIndexData.filter((p) => ["404", "noindex"].includes(p.reasonKey)).length,
+      warn: fullIndexData.filter((p) => p.reasonKey === "canonical" || p.reasonKey === "redirect").length,
+      ok: fullIndexData.filter((p) => p.reasonKey === "ok").length,
+      excluded: fullIndexData.filter((p) => p.reasonKey === "unindexed").length,
       dup: fullIndexData.filter((p) => p.reasonKey === "canonical").length,
-      err: fullIndexData.filter((p) => p.reasonKey === "404").length,
-      uni: fullIndexData.filter((p) => p.reasonKey === "unindexed").length,
-      red: fullIndexData.filter((p) => p.status === 301 || p.status === 302).length,
       noi: fullIndexData.filter((p) => p.reasonKey === "noindex").length,
+      red: fullIndexData.filter((p) => p.status === 301 || p.status === 302).length,
     };
-
-    const scoreEl = document.getElementById("indexHealthScore");
-    if (scoreEl) scoreEl.textContent = Math.max(0, 100 - stats.err * 5);
-
-    const dupEl = document.getElementById("duplicateCount");
-    if (dupEl) dupEl.textContent = stats.dup;
-
-    const uniEl = document.getElementById("unindexedCount");
-    if (uniEl) uniEl.textContent = stats.uni;
 
     const errEl = document.getElementById("errorCount");
     if (errEl) errEl.textContent = stats.err;
 
+    const warnEl = document.getElementById("warningCount");
+    if (warnEl) warnEl.textContent = stats.warn;
+
+    const scoreEl = document.getElementById("indexHealthScore");
+    if (scoreEl) scoreEl.textContent = stats.ok;
+
+    const uniEl = document.getElementById("unindexedCount");
+    if (uniEl) uniEl.textContent = stats.excluded;
+
     const gscEl = document.getElementById("gscCountDisplay");
-    if (gscEl) gscEl.textContent = `${fullIndexData.length} URLs Found`;
+    if (gscEl) gscEl.textContent = `${fullIndexData.length} URLs`;
 
     const card404 = document.getElementById("card-count-404");
     if (card404) card404.textContent = `対象: ${stats.err} ページ`;
@@ -306,7 +312,7 @@
     const cardRed = document.getElementById("card-count-redirect");
     if (cardRed) cardRed.textContent = `対象: ${stats.red} ページ`;
     const cardUni = document.getElementById("card-count-unindexed");
-    if (cardUni) cardUni.textContent = `対象: ${stats.uni} ページ`;
+    if (cardUni) cardUni.textContent = `対象: ${stats.excluded} ページ`;
   }
 
   window.showIndexDetail = function (index) {
@@ -393,8 +399,8 @@
     if (indexLink) indexLink.setAttribute("href", "gsc-indexhealth.html" + suffix);
     const techLink = document.getElementById("nav-technical");
     if (techLink) techLink.setAttribute("href", "gsc-technical.html" + suffix);
-    const monitorLink = document.getElementById("nav-monitoring");
-    if (monitorLink) monitorLink.setAttribute("href", "gsc-monitoring.html" + suffix);
+    const oppLink = document.getElementById("nav-opportunities");
+    if (oppLink) oppLink.setAttribute("href", "gsc-opportunities.html" + suffix);
     void loadData();
   });
 })();

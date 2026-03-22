@@ -3,7 +3,7 @@
  * - GET /api/scans で一覧取得・テーブル描画
  * - 検索・並び替えはフロントのみ（拡張しやすいよう分割）
  */
-import { fetchMe, fetchScansList, createScan, deleteScan, fetchGscStatus, fetchGscSites, disconnectGsc, fetchCompanies, patchScanSettings, resetStuckScan } from "./api.js";
+import { fetchMe, fetchScansList, fetchScanProgress, createScan, deleteScan, fetchGscStatus, fetchGscSites, disconnectGsc, fetchCompanies, patchScanSettings, resetStuckScan } from "./api.js";
 
 let rawList = [];
 let newScanPollStop = null;
@@ -42,16 +42,29 @@ function startScanPolling() {
       rawList = Array.isArray(list) ? list : rawList;
 
       if (watchScanId) {
-        const watched = rawList.find((r) => r.id === watchScanId);
+        let watched = rawList.find((r) => r.id === watchScanId);
+        try {
+          const prog = await fetchScanProgress(watchScanId);
+          watched = { ...watched, id: watchScanId, status: prog?.status || "unknown", processed_pages: prog?.processed_pages };
+        } catch { watched = watched || { id: watchScanId, status: "unknown" }; }
         if (watched && (watched.status === "completed" || watched.status === "failed")) {
           clearInterval(scanPollInterval);
           scanPollInterval = null;
           if (watched.status === "completed") {
             window.location.replace(`/result.html?scan=${encodeURIComponent(watchScanId)}`);
           } else {
+            const idx = rawList.findIndex((r) => r.id === watchScanId);
+            if (idx >= 0) rawList[idx].status = "failed";
+            else rawList.unshift({ id: watchScanId, status: "failed", domain: "", target_url: null });
             updateView();
           }
           return;
+        }
+        const idx = rawList.findIndex((r) => r.id === watchScanId);
+        if (idx >= 0) {
+          rawList[idx] = { ...rawList[idx], ...watched };
+        } else if (watched) {
+          rawList.unshift({ ...watched, domain: watched.domain || "", target_url: watched.target_url || "" });
         }
       }
 

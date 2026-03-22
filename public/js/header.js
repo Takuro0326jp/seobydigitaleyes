@@ -11,6 +11,7 @@
 
   if (
     window.location.pathname.includes("result.html") ||
+    window.location.pathname.includes("link-structure.html") ||
     window.location.pathname.includes("mobile.html") ||
     window.location.pathname.includes("llmo.html") ||
     window.location.pathname.includes("domain.html") ||
@@ -18,6 +19,7 @@
     window.location.pathname.includes("gsc.html") ||
     window.location.pathname.includes("gsc-indexhealth.html") ||
     window.location.pathname.includes("gsc-technical.html") ||
+    window.location.pathname.includes("gsc-opportunities.html") ||
     window.location.pathname.includes("gsc-monitoring.html")
   ) {
     const params = new URLSearchParams(window.location.search);
@@ -149,8 +151,9 @@ class="block px-4 py-3 text-[11px] font-bold text-slate-600 hover:bg-slate-50 ho
       const isSeoActive = target === "seo" && path.includes("result.html");
       const isGscActive = target === "gsc" && (path.includes("gsc.html") || path.includes("gsc-indexhealth.html") || path.includes("gsc-technical.html") || path.includes("gsc-monitoring.html"));
       const isAdsActive = target === "ads" && path.includes("ads.html");
-      const isOtherActive = target !== "seo" && target !== "gsc" && target !== "ads" && path.includes(target);
-      return isSeoActive || isGscActive || isAdsActive || isOtherActive
+      const isLinkStructureActive = target === "link-structure" && path.includes("link-structure.html");
+      const isOtherActive = target !== "seo" && target !== "gsc" && target !== "ads" && (path.includes(target) || (target === "link-structure" && path.includes("link-structure.html")));
+      return isSeoActive || isGscActive || isAdsActive || isLinkStructureActive || isOtherActive
         ? "border-blue-600 text-blue-600"
         : "border-transparent text-slate-400 hover:text-slate-600";
     };
@@ -175,6 +178,7 @@ class="block px-4 py-3 text-[11px] font-bold text-slate-600 hover:bg-slate-50 ho
         <div class="px-8 flex items-center bg-white overflow-x-auto scrollbar-hide ${isHideNavPage ? "hidden" : ""}">
             <div class="flex items-center gap-8 whitespace-nowrap pt-4">
                 <a href="result.html${urlSuffix}" class="tab-btn pb-4 text-sm font-bold border-b-2 transition-colors ${isActive("seo")}">SEO & Structure</a>
+                <a href="link-structure.html${urlSuffix}" class="tab-btn pb-4 text-sm font-bold border-b-2 transition-colors ${isActive("link-structure")}">Link Structure</a>
                 <a href="mobile.html${urlSuffix}" class="tab-btn pb-4 text-sm font-bold border-b-2 transition-colors ${isActive("mobile")}">Mobile Friendly</a>
                 <a href="llmo.html${urlSuffix}" class="tab-btn pb-4 text-sm font-bold border-b-2 transition-colors ${isActive("llmo")}">LLMO Analysis</a>
                 <a href="gsc.html${urlSuffix}" class="tab-btn pb-4 text-sm font-bold border-b-2 transition-colors ${isActive("gsc")}">Search Console</a>
@@ -190,13 +194,14 @@ class="block px-4 py-3 text-[11px] font-bold text-slate-600 hover:bg-slate-50 ho
     const leftNav = document.getElementById("header-nav-left");
     const showButtonPages = [
       "result.html",
+      "link-structure.html",
       "settings.html",
       "mobile.html",
       "llmo.html",
       "gsc.html",
       "gsc-indexhealth.html",
       "gsc-technical.html",
-      "gsc-monitoring.html",
+      "gsc-opportunities.html",
       "domain.html",
       "security.html",
       "strategy.html",

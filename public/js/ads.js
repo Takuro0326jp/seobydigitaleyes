@@ -39,6 +39,14 @@
 
   /** データなし時のメッセージ（API連携済みで rows が空の場合にヒントを表示） */
   function getEmptyMessage() {
+    const gc = lastReportMeta?.google_row_count ?? 0;
+    const yc = lastReportMeta?.yahoo_row_count ?? 0;
+    const period = lastReportMeta?.requested_startDate && lastReportMeta?.requested_endDate
+      ? `指定期間: ${lastReportMeta.requested_startDate}〜${lastReportMeta.requested_endDate}\n取得件数: Google ${gc}件, Yahoo ${yc}件`
+      : "";
+    if (period) {
+      return period + "\n\n" + (lastReportHint || "期間内に配信実績がないか、APIの取得に失敗した可能性があります。");
+    }
     if (lastReportHint) return lastReportHint;
     if (lastReportMeta?.google_customer_id) {
       return "データが取得できません。認証は成功していますが、指定期間にキャンペーンデータがありません。別の月を試すか、MCC の場合はクライアント（広告運用）アカウント ID を連携してください。";
@@ -426,12 +434,7 @@
       bg: "#fff0f0",
       docsUrl: "https://ads-developers.yahoo.co.jp/ja/ads-api/",
       status: "error",
-      fields: [
-        { key: "client_id", label: "Client ID", type: "text", placeholder: "dj0zaiZpPXXXXXX" },
-        { key: "client_secret", label: "Client Secret", type: "password", placeholder: "xxxxxxxxxxxxxxxx" },
-        { key: "refresh_token", label: "Refresh Token", type: "password", placeholder: "xxxxxxxxxxxxxxxx" },
-        { key: "account_id", label: "アカウントID", type: "text", placeholder: "1234567890" },
-      ],
+      fields: [], // Client ID/Secret は .env、OAuth で認証
     },
     {
       id: "meta",
@@ -513,7 +516,7 @@
         m.id === "google"
           ? "GOOGLE_ADS_DEVELOPER_TOKEN、GOOGLE_CLIENT_ID、GOOGLE_CLIENT_SECRET は .env で設定済みです。下の「Google でアカウント連携」をクリックすると、お使いの Google アカウントで OAuth 認証を行い、このアカウントから Google Ads データを取得できるようになります。"
           : m.id === "yahoo"
-            ? "Yahoo! Ads API のアプリ登録画面からクライアント情報を取得してください。Refresh Token は OAuth 認証フローで発行されます。"
+            ? "YAHOO_ADS_CLIENT_ID、YAHOO_ADS_CLIENT_SECRET は .env で設定済みです。下の「Yahoo で連携」をクリックすると、Business ID で OAuth 認証を行います。認証後、代理店アカウント配下のアカウントIDを追加してください。"
             : m.id === "meta"
               ? "Meta for Developers でアプリを作成し、Marketing API の権限を付与してください。Access Token は長期トークンを推奨します。"
               : m.id === "x"
@@ -598,6 +601,49 @@
           </div>
         </div>
         ` : ""}
+        ${m.id === "yahoo" ? `
+        <div style="margin-top:20px;padding:16px;background:rgba(255,0,51,.08);border:1px solid rgba(255,0,51,.2);border-radius:10px">
+          <div style="font-size:12px;font-weight:600;color:#cc0029;margin-bottom:10px">1. API認証元（OAuth）</div>
+          <div id="yahoo-auth-sources-list" style="margin-bottom:12px"></div>
+          <div style="margin-bottom:12px">
+            <input id="yahoo-auth-source-name" type="text" placeholder="認証元名（例: Yahoo広告_ワンエイティ）" maxlength="100" style="width:100%;border:1px solid var(--border);padding:8px 12px;border-radius:6px;font-size:13px;margin-bottom:8px">
+            <button id="yahoo-auth-connect-btn" type="button" style="display:inline-flex;align-items:center;gap:6px;background:#cc0029;color:#fff;padding:8px 16px;border-radius:8px;font-size:12px;font-weight:600;border:none;cursor:pointer">
+              Yahoo で連携
+            </button>
+          </div>
+          <div style="font-size:12px;font-weight:600;color:#cc0029;margin:16px 0 10px;padding-top:14px;border-top:1px dashed rgba(255,0,51,.3)">2. アカウント</div>
+          <div id="yahoo-ads-account-list" style="margin-bottom:16px"></div>
+          <div id="yahoo-ads-add-section" style="border-top:1px dashed rgba(255,0,51,.3);padding-top:14px;margin-top:14px">
+            <div style="font-size:11px;font-weight:600;color:var(--text-muted);margin-bottom:8px">アカウントを追加</div>
+            <div style="margin-bottom:8px">
+              <select id="yahoo-ads-auth-source-select" style="width:100%;border:1px solid var(--border);padding:8px 12px;border-radius:6px;font-size:13px;background:#fff">
+                <option value="">API認証元を選択</option>
+              </select>
+            </div>
+            <div style="margin-bottom:8px">
+              <input id="yahoo-ads-account-id" type="text" placeholder="アカウントID（例: 1432223）" maxlength="32" style="width:100%;border:1px solid var(--border);padding:8px 12px;border-radius:6px;font-size:13px;font-family:'DM Mono',monospace">
+            </div>
+            <div style="margin-bottom:8px">
+              <input id="yahoo-ads-agency-account-id" type="text" placeholder="代理店アカウント（例: belga8241waler-1002467041）※代理店配下の場合のみ" maxlength="64" style="width:100%;border:1px solid var(--border);padding:8px 12px;border-radius:6px;font-size:13px;font-family:'DM Mono',monospace">
+            </div>
+            <div style="margin-bottom:8px">
+              <input id="yahoo-ads-account-name" type="text" placeholder="アカウント名（任意）" maxlength="100" style="width:100%;border:1px solid var(--border);padding:8px 12px;border-radius:6px;font-size:13px">
+            </div>
+            <button id="yahoo-ads-add-account-btn" type="button" style="display:inline-flex;align-items:center;gap:6px;background:var(--good);color:#fff;padding:8px 16px;border-radius:8px;font-size:12px;font-weight:600;border:none;cursor:pointer">
+              保存
+            </button>
+          </div>
+          <div style="margin-top:16px;padding-top:14px;border-top:1px solid rgba(255,0,51,.2);display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+            <button id="yahoo-ads-debug-btn" type="button" style="border:1px solid #cc0029;color:#cc0029;background:#fff;padding:8px 16px;border-radius:8px;font-size:12px;cursor:pointer">
+              Yahoo レポート診断
+            </button>
+            <button id="yahoo-account-test-btn" type="button" style="border:1px solid #cc0029;color:#cc0029;background:#fff;padding:8px 16px;border-radius:8px;font-size:12px;cursor:pointer">
+              AccountService診断（MCC切り分け）
+            </button>
+            <span id="yahoo-debug-result" style="font-size:12px;max-width:100%;color:var(--text-muted)"></span>
+          </div>
+        </div>
+        ` : ""}
         ${m.id === "google" ? `
         <div style="margin-top:20px;padding-top:18px;border-top:1px solid var(--border);display:flex;gap:10px;align-items:center;flex-wrap:wrap" id="test-section-google">
           <button id="google-ads-verify-btn" type="button" style="border:1px solid var(--accent);color:var(--accent);background:#fff;padding:8px 16px;border-radius:8px;font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif;display:flex;align-items:center;gap:6px">
@@ -660,6 +706,213 @@
     renderAuthSourcesList();
     renderAuthSourceSelect();
     renderAccountList();
+
+    const yahooAuthSourcesListEl = document.getElementById("yahoo-auth-sources-list");
+    const yahooAuthSourceSelectEl = document.getElementById("yahoo-ads-auth-source-select");
+    const yahooAccountListEl = document.getElementById("yahoo-ads-account-list");
+    const yahooAddSectionEl = document.getElementById("yahoo-ads-add-section");
+    const renderYahooAuthSourcesList = () => {
+      const sources = lastConnectionStatus?.yahoo?.auth_sources || [];
+      if (!yahooAuthSourcesListEl) return;
+      if (sources.length === 0) {
+        yahooAuthSourcesListEl.innerHTML = "<div style='font-size:12px;color:var(--text-muted)'>API認証元がありません。認証元名を入力して「Yahoo で連携」をクリックしてください。</div>";
+        return;
+      }
+      yahooAuthSourcesListEl.innerHTML = sources.map((s) => `
+        <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:#fff;border:1px solid var(--border);border-radius:8px;margin-bottom:8px">
+          <span style="width:8px;height:8px;border-radius:50%;background:var(--good);flex-shrink:0"></span>
+          <span style="flex:1;font-size:13px"><strong>${escapeHtml(s.name)}</strong></span>
+          <button type="button" class="yahoo-auth-delete-btn" data-id="${s.id}" style="border:1px solid var(--bad);color:var(--bad);background:#fff;padding:4px 10px;border-radius:6px;font-size:11px;cursor:pointer">削除</button>
+        </div>
+      `).join("");
+    };
+    const renderYahooAuthSourceSelect = () => {
+      const sources = lastConnectionStatus?.yahoo?.auth_sources || [];
+      if (!yahooAuthSourceSelectEl) return;
+      yahooAuthSourceSelectEl.innerHTML = '<option value="">API認証元を選択</option>' + sources.map((s) => `<option value="${s.id}">${escapeHtml(s.name)}</option>`).join("");
+    };
+    const renderYahooAccountList = () => {
+      const accounts = lastConnectionStatus?.yahoo?.accounts || [];
+      if (!yahooAccountListEl) return;
+      if (yahooAddSectionEl) yahooAddSectionEl.style.display = accounts.length === 0 ? "block" : "none";
+      if (accounts.length === 0) {
+        yahooAccountListEl.innerHTML = "<div style='font-size:12px;color:var(--text-muted)'>登録アカウントはありません。API認証元を選択し、下のフォームから追加してください。</div>";
+        return;
+      }
+      yahooAccountListEl.innerHTML = accounts.map((a) => `
+        <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:#fff;border:1px solid var(--border);border-radius:8px;margin-bottom:8px">
+          <input type="radio" name="yahoo-ads-selected" value="${a.id}" ${a.is_selected ? "checked" : ""}>
+          <label style="flex:1;cursor:pointer;font-size:13px">
+            <strong>${escapeHtml(a.name)}</strong> — ID: ${escapeHtml(a.account_id)}${a.agency_account_id ? " / 代理店: " + escapeHtml(a.agency_account_id) : ""}${a.auth_source_name ? " <span style='color:var(--text-muted);font-size:11px'>(" + escapeHtml(a.auth_source_name) + ")</span>" : ""}
+          </label>
+          <button type="button" class="yahoo-ads-delete-btn" data-id="${a.id}" style="border:1px solid var(--bad);color:var(--bad);background:#fff;padding:4px 10px;border-radius:6px;font-size:11px;cursor:pointer">削除</button>
+        </div>
+      `).join("");
+    };
+    renderYahooAuthSourcesList();
+    renderYahooAuthSourceSelect();
+    renderYahooAccountList();
+
+    yahooAuthSourcesListEl?.addEventListener("click", async (e) => {
+      const btn = e.target.closest(".yahoo-auth-delete-btn");
+      if (btn && confirm("このAPI認証元を削除しますか？紐づくアカウントも削除されます。")) {
+        const r = await fetch("/api/ads/yahoo/auth-sources/" + btn.dataset.id, { method: "DELETE", credentials: "include" });
+        if (r.ok) {
+          const st = await fetch("/api/ads/status", { credentials: "include" }).then((x) => x.json());
+          lastConnectionStatus = st;
+          renderYahooAuthSourcesList();
+          renderYahooAuthSourceSelect();
+          renderYahooAccountList();
+        }
+      }
+    });
+    yahooAccountListEl?.addEventListener("change", async (e) => {
+      if (e.target.name === "yahoo-ads-selected" && e.target.value) {
+        const r = await fetch("/api/ads/yahoo/accounts/select", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ account_id: parseInt(e.target.value, 10) }),
+        });
+        if (r.ok) {
+          const st = await fetch("/api/ads/status", { credentials: "include" }).then((x) => x.json());
+          lastConnectionStatus = st;
+        }
+      }
+    });
+    yahooAccountListEl?.addEventListener("click", async (e) => {
+      const btn = e.target.closest(".yahoo-ads-delete-btn");
+      if (btn && confirm("削除しますか？")) {
+        const r = await fetch("/api/ads/yahoo/accounts/" + btn.dataset.id, { method: "DELETE", credentials: "include" });
+        if (r.ok) {
+          const st = await fetch("/api/ads/status", { credentials: "include" }).then((x) => x.json());
+          lastConnectionStatus = st;
+          renderYahooAccountList();
+        }
+      }
+    });
+
+    const yahooAuthConnectBtn = document.getElementById("yahoo-auth-connect-btn");
+    const yahooAuthSourceNameInput = document.getElementById("yahoo-auth-source-name");
+    if (yahooAuthConnectBtn) {
+      yahooAuthConnectBtn.onclick = () => {
+        const name = (yahooAuthSourceNameInput?.value || "").trim();
+        if (!name) {
+          alert("認証元名を入力してください");
+          return;
+        }
+        window.location.href = "/api/ads/yahoo/connect?name=" + encodeURIComponent(name);
+      };
+    }
+    const yahooAddAccountBtn = document.getElementById("yahoo-ads-add-account-btn");
+    const yahooAccountNameInput = document.getElementById("yahoo-ads-account-name");
+    const yahooAccountIdInput = document.getElementById("yahoo-ads-account-id");
+    const yahooAgencyAccountIdInput = document.getElementById("yahoo-ads-agency-account-id");
+    if (yahooAddAccountBtn) {
+      yahooAddAccountBtn.onclick = async () => {
+        const authId = (yahooAuthSourceSelectEl?.value || "").trim();
+        const name = (yahooAccountNameInput?.value || "").trim();
+        const aid = (yahooAccountIdInput?.value || "").trim();
+        const agid = (yahooAgencyAccountIdInput?.value || "").trim() || null;
+        if (!authId || !aid) {
+          alert("API認証元とアカウントIDを入力してください");
+          return;
+        }
+        try {
+          const r = await fetch("/api/ads/yahoo/accounts", {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name: name || undefined, account_id: aid, agency_account_id: agid || undefined, api_auth_source_id: authId }),
+          });
+          const d = await parseJsonResponse(r, { success: false });
+          if (d.success) {
+            const st = await fetch("/api/ads/status", { credentials: "include" }).then((x) => x.json());
+            lastConnectionStatus = st;
+            renderYahooAccountList();
+            yahooAccountNameInput.value = "";
+            yahooAccountIdInput.value = "";
+            yahooAgencyAccountIdInput.value = "";
+          } else {
+            alert(d.error || "登録に失敗しました");
+          }
+        } catch (e) {
+          alert("エラー: " + (e.message || "通信失敗"));
+        }
+      };
+    }
+    const yahooDebugBtn = document.getElementById("yahoo-ads-debug-btn");
+    const yahooDebugResult = document.getElementById("yahoo-debug-result");
+    if (yahooDebugBtn && yahooDebugResult) {
+      yahooDebugBtn.onclick = async () => {
+        yahooDebugResult.textContent = "診断中...";
+        yahooDebugResult.style.color = "var(--text-muted)";
+        yahooDebugBtn.disabled = true;
+        const ctrl = new AbortController();
+        const timeout = setTimeout(() => ctrl.abort(), 200000);
+        try {
+          const params = typeof getReportParams === "function" ? getReportParams() : {};
+          const q = new URLSearchParams(params).toString();
+          const r = await fetch("/api/ads/yahoo/report-debug" + (q ? "?" + q : ""), { credentials: "include", signal: ctrl.signal });
+          clearTimeout(timeout);
+          const d = await parseJsonResponse(r, {});
+          if (r.ok) {
+            const rows = d.rows || [];
+            const hint = d._hint || "";
+            const connectionOk = !!d._connectionOk;
+            yahooDebugResult.textContent = rows.length > 0
+              ? "成功: " + rows.length + "件のキャンペーンを取得"
+              : connectionOk
+                ? "接続OK: Add・Get API は正常です"
+                : hint || "データなし（期間内に実績がないか、APIエラーの可能性）";
+            yahooDebugResult.style.color = rows.length > 0 || connectionOk ? "var(--good)" : "var(--warn)";
+            if (d._debug) {
+              console.log("[Yahoo Ads 診断] APIレスポンス:", d._debug);
+            }
+            if (hint && !rows.length && !connectionOk) {
+              const errDetail = d._debug?.errors ? "\n\nエラー詳細: " + JSON.stringify(d._debug.errors) : "";
+              alert(hint + errDetail);
+            }
+          } else {
+            yahooDebugResult.textContent = "エラー: " + (d.error || r.status);
+            yahooDebugResult.style.color = "var(--bad)";
+          }
+        } catch (e) {
+          yahooDebugResult.textContent = "エラー: " + (e.name === "AbortError" ? "タイムアウト（3分超）" : (e.message || "通信失敗"));
+          yahooDebugResult.style.color = "var(--bad)";
+        } finally {
+          clearTimeout(timeout);
+          yahooDebugBtn.disabled = false;
+        }
+      };
+    }
+    const yahooAccountTestBtn = document.getElementById("yahoo-account-test-btn");
+    if (yahooAccountTestBtn && yahooDebugResult) {
+      yahooAccountTestBtn.onclick = async () => {
+        yahooDebugResult.textContent = "AccountService診断中...";
+        yahooDebugResult.style.color = "var(--text-muted)";
+        yahooAccountTestBtn.disabled = true;
+        try {
+          const r = await fetch("/api/ads/yahoo/account-test", { credentials: "include" });
+          const d = await parseJsonResponse(r, {});
+          if (d.ok) {
+            yahooDebugResult.textContent = "200 OK: " + (d.interpretation || "接続権限あり");
+            yahooDebugResult.style.color = "var(--good)";
+            console.log("[Yahoo AccountService診断]", d);
+          } else {
+            const msg = d.interpretation || d.error || "HTTP " + (d.status || r.status);
+            yahooDebugResult.textContent = msg;
+            yahooDebugResult.style.color = "var(--bad)";
+            console.log("[Yahoo AccountService診断]", d);
+          }
+        } catch (e) {
+          yahooDebugResult.textContent = "エラー: " + (e.message || "通信失敗");
+          yahooDebugResult.style.color = "var(--bad)";
+        } finally {
+          yahooAccountTestBtn.disabled = false;
+        }
+      };
+    }
     accountListEl?.addEventListener("change", async (e) => {
       if (e.target.name === "google-ads-selected" && e.target.value) {
         const r = await fetch("/api/ads/google/accounts/select", {
@@ -844,7 +1097,7 @@
   }
 
   let lastConnectionStatus = {};
-  window.openSettings = async function () {
+  window.openSettings = async function (defaultTab) {
     try {
       const res = await fetch("/api/ads/status", { credentials: "include" });
       if (res.ok) {
@@ -852,6 +1105,8 @@
         lastConnectionStatus = st;
         if (st.google?.connected) apiMedia[0].status = "connected";
         else apiMedia[0].status = "disconnected";
+        if (st.yahoo?.connected) apiMedia[1].status = "connected";
+        else apiMedia[1].status = "disconnected";
         const conn = [];
         if (st.google?.connected) conn.push("Google Ads");
         if (st.yahoo?.connected) conn.push("Yahoo広告");
@@ -861,6 +1116,7 @@
       }
     } catch (e) {}
     buildModal();
+    if (defaultTab) switchApiTab(defaultTab);
     const ov = document.getElementById("settings-overlay");
     if (ov) {
       ov.style.display = "flex";
@@ -903,16 +1159,21 @@
       .replace(/>/g, "&gt;");
   }
 
-  async function loadAdsData() {
+  async function loadAdsData(options = {}) {
     const params = getReportParams();
     if (!params) {
       console.warn("ads: 期間が指定されていません");
       return;
     }
     const query = new URLSearchParams(params).toString();
+    const timeoutMs = options.timeoutMs ?? 200000;
+
+    const ctrl = new AbortController();
+    const timeoutId = timeoutMs > 0 ? setTimeout(() => ctrl.abort(), timeoutMs) : null;
 
     try {
-      const res = await fetch(`/api/ads/report?${query}`, { credentials: "include" });
+      const res = await fetch(`/api/ads/report?${query}`, { credentials: "include", signal: ctrl.signal });
+      if (timeoutId) clearTimeout(timeoutId);
       if (!res.ok) {
         const err = await parseJsonResponse(res, {}).catch(() => ({}));
         console.warn("ads report error", err);
@@ -922,6 +1183,10 @@
       adsData = data.rows || [];
       const meta = data.meta || {};
       lastReportMeta = meta || {};
+      if (meta.requested_startDate) {
+        const called = meta._media_called || [];
+        console.log("[Ads] 取得結果:", `${meta.requested_startDate}〜${meta.requested_endDate}`, "呼び出し媒体:", called.join(", ") || "なし", "| Google:", meta.google_row_count ?? 0, "件, Yahoo:", meta.yahoo_row_count ?? 0, "件");
+      }
       lastReportHint = data._hint || null;
 
       if (adsData.length > 0) {
@@ -957,12 +1222,23 @@
       }
       const badgeEl = document.getElementById("badge-integrated");
       if (badgeEl) {
-        badgeEl.title = meta.google_customer_id
-          ? "取得元 Customer ID: " + meta.google_customer_id
-          : (badgeEl.title || "API連携状態");
+        const parts = [];
+        if (meta.requested_startDate && meta.requested_endDate) {
+          parts.push(`取得期間: ${meta.requested_startDate}〜${meta.requested_endDate}`);
+        }
+        const gc = meta.google_row_count ?? 0;
+        const yc = meta.yahoo_row_count ?? 0;
+        if (gc > 0 || yc > 0) parts.push(`Google: ${gc}件, Yahoo: ${yc}件`);
+        if (meta.google_customer_id) parts.push("GoogleID: " + meta.google_customer_id);
+        if (meta.yahoo_account_id) parts.push("YahooID: " + meta.yahoo_account_id);
+        badgeEl.title = parts.length > 0 ? parts.join("\n") : (badgeEl.title || "API連携状態");
       }
     } catch (e) {
+      if (timeoutId) clearTimeout(timeoutId);
       console.warn("ads load failed", e);
+      if (e.name === "AbortError" && timeoutMs > 0) {
+        lastReportHint = "取得がタイムアウトしました（約" + Math.round(timeoutMs / 60000) + "分）。Yahoo API の応答待ちで時間がかかることがあります。";
+      }
     }
   }
 
@@ -1258,8 +1534,10 @@
   function handleOAuthResult() {
     const params = new URLSearchParams(window.location.search);
     const linked = params.get("google_ads");
+    const yahooLinked = params.get("yahoo_ads");
     const err = params.get("google_ads_error");
-    const refreshStatusAndOpenSettings = () => {
+    const yahooErr = params.get("yahoo_ads_error");
+    const refreshStatusAndOpenSettings = (tab) => {
       fetch("/api/ads/status", { credentials: "include" })
         .then(async (r) => parseJsonResponse(r, {}))
         .then((st) => {
@@ -1271,13 +1549,17 @@
           if (st.microsoft?.connected) conn.push("Microsoft Advertising");
           connectedMediaFromStatus = conn;
           refreshMediaFilter();
-          if (typeof openSettings === "function") openSettings();
+          if (typeof openSettings === "function") openSettings(tab);
         })
         .catch(() => {});
     };
     if (linked === "auth_linked") {
       if (window.history.replaceState) window.history.replaceState({}, "", window.location.pathname);
-      refreshStatusAndOpenSettings();
+      refreshStatusAndOpenSettings("google");
+    }
+    if (yahooLinked === "auth_linked") {
+      if (window.history.replaceState) window.history.replaceState({}, "", window.location.pathname);
+      refreshStatusAndOpenSettings("yahoo");
     }
     if (linked === "linked") {
       if (window.history.replaceState) window.history.replaceState({}, "", window.location.pathname);
@@ -1303,6 +1585,10 @@
     if (err) {
       if (window.history.replaceState) window.history.replaceState({}, "", window.location.pathname);
       alert("Google Ads 連携エラー: " + decodeURIComponent(err));
+    }
+    if (yahooErr) {
+      if (window.history.replaceState) window.history.replaceState({}, "", window.location.pathname);
+      alert("Yahoo広告 連携エラー: " + decodeURIComponent(yahooErr));
     }
   }
 
@@ -1352,12 +1638,22 @@
         refreshMediaCards();
       });
     });
-    ($("btn-update") || {}).addEventListener?.("click", () => {
-      loadAdsData().then(() => {
-        updateOverviewFromData();
-        refreshMediaCards();
+    const btnUpdate = $("btn-update");
+    if (btnUpdate) {
+      btnUpdate.addEventListener("click", async () => {
+        btnUpdate.disabled = true;
+        const origText = btnUpdate.textContent;
+        btnUpdate.textContent = "取得中...";
+        try {
+          await loadAdsData();
+        } finally {
+          updateOverviewFromData();
+          refreshMediaCards();
+          btnUpdate.disabled = false;
+          btnUpdate.textContent = origText;
+        }
       });
-    });
+    }
   }
 
   document.addEventListener("DOMContentLoaded", init);

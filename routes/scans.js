@@ -507,13 +507,16 @@ router.get("/", async (req, res) => {
     }
 
     let rows;
+    const SCANS_LIST_LIMIT = 200; // 一覧表示の最大件数（履歴の肥大化を防ぐ）
     if (isAdmin(user)) {
       try {
         const [r] = await pool.query(
           `SELECT s.id, s.target_url, s.status, s.created_at, s.started_at, s.avg_score, s.updated_at, s.company_id, s.gsc_property_url, s.error_message, c.name AS company_name
            FROM scans s
            LEFT JOIN companies c ON s.company_id = c.id
-           ORDER BY COALESCE(s.updated_at, s.created_at) DESC`
+           ORDER BY COALESCE(s.updated_at, s.created_at) DESC
+           LIMIT ?`,
+          [SCANS_LIST_LIMIT]
         );
         rows = r;
       } catch {
@@ -521,7 +524,9 @@ router.get("/", async (req, res) => {
           `SELECT s.id, s.target_url, s.status, s.created_at, s.avg_score, s.updated_at, s.company_id, s.gsc_property_url, s.error_message, c.name AS company_name
            FROM scans s
            LEFT JOIN companies c ON s.company_id = c.id
-           ORDER BY s.created_at DESC`
+           ORDER BY s.created_at DESC
+           LIMIT ?`,
+          [SCANS_LIST_LIMIT]
         );
         rows = r.map((row) => ({ ...row, started_at: null }));
       }
@@ -687,17 +692,85 @@ router.get("/:scanId/progress", async (req, res) => {
       `SELECT COUNT(*) AS cnt FROM scan_pages WHERE scan_id = ?`,
       [scanId]
     );
+    let status = scan?.status || "unknown";
+    const processedPages = count?.cnt ?? 0;
+
+    // リカバリ: status が running のままの場合の修復（別 try で失敗してもレスポンスは返す）
+    if (status === "running" && processedPages > 0) {
+      try {
+        const [[hist]] = await pool.query(
+          `SELECT 1 FROM scan_history WHERE scan_id = ? LIMIT 1`,
+          [scanId]
+        );
+        if (hist) {
+          await pool.query(
+            `UPDATE scans SET status = 'completed', updated_at = NOW() WHERE id = ?`,
+            [scanId]
+          );
+          status = "completed";
+        } else {
+          const [[scanExtra]] = await pool.query(
+            `SELECT updated_at, created_at FROM scans WHERE id = ? LIMIT 1`,
+            [scanId]
+          ).catch(() => [[null]]);
+          const refTime = scanExtra?.updated_at || scanExtra?.created_at;
+          if (refTime) {
+            const ref = new Date(refTime).getTime();
+            if (Date.now() - ref > 20 * 60 * 1000) {
+              const [[avgRow]] = await pool.query(
+                `SELECT ROUND(AVG(score)) AS avg_score FROM scan_pages WHERE scan_id = ?`,
+                [scanId]
+              );
+              const avg = avgRow?.avg_score ?? null;
+              await pool.query(
+                `UPDATE scans SET status = 'completed', avg_score = ?, updated_at = NOW() WHERE id = ?`,
+                [avg, scanId]
+              );
+              status = "completed";
+            }
+          }
+        }
+      } catch (recErr) {
+        console.warn("progress recovery skipped:", recErr?.message || recErr);
+      }
+    }
 
     return res.json({
-      processed_pages: count.cnt,
+      processed_pages: processedPages,
       total_pages: MAX_PAGES,
-      status: scan?.status || "unknown",
+      status,
     });
   } catch (e) {
     console.error("progress error:", e);
     return res.status(500).json({ error: "progress error" });
   }
 });
+
+// GET /api/scans/:scanId/link-edges — 内部リンクのエッジ一覧（ネットワーク図用）
+// server.js で明示的に登録（ルート競合を避ける）
+async function handleLinkEdges(req, res) {
+  const user = await getUserWithContext(req);
+  if (!user) {
+    return res.status(401).json({ error: "unauthorized" });
+  }
+  const scanId = req.params.scanId || req.params.id;
+  if (!(await assertScanAccess(scanId, user))) {
+    return res.status(404).json({ error: "not found" });
+  }
+  try {
+    const [rows] = await pool
+      .query(`SELECT from_url, to_url FROM scan_links WHERE scan_id = ?`, [scanId])
+      .catch(() => [[]]);
+    return res.json({
+      scan_id: scanId,
+      links: (rows || []).map((r) => ({ from: r.from_url, to: r.to_url })),
+    });
+  } catch (e) {
+    console.error("link-edges:", e);
+    return res.status(500).json({ error: e.message });
+  }
+}
+router.get("/:scanId/link-edges", (req, res, next) => handleLinkEdges(req, res).catch(next));
 
 // GET /api/scans/:scanId/link-analysis — リンク分析（PageRank）
 // user も company_id + user_url_access でアクセス可能
@@ -878,4 +951,5 @@ router.delete("/:scanId", async (req, res) => {
   }
 });
 
+router.handleLinkEdges = handleLinkEdges;
 module.exports = router;

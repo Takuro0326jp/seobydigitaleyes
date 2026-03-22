@@ -12,6 +12,7 @@ const { getUserWithContext } = require("../services/accessControl");
 const { getUserIdFromRequest } = require("../services/session");
 const { fetchAllReports, getConnectionStatus, getDateRangeForMonth, getDateRangeFromDates } = require("../services/ads");
 const { fetchGoogleAdsReportWithMeta, validateCustomerAccess } = require("../services/ads/googleAds");
+const { fetchYahooAdsReportWithMeta, testYahooAccountService } = require("../services/ads/yahooAds");
 const {
   getOAuth2Client,
   getRedirectUri,
@@ -28,6 +29,14 @@ const {
   setSelectedAccount,
   deleteAccount,
 } = require("../services/googleAdsAccounts");
+const {
+  listAccounts: listYahooAccounts,
+  getSelectedAccount: getSelectedYahooAccount,
+  createAccount: createYahooAccount,
+  setSelectedAccount: setSelectedYahooAccount,
+  deleteAccount: deleteYahooAccount,
+} = require("../services/yahooAdsAccounts");
+const { getAuthUrl, exchangeCodeForTokens, getRedirectUri: getYahooRedirectUri } = require("../services/yahooAdsOAuth");
 const apiAuthSources = require("../services/apiAuthSources");
 
 /** GET /api/ads/test-api - report-debug と同じ認証でAPIを直接叩いてテスト
@@ -204,6 +213,55 @@ router.get("/report-debug", async (req, res) => {
       error: "レポートの取得に失敗しました。",
       _debug: { error: e.message, route: "report-debug" },
     });
+  }
+});
+
+/** GET /api/ads/yahoo/report-debug - Yahoo Ads API の生レスポンスを確認（診断用） */
+router.get("/yahoo/report-debug", async (req, res) => {
+  const user = await getUserWithContext(req);
+  if (!user) return res.status(401).json({ error: "ログインが必要です" });
+  const month = (req.query.month || "").trim();
+  const startDate = (req.query.startDate || "").trim();
+  const endDate = (req.query.endDate || "").trim();
+  let range;
+  if (startDate && endDate && getDateRangeFromDates(startDate, endDate)) {
+    range = getDateRangeFromDates(startDate, endDate);
+  } else {
+    range = getDateRangeForMonth(month || undefined);
+  }
+  try {
+    const yahooResult = await fetchYahooAdsReportWithMeta(
+      range.startDate,
+      range.endDate,
+      user.id,
+      { debug: true, connectionTest: true }
+    );
+    res.json({
+      rows: yahooResult.rows || [],
+      meta: { yahoo_account_id: yahooResult.customerId || null },
+      _hint: yahooResult._hint || null,
+      _connectionOk: yahooResult._connectionOk || false,
+      _debug: yahooResult._debug || null,
+    });
+  } catch (e) {
+    console.error("[ads] yahoo report-debug error:", e.message);
+    res.status(500).json({
+      error: "Yahoo レポートの取得に失敗しました。",
+      _debug: { error: e.message },
+    });
+  }
+});
+
+/** GET /api/ads/yahoo/account-test - AccountService/get で権限診断（MCC切り分け用） */
+router.get("/yahoo/account-test", async (req, res) => {
+  const user = await getUserWithContext(req);
+  if (!user) return res.status(401).json({ error: "ログインが必要です" });
+  try {
+    const result = await testYahooAccountService(user.id);
+    res.json(result);
+  } catch (e) {
+    console.error("[ads] yahoo account-test error:", e.message);
+    res.status(500).json({ error: e.message });
   }
 });
 
@@ -682,6 +740,205 @@ router.post("/google/disconnect", async (req, res) => {
   } catch (e) {
     console.error("[ads] disconnect error:", e.message);
     return res.status(500).json({ error: "連携解除に失敗しました。" });
+  }
+});
+
+// --- Yahoo! 広告 ---
+
+/** GET /api/ads/yahoo/connect - Yahoo Ads OAuth 開始 */
+router.get("/yahoo/connect", async (req, res) => {
+  const userId = await getUserIdFromRequest(req);
+  if (!userId) return res.redirect("/?error=login_required");
+
+  const { clientId } = require("../services/yahooAdsOAuth").getClientConfig();
+  if (!clientId) {
+    return res.status(503).json({
+      error: "Yahoo Ads OAuth が設定されていません。.env に YAHOO_ADS_CLIENT_ID / YAHOO_ADS_CLIENT_SECRET を設定してください。",
+    });
+  }
+
+  const authName = (req.query.name || req.query.account_name || "").trim().slice(0, 100);
+  if (!authName) {
+    return res.status(400).json({ error: "認証元名を入力してください（name パラメータ）" });
+  }
+
+  const { url, state } = getAuthUrl(req);
+  if (!url) return res.status(503).json({ error: "Yahoo OAuth の設定が不正です" });
+
+  try {
+    const [cols] = await pool.query("SHOW COLUMNS FROM oauth_states LIKE 'platform'");
+    if (cols?.length) {
+      await pool.query(
+        "INSERT INTO oauth_states (state, user_id, expires_at, account_name, platform) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 10 MINUTE), ?, 'yahoo')",
+        [state, userId, authName]
+      );
+    } else {
+      await pool.query(
+        "INSERT INTO oauth_states (state, user_id, expires_at, account_name) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 10 MINUTE), ?)",
+        [state, userId, authName]
+      );
+    }
+  } catch (e) {
+    await pool.query(
+      "INSERT INTO oauth_states (state, user_id, expires_at) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 10 MINUTE))",
+      [state, userId]
+    );
+  }
+
+  res.redirect(url);
+});
+
+/** GET /api/ads/yahoo/callback - Yahoo Ads OAuth コールバック */
+router.get("/yahoo/callback", async (req, res) => {
+  const { code, state, error } = req.query;
+
+  if (error) {
+    console.warn("[Yahoo Ads OAuth] error:", error);
+    return res.redirect("/ads.html?yahoo_ads_error=" + encodeURIComponent(error));
+  }
+  if (!code || !state) return res.redirect("/ads.html?yahoo_ads_error=missing_params");
+
+  let rows;
+  try {
+    [rows] = await pool.query(
+      "SELECT user_id, account_name FROM oauth_states WHERE state = ? AND expires_at > NOW() LIMIT 1",
+      [state]
+    );
+  } catch (e) {
+    return res.redirect("/ads.html?yahoo_ads_error=invalid_state");
+  }
+  await pool.query("DELETE FROM oauth_states WHERE state = ?", [state]);
+
+  if (!rows?.length) return res.redirect("/ads.html?yahoo_ads_error=invalid_state");
+
+  const userId = rows[0].user_id;
+  const authName = (rows[0].account_name || "").trim() || "Yahoo広告";
+
+  const redirectUri = getYahooRedirectUri(req);
+  try {
+    const tokens = await exchangeCodeForTokens(code, redirectUri, state);
+    if (!tokens?.refresh_token) {
+      return res.redirect("/ads.html?yahoo_ads_error=no_refresh_token");
+    }
+
+    const authSourceId = await apiAuthSources.create(userId, {
+      name: authName,
+      platform: "yahoo",
+      tokens: {
+        access_token: tokens.access_token,
+        refresh_token: tokens.refresh_token,
+        expiry_date: tokens.expiry_date,
+      },
+    });
+    if (authSourceId) {
+      return res.redirect("/ads.html?yahoo_ads=auth_linked&auth_source=" + authSourceId);
+    }
+    return res.redirect("/ads.html?yahoo_ads_error=save_failed");
+  } catch (e) {
+    console.error("[Yahoo Ads OAuth] token exchange error:", e.message);
+    return res.redirect("/ads.html?yahoo_ads_error=" + encodeURIComponent(e.message || "token_exchange_failed"));
+  }
+});
+
+/** DELETE /api/ads/yahoo/auth-sources/:id - Yahoo API認証元削除 */
+router.delete("/yahoo/auth-sources/:id", async (req, res) => {
+  const userId = await getUserIdFromRequest(req);
+  if (!userId) return res.status(401).json({ error: "ログインが必要です" });
+  const id = parseInt(req.params.id, 10);
+  if (!id) return res.status(400).json({ error: "無効なIDです" });
+  try {
+    const authSource = await apiAuthSources.getById(id, userId);
+    if (!authSource || authSource.platform !== "yahoo") {
+      return res.status(404).json({ error: "指定したYahoo API認証元が見つかりません" });
+    }
+    const ok = await apiAuthSources.remove(userId, id);
+    res.json({ success: ok });
+  } catch (e) {
+    console.error("[ads] yahoo auth-sources delete error:", e.message);
+    res.status(500).json({ error: "削除に失敗しました" });
+  }
+});
+
+/** GET /api/ads/yahoo/auth-sources - Yahoo API認証元一覧 */
+router.get("/yahoo/auth-sources", async (req, res) => {
+  const userId = await getUserIdFromRequest(req);
+  if (!userId) return res.status(401).json({ error: "ログインが必要です" });
+  try {
+    const sources = await apiAuthSources.list(userId, "yahoo");
+    res.json({ auth_sources: sources });
+  } catch (e) {
+    console.error("[ads] yahoo auth-sources list error:", e.message);
+    res.status(500).json({ error: "取得に失敗しました" });
+  }
+});
+
+/** POST /api/ads/yahoo/accounts - アカウント追加 */
+router.post("/yahoo/accounts", async (req, res) => {
+  const userId = await getUserIdFromRequest(req);
+  if (!userId) return res.status(401).json({ error: "ログインが必要です" });
+  const { name, account_id, agency_account_id, api_auth_source_id } = req.body || {};
+  const aid = (account_id || "").trim();
+  const authId = api_auth_source_id ? parseInt(api_auth_source_id, 10) : null;
+  if (!aid) return res.status(400).json({ error: "アカウントID を入力してください" });
+  if (!authId) return res.status(400).json({ error: "API認証元を選択してください" });
+  try {
+    const authSource = await apiAuthSources.getById(authId, userId);
+    if (!authSource || authSource.platform !== "yahoo") {
+      return res.status(400).json({ error: "指定したYahoo API認証元が見つかりません" });
+    }
+    const accountId = await createYahooAccount(userId, {
+      name: (name || "").trim(),
+      accountId: aid,
+      agencyAccountId: (agency_account_id || "").trim() || null,
+      apiAuthSourceId: authId,
+    });
+    if (!accountId) return res.status(500).json({ error: "アカウントの登録に失敗しました" });
+    res.json({ success: true, account_id: accountId });
+  } catch (e) {
+    console.error("[ads] yahoo accounts create error:", e.message);
+    res.status(500).json({ error: "登録に失敗しました: " + (e.message || "") });
+  }
+});
+
+/** GET /api/ads/yahoo/accounts - 登録済みアカウント一覧 */
+router.get("/yahoo/accounts", async (req, res) => {
+  const userId = await getUserIdFromRequest(req);
+  if (!userId) return res.status(401).json({ error: "ログインが必要です" });
+  try {
+    const accounts = await listYahooAccounts(userId);
+    res.json({ accounts });
+  } catch (e) {
+    console.error("[ads] yahoo accounts list error:", e.message);
+    res.status(500).json({ error: "取得に失敗しました" });
+  }
+});
+
+/** POST /api/ads/yahoo/accounts/select - 使用するアカウントを選択 */
+router.post("/yahoo/accounts/select", async (req, res) => {
+  const userId = await getUserIdFromRequest(req);
+  if (!userId) return res.status(401).json({ error: "ログインが必要です" });
+  const accountId = req.body?.account_id ? parseInt(req.body.account_id, 10) : null;
+  try {
+    await setSelectedYahooAccount(userId, accountId);
+    res.json({ success: true });
+  } catch (e) {
+    console.error("[ads] yahoo accounts select error:", e.message);
+    res.status(500).json({ error: "選択に失敗しました" });
+  }
+});
+
+/** DELETE /api/ads/yahoo/accounts/:id - アカウント削除 */
+router.delete("/yahoo/accounts/:id", async (req, res) => {
+  const userId = await getUserIdFromRequest(req);
+  if (!userId) return res.status(401).json({ error: "ログインが必要です" });
+  const accountId = parseInt(req.params.id, 10);
+  if (!accountId) return res.status(400).json({ error: "無効なIDです" });
+  try {
+    const ok = await deleteYahooAccount(userId, accountId);
+    res.json({ success: ok });
+  } catch (e) {
+    console.error("[ads] yahoo accounts delete error:", e.message);
+    res.status(500).json({ error: "削除に失敗しました" });
   }
 });
 

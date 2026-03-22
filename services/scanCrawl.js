@@ -348,7 +348,7 @@ async function fetchAndParse(url, depth) {
 }
 
 /**
- * 内部リンク構造から PageRank を計算（0〜1 正規化）
+ * 内部リンク構造から PageRank を計算（生スコア、合計≒1）
  */
 function computePageRank(urls, edges) {
   const urlToIdx = new Map();
@@ -371,7 +371,7 @@ function computePageRank(urls, edges) {
 
   let pr = urls.map(() => 1 / n);
   const damping = 0.85;
-  for (let iter = 0; iter < 50; iter++) {
+  for (let iter = 0; iter < 100; iter++) {
     const next = urls.map(() => (1 - damping) / n);
     for (let i = 0; i < n; i++) {
       for (const j of linkGraph[i]) next[j] += (damping * pr[i]) / outDegree[i];
@@ -379,14 +379,8 @@ function computePageRank(urls, edges) {
     pr = next;
   }
 
-  const maxPr = Math.max(...pr);
-  const minPr = Math.min(...pr);
-  const range = maxPr - minPr || 1;
   const prMap = new Map();
-  urls.forEach((u, i) => {
-    const normalized = (pr[i] - minPr) / range;
-    prMap.set(u, normalized);
-  });
+  urls.forEach((u, i) => prMap.set(u, pr[i]));
   return prMap;
 }
 
@@ -615,6 +609,18 @@ async function runScanCrawl(scanId, startUrl) {
       await insertPagesIncremental(scanId, remainder);
     }
 
+    // 取得ページがなくなった時点で completed にし、ポーリングを停止させる
+    // （PageRank・スコア・リンクはこのあとバックグラウンドで計算・更新される）
+    try {
+      await pool.query(
+        `UPDATE scans SET status = 'completed', updated_at = NOW() WHERE id = ?`,
+        [scanId]
+      );
+      console.log("[scanCrawl] status=completed (fetch done):", scanId, buffer.length, "pages");
+    } catch (updErr) {
+      console.warn("[scanCrawl] early status update failed:", updErr?.message);
+    }
+
     const exitReason = buffer.length >= MAX_PAGES
       ? "MAX_PAGES到達"
       : queue.length === 0
@@ -632,8 +638,42 @@ async function runScanCrawl(scanId, startUrl) {
     const urls = buffer.map((p) => p.url);
     const prMap = computePageRank(urls, linkEdges);
 
+    // 被リンク数・発リンク数・ジュース受信/送出を計算
+    const urlSet = new Set(urls);
+    const outboundCount = new Map();
+    const inboundCount = new Map();
+    for (const u of urls) {
+      outboundCount.set(u, 0);
+      inboundCount.set(u, 0);
+    }
+    for (const { from: fromUrl, to: toUrl } of linkEdges) {
+      if (urlSet.has(fromUrl) && urlSet.has(toUrl) && fromUrl !== toUrl) {
+        outboundCount.set(fromUrl, (outboundCount.get(fromUrl) ?? 0) + 1);
+        inboundCount.set(toUrl, (inboundCount.get(toUrl) ?? 0) + 1);
+      }
+    }
+    const juiceReceived = new Map();
+    const juiceSent = new Map();
+    for (const u of urls) {
+      juiceReceived.set(u, 0);
+      juiceSent.set(u, 0);
+    }
+    const DAMPING = 0.85;
+    for (const { from: fromUrl, to: toUrl } of linkEdges) {
+      if (fromUrl === toUrl) continue;
+      const prFrom = prMap.get(fromUrl) ?? 0;
+      const out = Math.max(outboundCount.get(fromUrl) ?? 1, 1);
+      const juice = (prFrom * DAMPING) / out;
+      juiceReceived.set(toUrl, (juiceReceived.get(toUrl) ?? 0) + juice);
+      juiceSent.set(fromUrl, (juiceSent.get(fromUrl) ?? 0) + juice);
+    }
+
     // GSC データはクロール時点では未取得のため Performance=0（将来連携時に calcPerformanceScore で加算）
     const gscByUrl = new Map();
+
+    const sortedPr = [...prMap.values()].sort((a, b) => a - b);
+    const p33 = sortedPr[Math.floor(sortedPr.length * 0.33)] ?? 0;
+    const p66 = sortedPr[Math.floor(sortedPr.length * 0.66)] ?? 0;
 
     for (const p of buffer) {
       const deductions = [...(p.onPageDeductions || [])];
@@ -644,10 +684,10 @@ async function runScanCrawl(scanId, startUrl) {
       else if (internalLinks <= 3) deductions.push({ label: "内部リンク少ない", value: -5, reason: `${internalLinks}本` });
       else if (internalLinks <= 10) deductions.push({ label: "内部リンクやや少ない", value: -2, reason: `${internalLinks}本` });
 
-      // ② Structure: PageRank
+      // ② Structure: PageRank（生スコアのため、相対的なパーセンタイルで判定）
       const pagerank = prMap.get(p.url) ?? 0;
-      if (pagerank < 0.2) deductions.push({ label: "PageRank低", value: -10, reason: `PR ${pagerank.toFixed(2)}` });
-      else if (pagerank < 0.5) deductions.push({ label: "PageRank中", value: -5, reason: `PR ${pagerank.toFixed(2)}` });
+      if (pagerank < p33) deductions.push({ label: "PageRank低", value: -10, reason: `PR ${pagerank.toFixed(4)}` });
+      else if (pagerank < p66) deductions.push({ label: "PageRank中", value: -5, reason: `PR ${pagerank.toFixed(4)}` });
 
       // ② Structure: 階層
       const depth = p.depth ?? 1;
@@ -689,6 +729,12 @@ async function runScanCrawl(scanId, startUrl) {
         deductions,
         totalDeduction: result.totalDeduction,
       };
+      p.page_rank = prMap.get(p.url) ?? 0;
+      p.inbound_link_count = inboundCount.get(p.url) ?? 0;
+      p.outbound_link_count = outboundCount.get(p.url) ?? 0;
+      p.juice_received = juiceReceived.get(p.url) ?? 0;
+      p.juice_sent = juiceSent.get(p.url) ?? 0;
+      p.is_orphan = (p.inbound_link_count === 0) ? 1 : 0;
     }
 
     console.log("[scanCrawl] DB getConnection:", scanId);
@@ -700,14 +746,23 @@ async function runScanCrawl(scanId, startUrl) {
         const breakdown = p.score_breakdown
           ? JSON.stringify(p.score_breakdown)
           : null;
+        const pageRank = p.page_rank ?? 0;
+        const inboundCnt = p.inbound_link_count ?? 0;
+        const outboundCnt = p.outbound_link_count ?? 0;
+        const juiceRecv = p.juice_received ?? 0;
+        const juiceSnd = p.juice_sent ?? 0;
+        const isOrphan = p.is_orphan ? 1 : 0;
         if (useScoreBreakdown) {
           try {
             await conn.query(
-              `UPDATE scan_pages SET score = ?, score_breakdown = ? WHERE scan_id = ? AND url = ?`,
-              [p.score, breakdown, scanId, p.url]
+              `UPDATE scan_pages SET score = ?, score_breakdown = ?,
+               page_rank = ?, inbound_link_count = ?, outbound_link_count = ?,
+               juice_received = ?, juice_sent = ?, is_orphan = ?
+               WHERE scan_id = ? AND url = ?`,
+              [p.score, breakdown, pageRank, inboundCnt, outboundCnt, juiceRecv, juiceSnd, isOrphan, scanId, p.url]
             );
           } catch (updErr) {
-            if (updErr?.message && /score_breakdown|Unknown column/.test(updErr.message)) {
+            if (updErr?.message && /score_breakdown|page_rank|Unknown column/.test(updErr.message)) {
               useScoreBreakdown = false;
             } else {
               throw updErr;
@@ -715,10 +770,19 @@ async function runScanCrawl(scanId, startUrl) {
           }
         }
         if (!useScoreBreakdown) {
-          await conn.query(
-            `UPDATE scan_pages SET score = ? WHERE scan_id = ? AND url = ?`,
-            [p.score, scanId, p.url]
-          );
+          try {
+            await conn.query(
+              `UPDATE scan_pages SET score = ?, page_rank = ?, inbound_link_count = ?,
+               outbound_link_count = ?, juice_received = ?, juice_sent = ?, is_orphan = ?
+               WHERE scan_id = ? AND url = ?`,
+              [p.score, pageRank, inboundCnt, outboundCnt, juiceRecv, juiceSnd, isOrphan, scanId, p.url]
+            );
+          } catch (legacyErr) {
+            await conn.query(
+              `UPDATE scan_pages SET score = ? WHERE scan_id = ? AND url = ?`,
+              [p.score, scanId, p.url]
+            );
+          }
         }
       }
       console.log("[scanCrawl] DB inserting links:", scanId, linkEdges.length);
@@ -759,6 +823,23 @@ async function runScanCrawl(scanId, startUrl) {
         [avg, scanId]
       );
     }
+    // 今週やるべきこと アクション生成（非同期・UIをブロックしない）
+    pool
+      .query("SELECT user_id FROM scans WHERE id = ? LIMIT 1", [scanId])
+      .then(([[row]]) => {
+        if (row?.user_id) {
+          const { generateActionItems } = require("./actionItemGeneration");
+          const mockReq = {
+            protocol: "https",
+            get: (h) =>
+              h === "host"
+                ? (process.env.APP_URL || "localhost:3000").replace(/^https?:\/\//, "").replace(/\/$/, "")
+                : "",
+          };
+          return generateActionItems(scanId, row.user_id, mockReq);
+        }
+      })
+      .catch((err) => console.warn("[scanCrawl] action item generation:", err?.message));
   } catch (e) {
     console.error("runScanCrawl error:", e);
     const errMsg = (e?.message || String(e)).slice(0, 500);

@@ -347,13 +347,14 @@ async function handleResult(req, res) {
   try {
     const [rows] = await pool.query(
       `SELECT url, depth, score, status_code, internal_links, external_links,
-              title, issues, h1_count, word_count, is_noindex, score_breakdown
+              title, issues, h1_count, word_count, is_noindex, score_breakdown,
+              page_rank, inbound_link_count, outbound_link_count, juice_received, juice_sent, is_orphan
        FROM scan_pages WHERE scan_id = ? ORDER BY depth ASC, id ASC`,
       [scanId]
     );
     pagesRaw = rows;
   } catch (e) {
-    if (e.message && /score_breakdown|Unknown column/.test(e.message)) {
+    if (e.message && /score_breakdown|page_rank|Unknown column/.test(e.message)) {
       const [rows] = await pool.query(
         `SELECT url, depth, score, status_code, internal_links, external_links,
                 title, issues, h1_count, word_count, is_noindex
@@ -435,6 +436,13 @@ async function handleResult(req, res) {
       external_links: r.external_links,
       deductions,
       deduction_total: deductionTotal,
+      page_rank: r.page_rank != null ? Number(r.page_rank) : null,
+      inbound_link_count: r.inbound_link_count != null ? Number(r.inbound_link_count) : null,
+      outbound_link_count: r.outbound_link_count != null ? Number(r.outbound_link_count) : (r.internal_links ?? null),
+      juice_received: r.juice_received != null ? Number(r.juice_received) : null,
+      juice_sent: r.juice_sent != null ? Number(r.juice_sent) : null,
+      crawl_depth: r.depth ?? null,
+      is_orphan: r.is_orphan ? true : false,
     };
   });
 

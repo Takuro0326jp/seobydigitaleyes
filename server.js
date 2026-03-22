@@ -17,6 +17,7 @@ const scanModule = require("./routes/scan");
 const gscRoutes = require("./routes/gsc");
 const strategyRoutes = require("./routes/strategy");
 const adsRoutes = require("./routes/ads");
+const actionItemsRoutes = require("./routes/actionItems");
 const { handleSitemapLast, handleSubmitSitemap } = require("./routes/sitemap");
 const handleStart = scanModule.handleStart;
 const handleResult = scanModule.handleResult;
@@ -257,10 +258,15 @@ app.post("/api/scan-start", scanStartLimiter, (req, res, next) =>
 app.get("/api/scans/result/:id", (req, res, next) =>
   handleResult(req, res).catch(next)
 );
+// GET /api/scans/:scanId/link-edges — ルート競合を避け明示登録
+app.get("/api/scans/:scanId/link-edges", (req, res, next) =>
+  scanRoutes.handleLinkEdges(req, res).catch(next)
+);
 app.use("/api/scans", scanRoutes);
 app.use("/api/gsc", gscRoutes);
 app.use("/api/strategy", strategyRoutes);
 app.use("/api/ads", adsRoutes);
+app.use("/api/action-items", actionItemsRoutes);
 
 // GET /api/link-analysis?scan_id=X — user もアクセス可能（/api/scans/:id/link-analysis へリダイレクト）
 app.get("/api/link-analysis", (req, res) => {
@@ -411,6 +417,23 @@ app.use((err, req, res, next) => {
       console.warn("[DB] score_breakdown 追加スキップ:", e.message);
     }
   }
+  for (const col of [
+    { name: "page_rank", def: "DOUBLE NULL" },
+    { name: "inbound_link_count", def: "INT NOT NULL DEFAULT 0" },
+    { name: "outbound_link_count", def: "INT NOT NULL DEFAULT 0" },
+    { name: "juice_received", def: "DOUBLE NOT NULL DEFAULT 0" },
+    { name: "juice_sent", def: "DOUBLE NOT NULL DEFAULT 0" },
+    { name: "is_orphan", def: "TINYINT(1) NOT NULL DEFAULT 0" },
+  ]) {
+    try {
+      await pool.query(`ALTER TABLE scan_pages ADD COLUMN ${col.name} ${col.def}`);
+      console.log("[DB] scan_pages." + col.name + " 確認OK");
+    } catch (e) {
+      if (e.code !== "ER_DUP_FIELDNAME") {
+        console.warn("[DB] scan_pages." + col.name + " 追加スキップ:", e.message);
+      }
+    }
+  }
   try {
     await pool.execute(`CREATE TABLE IF NOT EXISTS scan_links (
       id INT NOT NULL AUTO_INCREMENT,
@@ -553,6 +576,32 @@ app.use((err, req, res, next) => {
     if (e.code !== "ER_DUP_FIELDNAME") { /* ignore */ }
   }
   try {
+    await pool.query("ALTER TABLE oauth_states ADD COLUMN platform VARCHAR(16) NULL DEFAULT 'google'");
+  } catch (e) {
+    if (e.code !== "ER_DUP_FIELDNAME") { /* ignore */ }
+  }
+  try {
+    await pool.execute(`CREATE TABLE IF NOT EXISTS yahoo_ads_accounts (
+      id INT NOT NULL AUTO_INCREMENT,
+      user_id INT NOT NULL,
+      api_auth_source_id INT NOT NULL,
+      name VARCHAR(100) NOT NULL,
+      account_id VARCHAR(64) NOT NULL,
+      agency_account_id VARCHAR(64) NULL,
+      is_selected TINYINT(1) DEFAULT 0,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+      PRIMARY KEY (id),
+      KEY idx_yahoo_ads_accounts_user (user_id),
+      KEY idx_yahoo_ads_accounts_auth (api_auth_source_id),
+      CONSTRAINT fk_yahoo_ads_accounts_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      CONSTRAINT fk_yahoo_ads_accounts_auth FOREIGN KEY (api_auth_source_id) REFERENCES api_auth_sources(id) ON DELETE CASCADE
+    )`);
+    console.log("[DB] yahoo_ads_accounts 確認OK");
+  } catch (e) {
+    if (e.code !== "ER_TABLE_EXISTS" && e.code !== "ER_TABLE_EXISTS_ERROR") console.warn("[DB] yahoo_ads_accounts スキップ:", e?.message);
+  }
+  try {
     await pool.execute(`CREATE TABLE IF NOT EXISTS scan_google_tokens (
       scan_id VARCHAR(36) NOT NULL,
       user_id INT NOT NULL,
@@ -568,6 +617,33 @@ app.use((err, req, res, next) => {
     if (e.code !== "ER_TABLE_EXISTS_ERROR") {
       console.warn("[DB] scan_google_tokens 作成スキップ:", e.message);
     }
+  }
+  try {
+    await pool.execute(`CREATE TABLE IF NOT EXISTS gsc_action_items (
+      id INT NOT NULL AUTO_INCREMENT,
+      scan_id VARCHAR(36) NOT NULL,
+      user_id INT NOT NULL,
+      title VARCHAR(500) NOT NULL,
+      description TEXT NOT NULL,
+      priority VARCHAR(20) NOT NULL,
+      effort VARCHAR(64) NOT NULL,
+      source VARCHAR(128) NOT NULL,
+      source_tab VARCHAR(64) NOT NULL,
+      action_type VARCHAR(64) NOT NULL,
+      completed_at DATETIME NULL DEFAULT NULL,
+      dismissed_at DATETIME NULL DEFAULT NULL,
+      generated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (id),
+      UNIQUE KEY uq_action_scan_type (scan_id, action_type),
+      KEY idx_gsc_action_items_user (user_id),
+      KEY idx_gsc_action_items_scan (scan_id),
+      KEY idx_gsc_action_items_completed (completed_at),
+      CONSTRAINT fk_gsc_action_items_scan FOREIGN KEY (scan_id) REFERENCES scans(id) ON DELETE CASCADE,
+      CONSTRAINT fk_gsc_action_items_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    )`);
+    console.log("[DB] gsc_action_items 確認OK");
+  } catch (e) {
+    if (e.code !== "ER_TABLE_EXISTS" && e.code !== "ER_TABLE_EXISTS_ERROR") console.warn("[DB] gsc_action_items スキップ:", e?.message);
   }
   try {
     await pool.execute(`CREATE TABLE IF NOT EXISTS strategy_keywords (
@@ -588,6 +664,68 @@ app.use((err, req, res, next) => {
   } catch (e) {
     if (e.code !== "ER_TABLE_EXISTS_ERROR") {
       console.warn("[DB] strategy_keywords 作成スキップ:", e.message);
+    }
+  }
+
+  // strategy 拡張: 新カラム・keyword_watchlist・rank_history・generated_articles
+  for (const col of [
+    { name: "search_volume", def: "INT NULL" },
+    { name: "competition", def: "VARCHAR(20) NULL" },
+    { name: "ai_reason", def: "TEXT NULL" },
+    { name: "status", def: "VARCHAR(20) DEFAULT 'pending'" },
+    { name: "scan_id", def: "VARCHAR(36) NULL" },
+    { name: "excluded_at", def: "DATETIME NULL" },
+  ]) {
+    try {
+      await pool.query(`ALTER TABLE strategy_keywords ADD COLUMN ${col.name} ${col.def}`);
+      console.log("[DB] strategy_keywords." + col.name + " 確認OK");
+    } catch (e) {
+      if (e.code !== "ER_DUP_FIELDNAME") console.warn("[DB] strategy_keywords." + col.name + " スキップ:", e?.message);
+    }
+  }
+  for (const table of ["keyword_watchlist", "rank_history", "generated_articles"]) {
+    try {
+      if (table === "keyword_watchlist") {
+        await pool.execute(`CREATE TABLE IF NOT EXISTS keyword_watchlist (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          company_id INT NOT NULL,
+          scan_id VARCHAR(36) NULL,
+          strategy_keyword_id INT NOT NULL,
+          keyword VARCHAR(255) NOT NULL,
+          source VARCHAR(20) DEFAULT 'ai',
+          intent VARCHAR(50) NULL,
+          search_volume INT NULL,
+          competition VARCHAR(20) NULL,
+          ai_reason TEXT NULL,
+          status VARCHAR(20) DEFAULT 'active',
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          KEY idx_watchlist_company (company_id),
+          KEY idx_watchlist_scan (scan_id),
+          KEY idx_watchlist_status (company_id, status)
+        )`);
+      } else if (table === "rank_history") {
+        await pool.execute(`CREATE TABLE IF NOT EXISTS rank_history (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          keyword_id INT NOT NULL,
+          \`rank\` INT NULL,
+          scanned_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          KEY idx_rank_keyword (keyword_id),
+          KEY idx_rank_scanned (keyword_id, scanned_at)
+        )`);
+      } else if (table === "generated_articles") {
+        await pool.execute(`CREATE TABLE IF NOT EXISTS generated_articles (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          keyword_id INT NOT NULL,
+          outline_json JSON NULL,
+          body TEXT NULL,
+          status VARCHAR(20) DEFAULT 'draft',
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          KEY idx_article_keyword (keyword_id)
+        )`);
+      }
+      console.log("[DB] " + table + " 確認OK");
+    } catch (e) {
+      if (e.code !== "ER_TABLE_EXISTS" && e.code !== "ER_TABLE_EXISTS_ERROR") console.warn("[DB] " + table + " スキップ:", e?.message);
     }
   }
 

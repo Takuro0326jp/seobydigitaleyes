@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Link Structure | SEO Scan</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <link href="/css/tailwind.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
+    <style>body { font-family: Inter, sans-serif; }</style>
+</head>
+<body class="antialiased bg-slate-50">
+
+<div id="header-container"></div>
+
+<main class="relative max-w-[1600px] mx-auto p-8 space-y-8">
+
+    <div>
+        <h1 class="text-2xl font-bold text-slate-900">Link Structure</h1>
+        <p class="text-sm text-slate-400 font-medium mt-1">内部リンク構造・リンクジュースの可視化</p>
+    </div>
+
+    <!-- 2-A: 内部リンク構造マップ（Canvas + D3） -->
+    <section class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden" id="linkMapSection">
+        <div class="p-4 border-b border-slate-100">
+            <h2 class="text-lg font-bold text-slate-800">内部リンク構造マップ</h2>
+            <p class="text-xs text-slate-400 mt-1">ノード＝ページ、エッジ＝内部リンク</p>
+        </div>
+        <div class="p-4">
+            <div class="controls flex items-center gap-4 mb-3 flex-wrap">
+                <div class="ctrl-item flex items-center gap-2 text-xs text-slate-600">
+                    <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" id="linkMapOrphanOnly"> 孤立ページのみ</label>
+                </div>
+                <div class="ctrl-item flex items-center gap-2 text-xs text-slate-600">
+                    <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" id="linkMapEdgesHoverOnly"> エッジはホバー時のみ</label>
+                </div>
+                <div class="ctrl-item flex items-center gap-2 text-xs text-slate-600">
+                    <span class="whitespace-nowrap">表示件数:</span>
+                    <input type="range" id="linkMapLimit" min="5" max="100" value="30" step="1" class="w-24">
+                    <span id="linkMapLimitVal">30</span>
+                </div>
+                <div class="ctrl-item flex items-center gap-2 text-xs text-slate-600">
+                    <span class="whitespace-nowrap">ディレクトリ:</span>
+                    <select id="linkMapDirFilter" class="text-xs px-2 py-1 rounded-md border border-slate-200 bg-white text-slate-800">
+                        <option value="">すべて</option>
+                    </select>
+                </div>
+            </div>
+            <div class="canvas-wrap relative overflow-hidden rounded-xl border border-slate-200 bg-slate-50" style="height:520px">
+                <canvas id="linkMapCanvas"></canvas>
+                <div class="tooltip absolute bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 pointer-events-none hidden max-w-[220px] leading-relaxed shadow-lg z-10" id="linkMapTooltip">
+                    <div class="t-url font-medium mb-1 break-all" id="linkMapTipUrl"></div>
+                    <div class="t-row text-slate-500" id="linkMapTipPr"></div>
+                    <div class="t-row text-slate-500" id="linkMapTipIn"></div>
+                    <div class="t-row text-slate-500" id="linkMapTipOut"></div>
+                </div>
+                <div class="zoom-btns absolute bottom-3 right-3 flex flex-col gap-1">
+                    <button type="button" id="linkMapZoomIn" class="w-7 h-7 rounded-md border border-slate-200 bg-white text-slate-700 text-base font-medium cursor-pointer flex items-center justify-center hover:bg-slate-50">+</button>
+                    <button type="button" id="linkMapZoomOut" class="w-7 h-7 rounded-md border border-slate-200 bg-white text-slate-700 text-base font-medium cursor-pointer flex items-center justify-center hover:bg-slate-50">−</button>
+                </div>
+            </div>
+            <div class="legend flex gap-4 mt-2 flex-wrap text-xs text-slate-500">
+                <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full flex-shrink-0" style="background:#F59E0B"></span>トップページ</span>
+                <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full flex-shrink-0" style="background:#6366F1"></span>通常ページ（大=高PageRank）</span>
+                <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full flex-shrink-0" style="background:#EF4444"></span>孤立ページ（被リンク0）</span>
+            </div>
+        </div>
+    </section>
+
+    <!-- 2-B: リンクジュースフロー Sankey -->
+    <section class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden" id="linkJuiceFlowSection">
+        <div class="p-4 border-b border-slate-100">
+            <h2 class="text-lg font-bold text-slate-800">リンクジュースフロー</h2>
+            <p class="text-xs text-slate-400 mt-1">Sankeyダイアグラム（ジュース受信・送出の可視化）</p>
+        </div>
+        <div class="p-4">
+            <div class="flex items-center gap-4 mb-3 flex-wrap">
+                <div class="flex items-center gap-2 text-xs text-slate-600">
+                    <label class="whitespace-nowrap">ディレクトリ:</label>
+                    <select id="sankeyDirFilter" class="text-xs px-2 py-1 rounded-md border border-slate-200 bg-white text-slate-800">
+                        <option value="">すべて</option>
+                    </select>
+                </div>
+                <div class="flex items-center gap-2 text-xs text-slate-600">
+                    <label class="whitespace-nowrap">表示件数:</label>
+                    <select id="sankeyCount" class="text-xs px-2 py-1 rounded-md border border-slate-200 bg-white text-slate-800">
+                        <option value="5">上位5件</option>
+                        <option value="10" selected>上位10件</option>
+                        <option value="15">上位15件</option>
+                    </select>
+                </div>
+            </div>
+            <div class="chart-wrap relative overflow-hidden rounded-xl border border-slate-200 bg-slate-50" style="height:500px">
+                <canvas id="sankeyCanvas"></canvas>
+                <div class="sankey-tooltip absolute bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs pointer-events-none hidden max-w-[200px] leading-relaxed shadow-lg z-10" id="sankeyTooltip">
+                    <div class="t-main font-medium text-slate-800 mb-1" id="sankeyTipMain"></div>
+                    <div class="t-sub text-slate-500" id="sankeyTipSub"></div>
+                </div>
+            </div>
+            <div class="legend flex gap-4 mt-2 flex-wrap text-xs text-slate-500">
+                <span class="flex items-center gap-1.5"><span class="w-6 h-2 rounded flex-shrink-0" style="background:#10B981"></span>高ジュース（上位33%）</span>
+                <span class="flex items-center gap-1.5"><span class="w-6 h-2 rounded flex-shrink-0" style="background:#F59E0B"></span>中ジュース（中間33%）</span>
+                <span class="flex items-center gap-1.5"><span class="w-6 h-2 rounded flex-shrink-0" style="background:#94A3B8"></span>低ジュース（下位33%）</span>
+            </div>
+        </div>
+    </section>
+
+    <!-- 2-C: リンクジュース詳細テーブル -->
+    <section class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden" id="linkJuiceTableSection">
+        <div class="p-4 border-b border-slate-100 flex flex-wrap gap-4 items-center justify-between">
+            <div>
+                <h2 class="text-lg font-bold text-slate-800">リンクジュース詳細テーブル</h2>
+                <p class="text-xs text-slate-400 mt-1">PageRank・被リンク・ジュース受信/送出の一覧</p>
+            </div>
+            <div class="flex gap-2 flex-wrap">
+                <input type="text" id="linkTableSearch" placeholder="URL・タイトルで検索..." class="text-sm border border-slate-200 rounded-lg px-4 py-2 w-56 focus:outline-none focus:ring-2 focus:ring-blue-500/20">
+                <button type="button" id="filterOrphanBtn" class="px-4 py-2 text-xs font-bold rounded-lg border border-slate-200 hover:bg-slate-50 transition">孤立のみ</button>
+                <button type="button" id="filterDepth4Btn" class="px-4 py-2 text-xs font-bold rounded-lg border border-slate-200 hover:bg-slate-50 transition">深さ4+のみ</button>
+                <button type="button" id="exportLinkCsvBtn" class="px-4 py-2 text-xs font-bold rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 transition">CSVエクスポート</button>
+            </div>
+        </div>
+        <div class="overflow-x-auto max-h-[500px] overflow-y-auto">
+            <table class="w-full text-left text-xs min-w-0 table-fixed" id="linkJuiceTable">
+                <thead class="bg-slate-50 text-slate-500 font-bold uppercase tracking-wider sticky top-0 z-10">
+                    <tr>
+                        <th class="py-3 px-2 cursor-pointer" data-sort="url" style="width:32%">URL</th>
+                        <th class="py-3 px-2 cursor-pointer" data-sort="title" style="width:26%">タイトル</th>
+                        <th class="py-3 px-2 text-center cursor-pointer" data-sort="page_rank" style="width:6%">PageRank</th>
+                        <th class="py-3 px-2 text-center cursor-pointer" data-sort="inbound_link_count" style="width:6%">被リンク</th>
+                        <th class="py-3 px-2 text-center cursor-pointer" data-sort="outbound_link_count" style="width:6%">発リンク</th>
+                        <th class="py-3 px-2 text-center cursor-pointer" data-sort="juice_received" style="width:8%">ジュース受信</th>
+                        <th class="py-3 px-2 text-center cursor-pointer" data-sort="juice_sent" style="width:8%">ジュース送出</th>
+                        <th class="py-3 px-2 text-center cursor-pointer" data-sort="status" style="width:8%">状態</th>
+                    </tr>
+                </thead>
+                <tbody id="linkJuiceTableBody" class="divide-y divide-slate-100 text-slate-600">
+                </tbody>
+            </table>
+        </div>
+        <div class="p-4 border-t border-slate-100 flex justify-between items-center">
+            <span id="linkTableInfo" class="text-xs text-slate-400">--</span>
+            <div class="flex gap-2 items-center">
+                <span class="text-xs text-slate-500">25件/ページ</span>
+                <button type="button" id="linkTablePrev" class="px-3 py-1 text-xs font-bold rounded border border-slate-200 hover:bg-slate-50 disabled:opacity-50" disabled>前へ</button>
+                <span id="linkTablePageNum" class="text-xs font-bold">1 / 1</span>
+                <button type="button" id="linkTableNext" class="px-3 py-1 text-xs font-bold rounded border border-slate-200 hover:bg-slate-50 disabled:opacity-50" disabled>次へ</button>
+            </div>
+        </div>
+    </section>
+
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+<script src="/js/header.js"></script>
+<script src="/js/link-structure.js"></script>
+</body>
+</html>

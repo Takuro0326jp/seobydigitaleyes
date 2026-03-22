@@ -4,6 +4,7 @@
   "description": "SEO Scan login/authentication service",
   "main": "server.js",
   "scripts": {
+    "db:check": "node scripts/db-check.js",
     "migrate:multitenant": "node scripts/run-migration-multitenant.js",
     "migrate:gsc-oauth": "node scripts/run-migration-gsc-oauth.js",
     "migrate:sitemap": "node scripts/run-migration-sitemap.js",
@@ -20,13 +21,16 @@
     "bcryptjs": "^3.0.3",
     "cheerio": "^1.2.0",
     "cookie-parser": "^1.4.7",
+    "d3": "^7.9.0",
+    "d3-sankey": "^0.12.3",
     "dotenv": "^17.3.1",
     "express": "^5.2.1",
     "express-rate-limit": "^8.3.1",
     "google-ads-api": "^23.0.0",
     "helmet": "^8.1.0",
     "mysql2": "^3.20.0",
-    "nodemailer": "^8.0.3"
+    "nodemailer": "^8.0.3",
+    "vis-network": "^10.0.2"
   },
   "keywords": [],
   "author": "",

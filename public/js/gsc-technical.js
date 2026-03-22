@@ -26,11 +26,11 @@
     const perfLink = document.getElementById("nav-performance");
     const indexLink = document.getElementById("nav-indexHealth");
     const techLink = document.getElementById("nav-technical");
-    const monitorLink = document.getElementById("nav-monitoring");
+    const oppLink = document.getElementById("nav-opportunities");
     if (perfLink) perfLink.setAttribute("href", "gsc.html" + suffix);
     if (indexLink) indexLink.setAttribute("href", "gsc-indexhealth.html" + suffix);
     if (techLink) techLink.setAttribute("href", "gsc-technical.html" + suffix);
-    if (monitorLink) monitorLink.setAttribute("href", "gsc-monitoring.html" + suffix);
+    if (oppLink) oppLink.setAttribute("href", "gsc-opportunities.html" + suffix);
   }
 
   function showEmptyState(message) {

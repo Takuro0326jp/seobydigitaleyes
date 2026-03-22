@@ -180,6 +180,10 @@ function renderAll() {
   if (typeof renderStats === "function") renderStats();
   if (typeof buildDirectoryFilter === "function") buildDirectoryFilter();
   if (typeof renderTable === "function") renderTable(SEOState.allCrawlData);
+  if (typeof renderTopImportantPages === "function")
+    renderTopImportantPages(SEOState.allCrawlData);
+  if (typeof renderCrawlDepthDistribution === "function")
+    renderCrawlDepthDistribution(SEOState.allCrawlData);
   if (typeof renderDirectoryHealth === "function")
     renderDirectoryHealth(SEOState.allCrawlData);
   if (typeof initHistoryChart === "function") initHistoryChart();
@@ -281,6 +285,162 @@ function getScoreColor(score) {
   if (score >= 50) return "text-orange-500";
   return "text-red-500";
 }
+
+/** 1-C: 重要ページ Top10 */
+window.renderTopImportantPages = function (pages) {
+  const body = document.getElementById("topImportantPagesBody");
+  const sortSelect = document.getElementById("topPagesSortSelect");
+  const viewAllLink = document.getElementById("topPagesViewAllLink");
+  if (!body) return;
+
+  const data = pages || SEOState?.allCrawlData || [];
+  const hasPageRank = data.some((p) => p.page_rank != null);
+  if (!hasPageRank || data.length === 0) {
+    body.innerHTML = "<p class=\"text-slate-400 text-sm col-span-full\">PageRank データがありません。再スキャンしてください。</p>";
+    return;
+  }
+
+  const sortKey = sortSelect?.value || "page_rank";
+  const sorted = [...data].sort((a, b) => {
+    const va = Number(a[sortKey]) ?? 0;
+    const vb = Number(b[sortKey]) ?? 0;
+    return vb - va;
+  });
+  const top10 = sorted.slice(0, 10);
+
+  const getRankBadge = (rank) => {
+    if (rank === 1) return "bg-amber-400 text-amber-900";
+    if (rank === 2) return "bg-slate-300 text-slate-700";
+    if (rank === 3) return "bg-amber-600 text-amber-100";
+    return "bg-slate-100 text-slate-600";
+  };
+
+  const scanId = getScanIdFromURL ? getScanIdFromURL() : (SEOState?.scanId || "");
+  const params = scanId ? `?scan=${encodeURIComponent(scanId)}` : "";
+
+  body.innerHTML = top10
+    .map((p, i) => {
+      const rank = i + 1;
+      const pr = Number(p.page_rank) ?? 0;
+      const prPct = Math.min(100, Math.round(pr * 100));
+      const inbound = p.inbound_link_count ?? 0;
+      const outbound = p.outbound_link_count ?? p.internal_links ?? 0;
+      const detailUrl = `link-structure.html${params}${params ? "&" : "?"}focus=${encodeURIComponent(p.url || "")}`;
+      return `
+        <div class="bg-slate-50 rounded-xl p-4 border border-slate-100 hover:border-indigo-200 transition">
+          <div class="flex items-start gap-3">
+            <span class="flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-xs font-black ${getRankBadge(rank)}">${rank}</span>
+            <div class="flex-grow min-w-0">
+              <a href="${detailUrl}" class="text-blue-600 hover:underline font-bold text-xs truncate block">${escapeHtmlForResult(p.url || "-")}</a>
+              <p class="text-[11px] text-slate-500 truncate mt-1" title="${escapeHtmlForResult(p.title || "")}">${escapeHtmlForResult(p.title || "-")}</p>
+              <div class="mt-2 flex items-center gap-2">
+                <div class="flex-1 h-1.5 bg-slate-200 rounded overflow-hidden">
+                  <div class="h-full bg-indigo-500 rounded" style="width:${prPct}%"></div>
+                </div>
+                <span class="text-[10px] font-bold text-slate-500">${pr.toFixed(2)}</span>
+              </div>
+              <p class="text-[10px] text-slate-400 mt-1">被: ${inbound} / 発: ${outbound}</p>
+            </div>
+          </div>
+        </div>
+      `;
+    })
+    .join("");
+
+  if (viewAllLink) {
+    const tableSection = document.getElementById("pageQualityTableSection");
+    viewAllLink.href = "#pageQualityTableSection";
+    viewAllLink.onclick = (e) => {
+      e.preventDefault();
+      tableSection?.scrollIntoView({ behavior: "smooth", block: "start" });
+      if (typeof filterAndRenderTable === "function") filterAndRenderTable();
+    };
+  }
+
+  if (sortSelect) {
+    sortSelect.onchange = () => renderTopImportantPages(SEOState?.allCrawlData || []);
+  }
+};
+
+function escapeHtmlForResult(s) {
+  if (s == null || s === undefined) return "";
+  const div = document.createElement("div");
+  div.textContent = String(s);
+  return div.innerHTML;
+}
+
+/** 1-B: 深さ別ページ分布グラフ */
+let crawlDepthChartInstance = null;
+window.renderCrawlDepthDistribution = function (pages) {
+  const canvas = document.getElementById("crawlDepthChart");
+  const badge = document.getElementById("depth4Badge");
+  if (!canvas) return;
+
+  const data = pages || SEOState?.allCrawlData || [];
+  if (data.length === 0) {
+    if (badge) badge.classList.add("hidden");
+    return;
+  }
+
+  const depthCounts = { 1: 0, 2: 0, 3: 0, 4: 0 };
+  data.forEach((p) => {
+    const d = Math.min(4, Math.max(1, p.depth || p.crawl_depth || 1));
+    depthCounts[d] = (depthCounts[d] || 0) + 1;
+  });
+
+  const depth4Count = depthCounts[4] || 0;
+  if (badge) {
+    badge.textContent = `深さ4以上: ${depth4Count}件`;
+    badge.classList.toggle("hidden", depth4Count === 0);
+  }
+
+  const ctx = canvas.getContext("2d");
+  if (typeof Chart === "undefined") return;
+
+  if (crawlDepthChartInstance) crawlDepthChartInstance.destroy();
+
+  const labels = ["深さ1", "深さ2", "深さ3", "深さ4以上"];
+  const values = [depthCounts[1] || 0, depthCounts[2] || 0, depthCounts[3] || 0, depthCounts[4] || 0];
+  const colors = ["#6366F1", "#818CF8", "#A5B4FC", "#E53E3E"];
+
+  crawlDepthChartInstance = new Chart(ctx, {
+    type: "bar",
+    data: {
+      labels,
+      datasets: [
+        {
+          data: values,
+          backgroundColor: colors,
+          borderColor: colors.map((c) => c),
+          borderWidth: 1,
+        },
+      ],
+    },
+    options: {
+      indexAxis: "y",
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            afterBody: function (items) {
+              const idx = items[0]?.dataIndex;
+              if (idx === 3 && values[3] > 0) {
+                return ["SEO上のリスクあり。内部リンクを追加してください。"];
+              }
+              return [];
+            },
+          },
+        },
+      },
+      scales: {
+        x: { beginAtZero: true, title: { display: true, text: "ページ数" } },
+        y: { title: { display: true, text: "クロール深さ" } },
+      },
+    },
+  });
+};
 
 function renderDirectoryHealth(pages) {
   const body = document.getElementById("directory-health-body");

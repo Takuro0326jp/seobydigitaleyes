@@ -2,7 +2,7 @@
  * 運用型広告 媒体別データ取得の集約
  */
 const { fetchGoogleAdsReport, fetchGoogleAdsReportWithMeta } = require("./googleAds");
-const { fetchYahooAdsReport } = require("./yahooAds");
+const { fetchYahooAdsReport, fetchYahooAdsReportWithMeta } = require("./yahooAds");
 const { fetchMicrosoftAdsReport } = require("./microsoftAds");
 
 function getDateRangeForMonth(ym) {
@@ -37,18 +37,50 @@ async function fetchAllReports(monthOrRange, userId = null, options = {}) {
     endDate = range.endDate;
   }
 
-  const [googleResult, yahoo, microsoft] = await Promise.all([
-    fetchGoogleAdsReportWithMeta(startDate, endDate, userId, options),
-    fetchYahooAdsReport(startDate, endDate),
-    fetchMicrosoftAdsReport(startDate, endDate),
-  ]);
+  const status = await getConnectionStatus(userId);
+  const fetchGoogle = status.google?.connected ?? false;
+  const fetchYahoo = status.yahoo?.connected ?? false;
+  const fetchMicrosoft = status.microsoft?.connected ?? false;
 
+  const mediaCalled = [];
+  if (fetchGoogle) mediaCalled.push("google");
+  if (fetchYahoo) mediaCalled.push("yahoo");
+  if (fetchMicrosoft) mediaCalled.push("microsoft");
+  if (mediaCalled.length > 0) {
+    console.log("[Ads] API呼び出し:", mediaCalled.join(", "), `(${startDate}〜${endDate})`);
+  }
+
+  const promises = [];
+  if (fetchGoogle) promises.push(fetchGoogleAdsReportWithMeta(startDate, endDate, userId, options));
+  else promises.push(Promise.resolve({ rows: [], customerId: null }));
+  if (fetchYahoo) promises.push(fetchYahooAdsReportWithMeta(startDate, endDate, userId, options));
+  else promises.push(Promise.resolve({ rows: [], customerId: null }));
+  if (fetchMicrosoft) promises.push(fetchMicrosoftAdsReport(startDate, endDate));
+  else promises.push(Promise.resolve([]));
+
+  const [googleResult, yahooResult, microsoft] = await Promise.all(promises);
+
+  const googleRows = googleResult.rows || [];
+  const yahooRows = yahooResult.rows || [];
+  const microsoftRows = Array.isArray(microsoft) ? microsoft : [];
   const res = {
-    rows: [...(googleResult.rows || []), ...yahoo, ...microsoft],
-    meta: { google_customer_id: googleResult.customerId || null },
+    rows: [...googleRows, ...yahooRows, ...microsoftRows],
+    meta: {
+      google_customer_id: googleResult.customerId || null,
+      yahoo_account_id: yahooResult.customerId || null,
+      requested_startDate: startDate,
+      requested_endDate: endDate,
+      google_row_count: googleRows.length,
+      yahoo_row_count: yahooRows.length,
+      microsoft_row_count: microsoftRows.length,
+      _media_called: mediaCalled,
+    },
     _debug: googleResult._debug,
   };
   if (googleResult._hint) res._hint = googleResult._hint;
+  if (yahooResult._hint && !res._hint) res._hint = yahooResult._hint;
+  else if (yahooResult._hint) res._hint = (res._hint || "") + " " + yahooResult._hint;
+  if (yahooResult._debug) res._yahoo_debug = yahooResult._debug;
   return res;
 }
 
@@ -109,18 +141,42 @@ async function getConnectionStatus(userId = null) {
         hasGoogle = !!(process.env.GOOGLE_ADS_DEVELOPER_TOKEN && googleAuthSources.length > 0);
       }
       if (!googleCustomerId) {
-        const { getTokensForUser } = require("./googleAdsOAuth");
+        const { getTokensForUser } = require("../googleAdsOAuth");
         const tokens = await getTokensForUser(userId);
         if (tokens?.refresh_token && process.env.GOOGLE_ADS_DEVELOPER_TOKEN) hasGoogle = true;
         if (tokens?.customer_id) googleCustomerId = tokens.customer_id;
         if (tokens?.login_customer_id) googleLoginCustomerId = tokens.login_customer_id;
+      }
+      // アカウント・認証元が両方空 = ユーザーが連携解除した状態。APIは叩かない
+      if (googleAccounts.length === 0 && googleAuthSources.length === 0) {
+        hasGoogle = false;
+        googleCustomerId = null;
+        googleLoginCustomerId = null;
+        accountDebug = null;
       }
     } catch (e) {
       console.warn("[ads] getConnectionStatus error:", e.message);
     }
   }
 
-  const hasYahoo = process.env.YAHOO_ADS_ACCESS_TOKEN && process.env.YAHOO_ADS_ACCOUNT_ID;
+  let hasYahoo = !!(process.env.YAHOO_ADS_ACCESS_TOKEN && process.env.YAHOO_ADS_ACCOUNT_ID);
+  let yahooAccounts = [];
+  let yahooAuthSources = [];
+  if (userId) {
+    try {
+      const yahooAdsAccounts = require("../yahooAdsAccounts");
+      const apiAuthSources = require("../apiAuthSources");
+      yahooAuthSources = await apiAuthSources.list(userId, "yahoo");
+      yahooAccounts = await yahooAdsAccounts.listAccounts(userId);
+      const selectedYahoo = await yahooAdsAccounts.getSelectedAccount(userId);
+      if (selectedYahoo?.refresh_token && process.env.YAHOO_ADS_CLIENT_ID) hasYahoo = true;
+    } catch (e) {
+      if (process.env.NODE_ENV !== "production") console.warn("[ads] getConnectionStatus yahoo error:", e.message);
+    }
+  }
+  if (yahooAuthSources.length && !hasYahoo) {
+    hasYahoo = !!(process.env.YAHOO_ADS_CLIENT_ID && process.env.YAHOO_ADS_CLIENT_SECRET && yahooAccounts.some((a) => a.account_id));
+  }
   const hasMicrosoft =
     process.env.MICROSOFT_ADS_CLIENT_ID &&
     process.env.MICROSOFT_ADS_CLIENT_SECRET &&
@@ -136,7 +192,11 @@ async function getConnectionStatus(userId = null) {
       auth_sources: googleAuthSources,
       account_debug: accountDebug,
     },
-    yahoo: { connected: !!hasYahoo },
+    yahoo: {
+      connected: !!hasYahoo,
+      accounts: yahooAccounts,
+      auth_sources: yahooAuthSources,
+    },
     microsoft: { connected: !!hasMicrosoft },
   };
 }

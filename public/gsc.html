@@ -7,6 +7,7 @@
     <link rel="stylesheet" href="/css/style.css">
     <link href="/css/tailwind.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <style>
         body{font-family:'Inter',sans-serif}
@@ -35,33 +36,36 @@
                 <a href="gsc-technical.html" id="nav-technical" class="nav-item pb-4 text-xs sm:text-sm font-black tracking-widest uppercase transition-all text-slate-400 hover:text-slate-600 border-b-2 border-transparent shrink-0">
                     Technical
                 </a>
-                <a href="gsc-monitoring.html" id="nav-monitoring" class="nav-item pb-4 text-xs sm:text-sm font-black tracking-widest uppercase transition-all text-slate-400 hover:text-slate-600 border-b-2 border-transparent shrink-0">
-                    Monitoring
+                <a href="gsc-opportunities.html" id="nav-opportunities" class="nav-item pb-4 text-xs sm:text-sm font-black tracking-widest uppercase transition-all text-slate-400 hover:text-slate-600 border-b-2 border-transparent shrink-0">
+                    Opportunities
                 </a>
             </div>
         </div>
 
+        <!-- 今週やるべきこと -->
+        <div id="action-item-list-container" class="mb-6"></div>
+
         <div id="content-performance" class="tab-content active space-y-8">
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 <div class="bg-white p-6 rounded-[32px] border border-slate-200 shadow-sm">
-                    <p class="text-[10px] font-black text-slate-400 uppercase mb-1 tracking-widest">合計クリック数</p>
+                    <p class="text-[10px] font-black text-slate-400 uppercase mb-1 tracking-widest">クリック数</p>
                     <p id="totalClicks" class="text-4xl font-black text-slate-800">--</p>
-                    <p class="text-[10px] text-slate-400 font-bold mt-1 uppercase">GSC 接続時に表示</p>
+                    <p id="clicksDelta" class="text-[10px] text-slate-500 font-bold mt-1">GSC 接続時に表示</p>
                 </div>
                 <div class="bg-white p-6 rounded-[32px] border border-slate-200 shadow-sm">
-                    <p class="text-[10px] font-black text-slate-400 uppercase mb-1 tracking-widest">合計表示回数</p>
+                    <p class="text-[10px] font-black text-slate-400 uppercase mb-1 tracking-widest">表示回数</p>
                     <p id="totalImpressions" class="text-4xl font-black text-slate-800">--</p>
-                    <p class="text-[10px] text-slate-400 font-bold mt-1 uppercase">GSC 接続時に表示</p>
+                    <p id="impressionsDelta" class="text-[10px] text-slate-500 font-bold mt-1">GSC 接続時に表示</p>
                 </div>
                 <div class="bg-white p-6 rounded-[32px] border border-slate-200 shadow-sm">
                     <p class="text-[10px] font-black text-slate-400 uppercase mb-1 tracking-widest">平均 CTR</p>
                     <p id="avgCtr" class="text-4xl font-black text-slate-800">--</p>
-                    <p class="text-[10px] text-slate-400 font-medium mt-1 italic">※ 全取得URLの平均</p>
+                    <p id="ctrDelta" class="text-[10px] text-slate-500 font-bold mt-1">※ 全取得URLの平均</p>
                 </div>
                 <div class="bg-white p-6 rounded-[32px] border border-slate-200 shadow-sm">
                     <p class="text-[10px] font-black text-slate-400 uppercase mb-1 tracking-widest">平均 掲載順位</p>
                     <p id="avgPosition" class="text-4xl font-black text-slate-800">--</p>
-                    <p class="text-[10px] text-slate-400 font-medium mt-1 italic">※ スコアから算出</p>
+                    <p id="positionDelta" class="text-[10px] text-slate-500 font-bold mt-1">※ スコアから算出</p>
                 </div>
             </div>
 
@@ -78,6 +82,20 @@
                         </div>
                         <p id="aiTrafficReview" class="text-[13px] text-slate-600 leading-relaxed font-medium italic">読み込み中...</p>
                     </div>
+                </div>
+            </div>
+
+            <!-- パフォーマンス推移グラフ（MONITORING 統合） -->
+            <div id="performanceChartSection" class="bg-white p-6 sm:p-10 rounded-[32px] border border-slate-200 shadow-sm space-y-6 hidden">
+                <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                    <h2 class="text-lg sm:text-2xl font-black text-slate-900 tracking-tight">パフォーマンス推移</h2>
+                    <div class="flex bg-slate-100 p-1 rounded-xl w-fit">
+                        <button id="chart-30d" type="button" class="px-4 py-2 bg-white rounded-lg shadow-sm text-[10px] font-black uppercase text-indigo-600">30日</button>
+                        <button id="chart-90d" type="button" class="px-4 py-2 text-slate-400 text-[10px] font-black uppercase hover:text-slate-600">90日</button>
+                    </div>
+                </div>
+                <div class="h-[300px] w-full">
+                    <canvas id="performanceChart"></canvas>
                 </div>
             </div>
 
@@ -103,6 +121,12 @@
                         </svg>
                         最新データに更新
                     </button>
+                    <div class="flex bg-slate-100 p-1 rounded-xl">
+                        <button type="button" data-quick="all" class="quick-filter px-3 py-1.5 rounded-lg text-[11px] font-black transition-all bg-white text-indigo-600 shadow-sm">すべて</button>
+                        <button type="button" data-quick="high" class="quick-filter px-3 py-1.5 rounded-lg text-[11px] font-black transition-all text-slate-500 hover:text-slate-700">HIGH優先度</button>
+                        <button type="button" data-quick="ctr" class="quick-filter px-3 py-1.5 rounded-lg text-[11px] font-black transition-all text-slate-500 hover:text-slate-700">CTR 1%未満</button>
+                        <button type="button" data-quick="drop" class="quick-filter px-3 py-1.5 rounded-lg text-[11px] font-black transition-all text-slate-500 hover:text-slate-700">急落（-5位以上）</button>
+                    </div>
                     <select id="priorityFilter" onchange="window.filterGSCTable && window.filterGSCTable()" class="px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-[13px] font-bold text-slate-600 outline-none shadow-sm focus:ring-2 focus:ring-indigo-500">
                         <option value="">すべての優先度</option>
                         <option value="HIGH">HIGH (最優先)</option>
@@ -176,6 +200,7 @@
     </main>
 
     <script src="/js/header.js"></script>
+    <script src="/js/action-item-list.js"></script>
     <script src="/js/gsc.js"></script>
 </body>
 </html>
