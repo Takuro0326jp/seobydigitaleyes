@@ -31,6 +31,8 @@ export async function render(container) {
             <th class="px-6 py-4 text-[11px] font-bold text-slate-500 uppercase tracking-widest">ロール</th>
             <th class="px-6 py-4 text-[11px] font-bold text-slate-500 uppercase tracking-widest">閲覧可能URL</th>
             <th class="px-6 py-4 text-[11px] font-bold text-slate-500 uppercase tracking-widest">登録日</th>
+            <th class="px-6 py-4 text-[11px] font-bold text-slate-500 uppercase tracking-widest">初回アクセス日</th>
+            <th class="px-6 py-4 text-[11px] font-bold text-slate-500 uppercase tracking-widest">最終アクセス日</th>
             <th class="px-6 py-4 text-[11px] font-bold text-slate-500 uppercase tracking-widest text-right">操作</th>
           </tr>
         </thead>
@@ -54,6 +56,8 @@ export async function render(container) {
                 ${u.url_list ? u.url_list.split("\n").map((url) => `<span class="block truncate" title="${escapeHtml(url)}">${escapeHtml(url)}</span>`).join("") : "—"}
               </td>
               <td class="px-6 py-4 text-sm text-slate-500">${formatDate(u.created_at)}</td>
+              <td class="px-6 py-4 text-sm text-slate-500">${formatDate(u.first_access_at)}</td>
+              <td class="px-6 py-4 text-sm text-slate-500">${formatDate(u.last_access_at)}</td>
               <td class="px-6 py-4 text-right">
                 <div class="flex items-center justify-end gap-1">
                   <button class="btn-edit text-slate-400 hover:text-indigo-600 font-bold text-xs uppercase tracking-widest px-3 py-2 rounded-lg hover:bg-white transition-all" data-id="${u.id}">Edit</button>

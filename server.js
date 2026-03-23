@@ -402,6 +402,15 @@ app.use((err, req, res, next) => {
     }
   }
   try {
+    await pool.query("ALTER TABLE users ADD COLUMN first_access_at DATETIME NULL");
+    await pool.query("ALTER TABLE users ADD COLUMN last_access_at DATETIME NULL");
+    console.log("[DB] users.first_access_at / last_access_at 確認OK");
+  } catch (e) {
+    if (e.code !== "ER_DUP_FIELDNAME") {
+      console.warn("[DB] first_access_at/last_access_at 追加スキップ:", e.message);
+    }
+  }
+  try {
     await pool.query("ALTER TABLE auth_codes ADD COLUMN one_time_token VARCHAR(64) NULL");
     console.log("[DB] auth_codes.one_time_token 確認OK");
   } catch (e) {
@@ -646,6 +655,12 @@ app.use((err, req, res, next) => {
     if (e.code !== "ER_TABLE_EXISTS" && e.code !== "ER_TABLE_EXISTS_ERROR") console.warn("[DB] gsc_action_items スキップ:", e?.message);
   }
   try {
+    await pool.query("ALTER TABLE gsc_action_items ADD COLUMN verifying_at DATETIME NULL DEFAULT NULL AFTER completed_at");
+    console.log("[DB] gsc_action_items.verifying_at 確認OK");
+  } catch (e) {
+    if (e.code !== "ER_DUP_FIELDNAME") console.warn("[DB] gsc_action_items.verifying_at スキップ:", e?.message);
+  }
+  try {
     await pool.execute(`CREATE TABLE IF NOT EXISTS strategy_keywords (
       id INT AUTO_INCREMENT PRIMARY KEY,
       company_id INT NOT NULL,
@@ -763,6 +778,11 @@ app.use((err, req, res, next) => {
 
   // company_urls の重複統合（https://o-eighty.jp と https://o-eighty.jp/ を同一とみなす）
   try {
+    const [cols] = await pool.query("SHOW COLUMNS FROM user_url_access");
+    const urlIdCol = cols?.find((c) => c.Field === "url_id" || c.Field === "company_url_id")?.Field;
+    if (!urlIdCol) {
+      console.log("[DB] company_urls 重複統合 スキップ: user_url_access に url_id/company_url_id がありません（url_direct スキーマ）");
+    } else {
     const { normalizeUrlForKey } = require("./services/userUrlAccess");
     const [rows] = await pool.query(
       "SELECT id, company_id, url FROM company_urls ORDER BY company_id, id"
@@ -777,8 +797,6 @@ app.use((err, req, res, next) => {
       if (group.length <= 1) continue;
       const keep = group.find((r) => normalizeUrlForKey(r.url) === r.url) || group[0];
       const dupes = group.filter((r) => r.id !== keep.id);
-      const [cols] = await pool.query("SHOW COLUMNS FROM user_url_access");
-      const urlIdCol = cols?.find((c) => c.Field === "url_id" || c.Field === "company_url_id")?.Field || "url_id";
       for (const dup of dupes) {
         const [ua] = await pool.query(
           `SELECT user_id FROM user_url_access WHERE ${urlIdCol} = ?`,
@@ -794,6 +812,7 @@ app.use((err, req, res, next) => {
         await pool.query("DELETE FROM company_urls WHERE id = ?", [dup.id]);
         console.log(`[DB] company_urls 統合: ${dup.url} → ${keep.url} (id=${keep.id})`);
       }
+    }
     }
   } catch (e) {
     console.warn("[DB] company_urls 重複統合 スキップ:", e?.message);

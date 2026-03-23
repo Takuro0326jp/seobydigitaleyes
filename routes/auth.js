@@ -214,6 +214,10 @@ router.get("/verify", async (req, res) => {
       "INSERT INTO sessions (session_token, user_id, expires_at) VALUES (?, ?, ?)",
       [sessionToken, userId, expires]
     );
+    await pool.query(
+      "UPDATE users SET first_access_at = COALESCE(first_access_at, NOW()), last_access_at = NOW() WHERE id = ?",
+      [userId]
+    );
     await pool.query("DELETE FROM auth_codes WHERE email = ?", [email]);
     res.cookie("session_id", sessionToken, {
       httpOnly: true,
@@ -279,13 +283,17 @@ router.post("/verify-code", async (req, res) => {
     const expires = new Date();
     expires.setDate(expires.getDate() + 7);
 
-    await pool.query(
-      "INSERT INTO sessions (session_token, user_id, expires_at) VALUES (?, ?, ?)",
-      [token, userId, expires]
-    );
+await pool.query(
+    "INSERT INTO sessions (session_token, user_id, expires_at) VALUES (?, ?, ?)",
+    [token, userId, expires]
+  );
+  await pool.query(
+    "UPDATE users SET first_access_at = COALESCE(first_access_at, NOW()), last_access_at = NOW() WHERE id = ?",
+    [userId]
+  );
 
-    // auth_codes削除（任意）
-    await pool.query("DELETE FROM auth_codes WHERE email = ?", [email]);
+  // auth_codes削除（任意）
+  await pool.query("DELETE FROM auth_codes WHERE email = ?", [email]);
 
     // cookie保存
     res.cookie("session_id", token, {
@@ -397,6 +405,10 @@ router.post("/set-password", async (req, res) => {
       "INSERT INTO sessions (session_token, user_id, expires_at) VALUES (?, ?, ?)",
       [sessionToken, user.id, expires]
     );
+    await pool.query(
+      "UPDATE users SET first_access_at = COALESCE(first_access_at, NOW()), last_access_at = NOW() WHERE id = ?",
+      [user.id]
+    );
     res.cookie("session_id", sessionToken, {
       httpOnly: true,
       sameSite: "lax",
@@ -437,6 +449,12 @@ router.get("/me", async (req, res) => {
     }
 
     const userId = sessions[0].user_id;
+
+    // アクセス日を更新（既存セッションでのアクセス時も反映）
+    await pool.query(
+      "UPDATE users SET first_access_at = COALESCE(first_access_at, NOW()), last_access_at = NOW() WHERE id = ?",
+      [userId]
+    );
 
     // user情報返却
     const [users] = await pool.query(

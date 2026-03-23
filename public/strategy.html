@@ -9,6 +9,8 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap" rel="stylesheet">
     <style>
       body { font-family: 'Inter', sans-serif; }
+      .strategy-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1rem; }
+      @media (max-width: 768px) { .strategy-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
       .article-body { font-size: 15px; line-height: 1.9; }
       .article-body p { margin-bottom: 1.25em; }
       .article-body h2 { font-size: 1.125rem; font-weight: 700; color: #0f172a; margin-top: 1.75em; margin-bottom: 0.6em; padding-bottom: 0.25em; border-bottom: 1px solid #e2e8f0; }
@@ -45,20 +47,20 @@
 
         <!-- ① キーワード選別 -->
         <div id="panel-keywords" class="strategy-panel space-y-6">
-            <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
+            <div class="strategy-metrics">
+                <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 min-w-0">
                     <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">承認済み / AI提案数</p>
                     <h3 class="text-2xl font-bold text-slate-900" id="metricAccepted">-- / --</h3>
                 </div>
-                <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
+                <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 min-w-0">
                     <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">圏外キーワード数</p>
                     <h3 class="text-2xl font-bold text-red-500" id="metricOutOfRank">--</h3>
                 </div>
-                <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
+                <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 min-w-0">
                     <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">意図カバー率</p>
                     <h3 class="text-2xl font-bold text-slate-900" id="metricIntentCoverage">--%</h3>
                 </div>
-                <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
+                <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 min-w-0">
                     <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">除外済み数</p>
                     <h3 class="text-2xl font-bold text-slate-500" id="metricExcluded">--</h3>
                 </div>
@@ -93,20 +95,20 @@
         <!-- ② 順位モニタリング -->
         <div id="panel-ranks" class="strategy-panel hidden space-y-6">
             <div id="rankAlertBanner" class="hidden bg-red-50 border border-red-200 rounded-xl p-4 text-red-800 text-sm font-bold">急落キーワードがあります。確認してください。</div>
-            <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
+            <div class="strategy-metrics">
+                <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 min-w-0">
                     <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">監視中キーワード数</p>
                     <h3 class="text-2xl font-bold text-slate-900" id="metricWatchCount">--</h3>
                 </div>
-                <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
+                <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 min-w-0">
                     <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">1〜10位（1ページ目）</p>
                     <h3 class="text-2xl font-bold text-emerald-600" id="metricTop10">--</h3>
                 </div>
-                <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
+                <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 min-w-0">
                     <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">急落キーワード数</p>
                     <h3 class="text-2xl font-bold text-red-500" id="metricDropCount">--</h3>
                 </div>
-                <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
+                <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 min-w-0">
                     <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">圏外キーワード数</p>
                     <h3 class="text-2xl font-bold text-slate-500" id="metricRankOut">--</h3>
                 </div>

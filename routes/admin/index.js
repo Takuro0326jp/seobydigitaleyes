@@ -59,7 +59,7 @@ router.get("/dashboard", async (req, res) => {
 router.get("/users", async (req, res) => {
   try {
     const [baseRows] = await pool.query(
-      `SELECT id, email, username, role, created_at, company_id FROM users ORDER BY created_at DESC`
+      `SELECT id, email, username, role, created_at, company_id, first_access_at, last_access_at FROM users ORDER BY created_at DESC`
     );
     const rows = [];
     for (const u of baseRows || []) {

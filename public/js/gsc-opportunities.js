@@ -13,9 +13,10 @@
 
   function updateNavLinks() {
     const suffix = "?scan=" + encodeURIComponent(scanId);
-    ["nav-performance", "nav-indexHealth", "nav-technical", "nav-opportunities"].forEach((id, i) => {
+    const ids = ["nav-task", "nav-performance", "nav-indexHealth", "nav-technical", "nav-opportunities"];
+    const hrefs = ["gsc-task.html", "gsc.html", "gsc-indexhealth.html", "gsc-technical.html", "gsc-opportunities.html"];
+    ids.forEach((id, i) => {
       const el = document.getElementById(id);
-      const hrefs = ["gsc.html", "gsc-indexhealth.html", "gsc-technical.html", "gsc-opportunities.html"];
       if (el) el.setAttribute("href", hrefs[i] + suffix);
     });
   }

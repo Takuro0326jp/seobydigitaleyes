@@ -284,6 +284,8 @@
 
   window.addEventListener("DOMContentLoaded", () => {
     const suffix = "?scan=" + encodeURIComponent(scanId);
+    const taskLink = document.getElementById("nav-task");
+    if (taskLink) taskLink.setAttribute("href", "gsc-task.html" + suffix);
     const perfLink = document.querySelector('a[href="gsc.html"]');
     if (perfLink) perfLink.setAttribute("href", "gsc.html" + suffix);
     const indexLink = document.getElementById("nav-indexHealth");
@@ -404,24 +406,9 @@
     }
   };
 
-  window.selectQuery = function (id) {
-    if (!gscConnected) return;
-    const item = rawGscData.find((d) => d.id === id);
-    if (!item) return;
-
-    const rows = document.querySelectorAll("#gscTableBody tr");
-    rows.forEach((r) => r.classList.remove("bg-indigo-50/50", "border-indigo-500"));
-    if (event?.currentTarget) event.currentTarget.classList.add("bg-indigo-50/50", "border-indigo-500");
-
-    document.getElementById("panelPlaceholder")?.classList.add("hidden");
-    document.getElementById("panelContent")?.classList.remove("hidden");
-
-    document.getElementById("detailQueryName").textContent = item.url;
-    document.getElementById("detailDeviceTag").innerHTML = `<span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-600 border border-emerald-100 text-[9px] font-black uppercase tracking-tighter">GSC</span>`;
-    document.getElementById("detailPriorityTag").innerHTML = `<span class="px-2 py-0.5 rounded text-[9px] font-black ${item.priorityClass}">${item.priority}</span>`;
-
-    const analysisEl = document.getElementById("analysisText");
-    const actionListEl = document.getElementById("actionList");
+  function populateDetailContent(item) {
+    const deviceTag = `<span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-600 border border-emerald-100 text-[9px] font-black uppercase tracking-tighter">GSC</span>`;
+    const priorityTag = `<span class="px-2 py-0.5 rounded text-[9px] font-black ${item.priorityClass}">${item.priority}</span>`;
 
     let analysis = "", actions = [];
     if (item.priority === "HIGH") {
@@ -435,9 +422,56 @@
       actions = ["関連記事からの内部リンク強化", "情報の最新化（リフレッシュ）"];
     }
 
-    analysisEl.textContent = analysis;
-    actionListEl.innerHTML = actions.map((a) => `<li class="flex items-start gap-2"><svg class="w-4 h-4 text-indigo-500 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/></svg><span>${a}</span></li>`).join("");
+    const actionHtml = actions.map((a) => `<li class="flex items-start gap-2"><svg class="w-4 h-4 text-indigo-500 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/></svg><span>${a}</span></li>`).join("");
+
+    return { deviceTag, priorityTag, analysis, actionHtml };
+  }
+
+  window.selectQuery = function (id) {
+    if (!gscConnected) return;
+    const item = rawGscData.find((d) => d.id === id);
+    if (!item) return;
+
+    const rows = document.querySelectorAll("#gscTableBody tr");
+    rows.forEach((r) => r.classList.remove("bg-indigo-50/50", "border-indigo-500"));
+    if (event?.currentTarget) event.currentTarget.classList.add("bg-indigo-50/50", "border-indigo-500");
+
+    const content = populateDetailContent(item);
+
+    document.getElementById("panelPlaceholder")?.classList.add("hidden");
+    document.getElementById("panelContent")?.classList.remove("hidden");
+    document.getElementById("detailQueryName").textContent = item.url;
+    document.getElementById("detailDeviceTag").innerHTML = content.deviceTag;
+    document.getElementById("detailPriorityTag").innerHTML = content.priorityTag;
+    document.getElementById("analysisText").textContent = content.analysis;
+    document.getElementById("actionList").innerHTML = content.actionHtml;
+
+    const modal = document.getElementById("gscUrlDetailModal");
+    if (modal) {
+      document.getElementById("modalDetailQueryName").textContent = item.url;
+      document.getElementById("modalDetailDeviceTag").innerHTML = content.deviceTag;
+      document.getElementById("modalDetailPriorityTag").innerHTML = content.priorityTag;
+      document.getElementById("modalAnalysisText").textContent = content.analysis;
+      document.getElementById("modalActionList").innerHTML = content.actionHtml;
+      modal.classList.remove("hidden");
+      document.body.style.overflow = "hidden";
+    }
   };
+
+  window.closeGscUrlModal = function () {
+    const modal = document.getElementById("gscUrlDetailModal");
+    if (modal) {
+      modal.classList.add("hidden");
+      document.body.style.overflow = "";
+    }
+  };
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      const modal = document.getElementById("gscUrlDetailModal");
+      if (modal && !modal.classList.contains("hidden")) window.closeGscUrlModal();
+    }
+  });
 
   window.filterGSCTable = function () {
     if (!gscConnected) return;

@@ -201,12 +201,12 @@ async function fetchYahooAdsReportWithMeta(startDate, endDate, userId = null, op
     const diagnosticOnly = !!connectionTest;
     let jobStatus = "IN_PROGRESS";
     let attempts = 0;
-    const maxAttempts = diagnosticOnly ? 1 : 60;
+    const maxAttempts = diagnosticOnly ? 1 : 120;
     let getError = null;
     let lastGetValues = [];
 
     while ((jobStatus === "IN_PROGRESS" || jobStatus === "WAITING" || jobStatus === "WAIT") && attempts < maxAttempts) {
-      await new Promise((r) => setTimeout(r, attempts === 0 ? (diagnosticOnly ? 500 : 3000) : 2000));
+      await new Promise((r) => setTimeout(r, attempts === 0 ? (diagnosticOnly ? 500 : 5000) : 3000));
       attempts++;
 
       const getBody = useRid

@@ -17,6 +17,7 @@
     window.location.pathname.includes("domain.html") ||
     window.location.pathname.includes("security.html") ||
     window.location.pathname.includes("gsc.html") ||
+    window.location.pathname.includes("gsc-task.html") ||
     window.location.pathname.includes("gsc-indexhealth.html") ||
     window.location.pathname.includes("gsc-technical.html") ||
     window.location.pathname.includes("gsc-opportunities.html") ||
@@ -149,7 +150,7 @@ class="block px-4 py-3 text-[11px] font-bold text-slate-600 hover:bg-slate-50 ho
 
     const isActive = (target) => {
       const isSeoActive = target === "seo" && path.includes("result.html");
-      const isGscActive = target === "gsc" && (path.includes("gsc.html") || path.includes("gsc-indexhealth.html") || path.includes("gsc-technical.html") || path.includes("gsc-opportunities.html") || path.includes("gsc-monitoring.html"));
+      const isGscActive = target === "gsc" && (path.includes("gsc.html") || path.includes("gsc-task.html") || path.includes("gsc-indexhealth.html") || path.includes("gsc-technical.html") || path.includes("gsc-opportunities.html") || path.includes("gsc-monitoring.html"));
       const isAdsActive = target === "ads" && path.includes("ads.html");
       const isLinkStructureActive = target === "link-structure" && path.includes("link-structure.html");
       const isOtherActive = target !== "seo" && target !== "gsc" && target !== "ads" && (path.includes(target) || (target === "link-structure" && path.includes("link-structure.html")));
@@ -181,7 +182,7 @@ class="block px-4 py-3 text-[11px] font-bold text-slate-600 hover:bg-slate-50 ho
                 <a href="link-structure.html${urlSuffix}" class="tab-btn pb-4 text-sm font-bold border-b-2 transition-colors ${isActive("link-structure")}">Link Structure</a>
                 <a href="mobile.html${urlSuffix}" class="tab-btn pb-4 text-sm font-bold border-b-2 transition-colors ${isActive("mobile")}">Mobile Friendly</a>
                 <a href="llmo.html${urlSuffix}" class="tab-btn pb-4 text-sm font-bold border-b-2 transition-colors ${isActive("llmo")}">LLMO Analysis</a>
-                <a href="gsc.html${urlSuffix}" class="tab-btn pb-4 text-sm font-bold border-b-2 transition-colors ${isActive("gsc")}">Search Console</a>
+                <a href="gsc-task.html${urlSuffix}" class="tab-btn pb-4 text-sm font-bold border-b-2 transition-colors ${isActive("gsc")}">Search Console</a>
                 <a href="domain.html${urlSuffix}" class="tab-btn pb-4 text-sm font-bold border-b-2 transition-colors ${isActive("domain")}">Domain Authority</a>
                 <a href="security.html${urlSuffix}" class="tab-btn pb-4 text-sm font-bold border-b-2 transition-colors ${isActive("security")}">Security</a>
                 <a href="strategy.html${urlSuffix}" class="tab-btn pb-4 text-sm font-bold border-b-2 transition-colors ${isActive("strategy")}">SEO Strategy</a>
@@ -199,6 +200,7 @@ class="block px-4 py-3 text-[11px] font-bold text-slate-600 hover:bg-slate-50 ho
       "mobile.html",
       "llmo.html",
       "gsc.html",
+      "gsc-task.html",
       "gsc-indexhealth.html",
       "gsc-technical.html",
       "gsc-opportunities.html",

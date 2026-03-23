@@ -31,13 +31,18 @@ const pool = mysql.createPool({
 });
 
 // 未処理の接続エラーをキャッチ（EHOSTUNREACH, ECONNRESET 等）
+let _lastTransientLog = 0;
 pool.on("error", (err) => {
   const code = err.code || err.errno;
-  const msg = `[DB] 接続エラー: ${code || err.message}`;
-  if (code === "EHOSTUNREACH" || code === "ENOTFOUND" || code === "ECONNRESET" || code === "ETIMEDOUT") {
-    console.warn("⚠️ MySQL keepalive error:", err.message);
+  const isTransient = ["EHOSTUNREACH", "ENOTFOUND", "ECONNRESET", "ETIMEDOUT"].includes(code);
+  if (isTransient) {
+    const now = Date.now();
+    if (now - _lastTransientLog > 60000) {
+      _lastTransientLog = now;
+      console.warn("⚠️ MySQL 接続エラー (一時的):", err.message, "— 再接続を試行します");
+    }
   } else {
-    console.error(msg, err.message);
+    console.error("[DB] 接続エラー:", code || err.message, err.message);
   }
 });
 

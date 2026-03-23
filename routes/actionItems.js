@@ -16,7 +16,7 @@ async function assertScanAccess(scanId, user) {
   return !!scan;
 }
 
-/** GET /api/action-items - 未完了アクション上位5件 */
+/** GET /api/action-items - 未着手・確認中・件数 */
 router.get("/", async (req, res) => {
   const user = await getUserWithContext(req);
   if (!user) return res.status(401).json({ error: "ログインが必要です" });
@@ -28,28 +28,74 @@ router.get("/", async (req, res) => {
     return res.status(404).json({ error: "スキャンが見つかりません" });
   }
 
-  try {
-    const [items] = await pool.query(
-      `SELECT id, scan_id, title, description, priority, effort, source, source_tab, action_type, completed_at, generated_at
-       FROM gsc_action_items
-       WHERE user_id = ? AND scan_id = ? AND completed_at IS NULL AND dismissed_at IS NULL
-       ORDER BY FIELD(priority, 'high', 'medium', 'low'), generated_at ASC
-       LIMIT 5`,
-      [user.id, scanId]
-    );
+  const offset = Math.max(0, parseInt(req.query.offset, 10) || 0);
+  const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 20));
+  const category = (req.query.category || "").trim();
+  const categoryCond =
+    category === "duplicate"
+      ? " AND (action_type LIKE 'fix_dup_title_%' OR action_type LIKE 'fix_url_param_dup_%')"
+      : "";
 
-    const [[totalRow]] = await pool.query(
-      `SELECT COUNT(*) AS cnt FROM gsc_action_items WHERE user_id = ? AND scan_id = ? AND completed_at IS NULL`,
-      [user.id, scanId]
-    );
-    const [[completedRow]] = await pool.query(
-      `SELECT COUNT(*) AS cnt FROM gsc_action_items WHERE user_id = ? AND scan_id = ? AND completed_at IS NOT NULL`,
-      [user.id, scanId]
-    );
+  try {
+    let items, verifying, totalRow, verifyingRow, completedRow;
+    try {
+      [items] = await pool.query(
+        `SELECT id, scan_id, title, description, priority, effort, source, source_tab, action_type, completed_at, verifying_at, generated_at
+         FROM gsc_action_items
+       WHERE scan_id = ? AND verifying_at IS NULL AND completed_at IS NULL AND dismissed_at IS NULL${categoryCond}
+       ORDER BY FIELD(priority, 'high', 'medium', 'low'), generated_at ASC
+       LIMIT ? OFFSET ?`,
+        [scanId, limit, offset]
+      );
+      [verifying] = await pool.query(
+        `SELECT id, scan_id, title, description, priority, effort, source, source_tab, action_type, completed_at, verifying_at, generated_at
+         FROM gsc_action_items
+         WHERE scan_id = ? AND verifying_at IS NOT NULL AND completed_at IS NULL AND dismissed_at IS NULL${categoryCond}
+         ORDER BY verifying_at ASC`,
+        [scanId]
+      );
+      [[totalRow]] = await pool.query(
+        `SELECT COUNT(*) AS cnt FROM gsc_action_items WHERE scan_id = ? AND verifying_at IS NULL AND completed_at IS NULL AND dismissed_at IS NULL${categoryCond}`,
+        [scanId]
+      );
+      [[verifyingRow]] = await pool.query(
+        `SELECT COUNT(*) AS cnt FROM gsc_action_items WHERE scan_id = ? AND verifying_at IS NOT NULL AND completed_at IS NULL${categoryCond}`,
+        [scanId]
+      );
+      [[completedRow]] = await pool.query(
+        `SELECT COUNT(*) AS cnt FROM gsc_action_items WHERE scan_id = ? AND completed_at IS NOT NULL`,
+        [scanId]
+      );
+    } catch (colErr) {
+      if (colErr.code === "ER_BAD_FIELD_ERROR" || (colErr.message && colErr.message.includes("verifying_at"))) {
+        [items] = await pool.query(
+          `SELECT id, scan_id, title, description, priority, effort, source, source_tab, action_type, completed_at, generated_at
+           FROM gsc_action_items
+           WHERE scan_id = ? AND completed_at IS NULL AND dismissed_at IS NULL${categoryCond}
+           ORDER BY FIELD(priority, 'high', 'medium', 'low'), generated_at ASC
+           LIMIT ? OFFSET ?`,
+          [scanId, limit, offset]
+        );
+        verifying = [];
+        [[totalRow]] = await pool.query(
+          `SELECT COUNT(*) AS cnt FROM gsc_action_items WHERE scan_id = ? AND completed_at IS NULL AND dismissed_at IS NULL${categoryCond}`,
+          [scanId]
+        );
+        verifyingRow = { cnt: 0 };
+        [[completedRow]] = await pool.query(
+          `SELECT COUNT(*) AS cnt FROM gsc_action_items WHERE scan_id = ? AND completed_at IS NOT NULL`,
+          [scanId]
+        );
+      } else {
+        throw colErr;
+      }
+    }
 
     res.json({
-      items: items.map((r) => ({ ...r, completedAt: r.completed_at })),
+      items: (items || []).map((r) => ({ ...r, completedAt: r.completed_at, verifyingAt: r.verifying_at })),
+      verifying: (verifying || []).map((r) => ({ ...r, completedAt: r.completed_at, verifyingAt: r.verifying_at })),
       totalPending: totalRow?.cnt ?? 0,
+      totalVerifying: verifyingRow?.cnt ?? 0,
       totalCompleted: completedRow?.cnt ?? 0,
     });
   } catch (e) {
@@ -71,16 +117,32 @@ router.get("/completed", async (req, res) => {
   }
 
   try {
-    const [rows] = await pool.query(
-      `SELECT id, scan_id, title, description, priority, effort, source, source_tab, completed_at, generated_at
-       FROM gsc_action_items
-       WHERE user_id = ? AND scan_id = ? AND completed_at IS NOT NULL
-       ORDER BY completed_at DESC
-       LIMIT 50`,
-      [user.id, scanId]
-    );
+    let rows;
+    try {
+      [rows] = await pool.query(
+        `SELECT id, scan_id, title, description, priority, effort, source, source_tab, completed_at, verifying_at, generated_at
+         FROM gsc_action_items
+         WHERE scan_id = ? AND completed_at IS NOT NULL
+         ORDER BY completed_at DESC
+         LIMIT 50`,
+        [scanId]
+      );
+    } catch (colErr) {
+      if (colErr.code === "ER_BAD_FIELD_ERROR" || (colErr.message && colErr.message.includes("verifying_at"))) {
+        [rows] = await pool.query(
+          `SELECT id, scan_id, title, description, priority, effort, source, source_tab, completed_at, generated_at
+           FROM gsc_action_items
+           WHERE scan_id = ? AND completed_at IS NOT NULL
+           ORDER BY completed_at DESC
+           LIMIT 50`,
+          [scanId]
+        );
+      } else {
+        throw colErr;
+      }
+    }
     res.json({
-      items: rows.map((r) => ({ ...r, completedAt: r.completed_at })),
+      items: (rows || []).map((r) => ({ ...r, completedAt: r.completed_at, verifyingAt: r.verifying_at })),
     });
   } catch (e) {
     console.error("[action-items] completed:", e);
@@ -101,15 +163,30 @@ router.get("/all", async (req, res) => {
   }
 
   try {
-    const [rows] = await pool.query(
-      `SELECT id, scan_id, title, description, priority, effort, source, source_tab, action_type, completed_at, generated_at
-       FROM gsc_action_items
-       WHERE user_id = ? AND scan_id = ? AND dismissed_at IS NULL
-       ORDER BY FIELD(priority, 'high', 'medium', 'low'), generated_at ASC`,
-      [user.id, scanId]
-    );
+    let rows;
+    try {
+      [rows] = await pool.query(
+        `SELECT id, scan_id, title, description, priority, effort, source, source_tab, action_type, completed_at, verifying_at, generated_at
+         FROM gsc_action_items
+         WHERE scan_id = ? AND dismissed_at IS NULL
+         ORDER BY FIELD(priority, 'high', 'medium', 'low'), generated_at ASC`,
+        [scanId]
+      );
+    } catch (colErr) {
+      if (colErr.code === "ER_BAD_FIELD_ERROR" || (colErr.message && colErr.message.includes("verifying_at"))) {
+        [rows] = await pool.query(
+          `SELECT id, scan_id, title, description, priority, effort, source, source_tab, action_type, completed_at, generated_at
+           FROM gsc_action_items
+           WHERE scan_id = ? AND dismissed_at IS NULL
+           ORDER BY FIELD(priority, 'high', 'medium', 'low'), generated_at ASC`,
+          [scanId]
+        );
+      } else {
+        throw colErr;
+      }
+    }
     res.json({
-      items: rows.map((r) => ({ ...r, completedAt: r.completed_at })),
+      items: (rows || []).map((r) => ({ ...r, completedAt: r.completed_at, verifyingAt: r.verifying_at })),
     });
   } catch (e) {
     console.error("[action-items] all:", e);
@@ -117,16 +194,73 @@ router.get("/all", async (req, res) => {
   }
 });
 
-/** PATCH /api/action-items/:id/complete - 完了にする */
+/** PATCH /api/action-items/:id/verify - 確認中にする（チェックを入れた時） */
+router.patch("/:id/verify", async (req, res) => {
+  const user = await getUserWithContext(req);
+  if (!user) return res.status(401).json({ error: "ログインが必要です" });
+
+  const id = req.params.id;
+  try {
+    const [[item]] = await pool.query(
+      "SELECT scan_id, completed_at FROM gsc_action_items WHERE id = ? LIMIT 1",
+      [id]
+    );
+    if (!item || !(await assertScanAccess(item.scan_id, user))) {
+      return res.status(404).json({ error: "見つかりません" });
+    }
+    if (item.completed_at) {
+      return res.status(400).json({ error: "既に完了済みです" });
+    }
+    let result;
+    try {
+      [result] = await pool.query(
+        `UPDATE gsc_action_items SET verifying_at = NOW() WHERE id = ? AND completed_at IS NULL`,
+        [id]
+      );
+    } catch (upErr) {
+      if (upErr.code === "ER_BAD_FIELD_ERROR" || (upErr.message && upErr.message.includes("verifying_at"))) {
+        [result] = await pool.query(
+          `UPDATE gsc_action_items SET completed_at = NOW() WHERE id = ? AND completed_at IS NULL`,
+          [id]
+        );
+      } else {
+        throw upErr;
+      }
+    }
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: "見つかりません" });
+    }
+    const [[row]] = await pool.query(
+      `SELECT id, scan_id, title, priority, effort, source, source_tab, completed_at FROM gsc_action_items WHERE id = ?`,
+      [id]
+    );
+    res.json({ item: { ...row, completedAt: row.completed_at, verifyingAt: row.verifying_at } });
+  } catch (e) {
+    console.error("[action-items] verify:", e);
+    res.status(500).json({ error: "更新に失敗しました" });
+  }
+});
+
+/** PATCH /api/action-items/:id/complete - 完了にする（サイト確認後） */
 router.patch("/:id/complete", async (req, res) => {
   const user = await getUserWithContext(req);
   if (!user) return res.status(401).json({ error: "ログインが必要です" });
 
   const id = req.params.id;
   try {
+    const [[item]] = await pool.query(
+      "SELECT scan_id, completed_at FROM gsc_action_items WHERE id = ? LIMIT 1",
+      [id]
+    );
+    if (!item || !(await assertScanAccess(item.scan_id, user))) {
+      return res.status(404).json({ error: "見つかりません" });
+    }
+    if (item.completed_at) {
+      return res.status(400).json({ error: "既に完了済みです" });
+    }
     const [result] = await pool.query(
-      `UPDATE gsc_action_items SET completed_at = NOW() WHERE id = ? AND user_id = ?`,
-      [id, user.id]
+      `UPDATE gsc_action_items SET completed_at = NOW() WHERE id = ? AND completed_at IS NULL`,
+      [id]
     );
     if (result.affectedRows === 0) {
       return res.status(404).json({ error: "見つかりません" });
@@ -135,29 +269,62 @@ router.patch("/:id/complete", async (req, res) => {
       `SELECT id, scan_id, title, priority, effort, source, source_tab, completed_at FROM gsc_action_items WHERE id = ?`,
       [id]
     );
-    res.json({ item: { ...row, completedAt: row.completed_at } });
+    res.json({ item: { ...row, completedAt: row.completed_at, verifyingAt: row.verifying_at } });
   } catch (e) {
     console.error("[action-items] complete:", e);
     res.status(500).json({ error: "更新に失敗しました" });
   }
 });
 
-/** PATCH /api/action-items/:id/undo - 完了を取り消す */
+/** PATCH /api/action-items/:id/undo - 確認中→未着手 または 完了→確認中 に戻す */
 router.patch("/:id/undo", async (req, res) => {
   const user = await getUserWithContext(req);
   if (!user) return res.status(401).json({ error: "ログインが必要です" });
 
   const id = req.params.id;
   try {
-    await pool.query(
-      `UPDATE gsc_action_items SET completed_at = NULL WHERE id = ? AND user_id = ?`,
-      [id, user.id]
-    );
+    let item;
+    try {
+      [[item]] = await pool.query(
+        "SELECT scan_id, verifying_at, completed_at FROM gsc_action_items WHERE id = ? LIMIT 1",
+        [id]
+      );
+    } catch (colErr) {
+      if (colErr.code === "ER_BAD_FIELD_ERROR" || (colErr.message && colErr.message.includes("verifying_at"))) {
+        [[item]] = await pool.query(
+          "SELECT scan_id, completed_at FROM gsc_action_items WHERE id = ? LIMIT 1",
+          [id]
+        );
+        item = { ...item, verifying_at: null };
+      } else {
+        throw colErr;
+      }
+    }
+    if (!item || !(await assertScanAccess(item.scan_id, user))) {
+      return res.status(404).json({ error: "見つかりません" });
+    }
+    if (item.completed_at) {
+      await pool.query(
+        `UPDATE gsc_action_items SET completed_at = NULL WHERE id = ?`,
+        [id]
+      );
+    } else if (item.verifying_at) {
+      await pool.query(
+        `UPDATE gsc_action_items SET verifying_at = NULL WHERE id = ?`,
+        [id]
+      );
+    } else {
+      const [[row]] = await pool.query(
+        `SELECT id, scan_id, title, priority, effort, source, source_tab, completed_at FROM gsc_action_items WHERE id = ?`,
+        [id]
+      );
+      return res.json({ item: row ? { ...row, completedAt: row.completed_at, verifyingAt: null } : { id } });
+    }
     const [[row]] = await pool.query(
-      `SELECT id, scan_id, title, priority, effort, source, source_tab, completed_at FROM gsc_action_items WHERE id = ?`,
+      `SELECT id, scan_id, title, priority, effort, source, source_tab, completed_at, verifying_at FROM gsc_action_items WHERE id = ?`,
       [id]
     );
-    res.json({ item: row ? { ...row, completedAt: null } : { id } });
+    res.json({ item: row ? { ...row, completedAt: row.completed_at, verifyingAt: row.verifying_at } : { id } });
   } catch (e) {
     console.error("[action-items] undo:", e);
     res.status(500).json({ error: "更新に失敗しました" });

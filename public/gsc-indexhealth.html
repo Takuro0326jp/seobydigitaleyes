@@ -24,6 +24,9 @@
         <!-- ナビゲーション -->
         <div class="overflow-x-auto -mx-4 sm:mx-0 scrollbar-thin">
             <div class="flex items-center gap-6 sm:gap-8 border-b border-slate-200 pb-0 min-w-max sm:min-w-0 px-4 sm:px-0">
+                <a href="gsc-task.html" id="nav-task" class="nav-item pb-4 text-xs sm:text-sm font-black tracking-widest uppercase transition-all text-slate-400 hover:text-slate-600 border-b-2 border-transparent shrink-0">
+                    TASK
+                </a>
                 <a href="gsc.html" id="nav-performance" class="nav-item pb-4 text-xs sm:text-sm font-black tracking-widest uppercase transition-all text-slate-400 hover:text-slate-600 border-b-2 border-transparent shrink-0">
                     Performance
                 </a>
@@ -38,9 +41,6 @@
                 </a>
             </div>
         </div>
-
-        <!-- 今週やるべきこと -->
-        <div id="action-item-list-container" class="mb-6"></div>
 
         <!-- サマリーカード（エラー・警告・正常・除外） -->
         <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
@@ -196,15 +196,14 @@
 
         <!-- Excel 出力ボタン -->
         <div class="flex justify-center pt-6 sm:pt-8 pb-12 sm:pb-16">
-            <button id="gscExcelBtn" onclick="window.downloadGSCExcel && window.downloadGSCExcel()" class="flex items-center gap-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 sm:py-4 px-8 sm:px-10 rounded-2xl text-[11px] sm:text-[12px] tracking-widest uppercase transition-all shadow-xl shadow-emerald-100 hover:-translate-y-0.5 active:scale-95">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
-                分析レポートをエクセルで書き出す (.xlsx)
+            <button id="gscExcelBtn" onclick="window.downloadGSCExcel && window.downloadGSCExcel()" class="flex items-center justify-center gap-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 sm:py-4 px-10 sm:px-12 min-w-[300px] sm:min-w-[320px] rounded-2xl text-[11px] sm:text-[12px] tracking-widest uppercase transition-all shadow-xl shadow-emerald-100 hover:-translate-y-0.5 active:scale-95">
+                <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+                <span>分析レポートをエクセルで書き出す (.xlsx)</span>
             </button>
         </div>
     </main>
 
     <script src="/js/header.js?v=2"></script>
-    <script src="/js/action-item-list.js"></script>
     <script src="/js/gsc-indexhealth.js"></script>
 </body>
 </html>

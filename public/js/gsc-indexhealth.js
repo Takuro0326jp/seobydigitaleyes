@@ -393,6 +393,8 @@
 
   window.addEventListener("DOMContentLoaded", () => {
     const suffix = "?scan=" + encodeURIComponent(scanId);
+    const taskLink = document.getElementById("nav-task");
+    if (taskLink) taskLink.setAttribute("href", "gsc-task.html" + suffix);
     const perfLink = document.querySelector('a[href="gsc.html"]');
     if (perfLink) perfLink.setAttribute("href", "gsc.html" + suffix);
     const indexLink = document.querySelector('a[href="gsc-indexhealth.html"]');

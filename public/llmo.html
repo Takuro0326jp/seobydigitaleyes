@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>LLMO Analysis | SEO Scan</title>
     <link rel="stylesheet" href="/css/style.css">
-    <link rel="stylesheet" href="/css/llmo-responsive.css">
+    <link rel="stylesheet" href="/css/llmo.css">
     <link href="/css/tailwind.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
@@ -38,24 +38,22 @@
             </button>
         </div>
 
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-            <div class="p-6 bg-white border border-slate-200 rounded-2xl shadow-sm cursor-pointer hover:border-blue-400 hover:shadow-md transition-all flex flex-col justify-between min-h-[190px]" onclick="window.sortData && window.sortData('citation')">
+        <div class="llmo-metrics gap-4 mb-8">
+            <div class="llmo-mc cursor-pointer hover:border-blue-400 transition-all" onclick="window.sortData && window.sortData('citation')">
                 <div>
                     <div class="flex justify-between items-start mb-2">
-                        <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest">AI引用可能性</p>
+                        <div class="llmo-mc-label">AI引用可能性</div>
                         <div class="llmo-tooltip-wrap">
                             <svg class="w-3.5 h-3.5 text-slate-300 cursor-help" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
                             <span class="llmo-tooltip">AI検索エンジンがあなたのサイトを「信頼できるソース」として引用する確率の推定値です。</span>
                         </div>
                     </div>
-                    <h3 class="text-3xl font-bold text-blue-600"><span id="cite-score">--</span><span class="text-sm font-medium text-slate-300">/100</span></h3>
-                    <p id="cite-comparison" class="text-[11px] text-slate-500 mt-2 font-medium italic">判定待ち...</p>
+                    <h3 class="text-3xl font-bold text-slate-900 font-sans"><span id="cite-score">--</span><span class="text-sm font-medium text-slate-400">/100</span></h3>
+                    <p id="cite-comparison" class="text-[11px] text-slate-500 mt-1">判定待ち...</p>
                 </div>
-                <div class="mt-4 pt-3 border-t border-slate-50">
-                    <div class="flex items-start gap-2">
-                        <span class="text-[9px] bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded font-bold whitespace-nowrap uppercase">Insight</span>
-                        <p class="text-[10px] text-slate-500 leading-relaxed font-medium">Organizationタグで公式SNSを紐付け、運営実態を証明することで採用率が向上します。</p>
-                    </div>
+                <div class="llmo-insight-row">
+                    <span class="llmo-insight-lbl">INSIGHT</span>
+                    <span class="llmo-insight-txt">Organizationタグで公式SNSを紐付け、運営実態を証明することで採用率が向上します。</span>
                 </div>
             </div>
 
@@ -135,42 +133,29 @@
             </div>
         </div>
 
-        <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6 border-b border-slate-100 pb-6">
-            <div>
-                <h2 class="text-xl font-black text-slate-800 tracking-tight">サイト構造 × ページ品質</h2>
-                <p class="text-[11px] text-slate-400 font-bold mt-1 uppercase tracking-wider">全ページの構造とSEO品質を統合評価</p>
-            </div>
-            <div class="flex items-center gap-3">
-                <div class="relative w-64">
-                    <select id="directoryFilter" onchange="window.filterLLMOTable && window.filterLLMOTable()" class="w-full pl-4 pr-10 py-2.5 bg-white border border-slate-200 rounded-xl text-[13px] font-bold text-slate-600 appearance-none focus:ring-2 focus:ring-blue-500 outline-none transition-all cursor-pointer shadow-sm">
-                        <option value="">すべてのディレクトリ</option>
-                    </select>
-                    <div class="absolute inset-y-0 right-0 flex items-center px-3 pointer-events-none text-slate-400 border-l border-slate-100 ml-2">
-                        <svg class="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
-                    </div>
-                </div>
-                <div class="relative w-80">
-                    <input type="text" id="searchInput" oninput="window.filterLLMOTable && window.filterLLMOTable()" placeholder="URLやタイトルで検索..." class="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-[13px] font-bold text-slate-700 focus:ring-2 focus:ring-blue-500 outline-none transition-all shadow-sm">
-                </div>
-            </div>
+        <div class="mb-6">
+            <h2 class="text-xl font-black text-slate-800 tracking-tight">サイト構造 × ページ品質</h2>
+            <p class="text-[11px] text-slate-400 font-bold mt-1 uppercase tracking-wider">全ページの構造とSEO品質を統合評価 &nbsp;·&nbsp; <span id="global-meta">改善アクション: 0件完了</span></p>
+        </div>
+
+        <div class="llmo-filter-row">
+            <button type="button" class="llmo-fb on" data-filter="all">すべてのディレクトリ</button>
+            <button type="button" class="llmo-fb" data-filter="todo">未対応のみ</button>
+            <button type="button" class="llmo-fb" data-filter="done">完了</button>
+            <button type="button" class="llmo-fb" data-filter="hold">保留</button>
+            <button type="button" class="llmo-fb" data-filter="skip">対応困難</button>
         </div>
 
         <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-            <div class="overflow-auto llmo-list-scroll" style="max-height: 600px;">
-                <table class="w-full text-left border-collapse">
-                    <thead class="sticky top-0 bg-slate-50/90 glass-morphism z-10">
-                        <tr class="text-[10px] font-bold text-slate-400 uppercase tracking-widest border-b border-slate-200">
-                            <th class="p-4">分析対象 URL (Parameters Incl.)</th>
-                            <th class="p-4 w-32 text-center">明瞭性ランク</th>
-                            <th class="p-4 w-40 text-center">実装タグ</th>
-                            <th class="p-4 w-32 text-center">AI引用率</th>
-                            <th class="p-4 text-center">主要トピック</th>
-                            <th class="p-4 w-24 text-center">詳細</th>
-                        </tr>
-                    </thead>
-                    <tbody id="llmoTableBody" class="text-[13px] text-slate-600 divide-y divide-slate-100 font-medium"></tbody>
-                </table>
+            <div class="llmo-col-header">
+                <div class="llmo-col-url">分析対象 URL</div>
+                <div class="llmo-col-rank">明瞭性</div>
+                <div class="llmo-col-ai">AI引用率</div>
+                <div class="llmo-col-tasks">改善進捗</div>
+                <div class="llmo-col-bar"></div>
+                <div class="llmo-col-chev"></div>
             </div>
+            <div class="llmo-page-list" id="page-list" style="padding: 0 14px 14px;"></div>
         </div>
 
         <div class="flex justify-end pb-12">
