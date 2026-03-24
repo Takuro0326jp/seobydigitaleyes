@@ -81,7 +81,7 @@ const TAB_CONFIG = {
     limit: 100,
   },
   area: {
-    fields: "spend,actions,cost_per_action_type,purchase_roas,region",
+    fields: "spend,actions,cost_per_action_type,purchase_roas",
     level: "account",
     breakdowns: "region",
     limit: 100,

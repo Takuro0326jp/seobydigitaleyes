@@ -266,7 +266,11 @@ router.get("/yahoo/account-test", async (req, res) => {
   }
 });
 
-/** GET /api/ads/report - 媒体別レポート取得（company_id 不要・1アカウント連携前提） */
+/** GET /api/ads/report - 媒体別レポート取得（company_id 不要・1アカウント連携前提）
+ * Google / Yahoo / Microsoft / Meta を services/ads/index.js の fetchAllReports で一括取得しマージする。
+ * Meta: META_ACCESS_TOKEN は .env、広告アカウント ID はクエリ ad_account_id（フロントの API 設定で選択・localStorage から送信）。
+ * 個別取得は GET /api/ads/meta/report-debug または GET /api/meta/insights を参照。
+ */
 router.get("/report", async (req, res) => {
   const user = await getUserWithContext(req);
   if (!user) {
@@ -276,6 +280,7 @@ router.get("/report", async (req, res) => {
   const month = (req.query.month || "").trim();
   const startDate = (req.query.startDate || "").trim();
   const endDate = (req.query.endDate || "").trim();
+  /** Meta 広告アカウント ID（act_…）。DB ではなくクライアント設定から渡す。 */
   const adAccountId = (req.query.ad_account_id || "").trim();
   const debug = /^(1|true|yes)$/i.test((req.query.debug || "").trim());
   const force = /^(1|true|yes)$/i.test((req.query.force || "").trim());

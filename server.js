@@ -17,11 +17,14 @@ const scanModule = require("./routes/scan");
 const gscRoutes = require("./routes/gsc");
 const strategyRoutes = require("./routes/strategy");
 const adsRoutes = require("./routes/ads");
+/** Meta Marketing API（/api/meta/adaccounts, insights 等） */
+const metaRoutes = require("./routes/meta");
 const actionItemsRoutes = require("./routes/actionItems");
 const { handleSitemapLast, handleSubmitSitemap } = require("./routes/sitemap");
 const handleStart = scanModule.handleStart;
 const handleResult = scanModule.handleResult;
 const handleTrends = scanModule.handleTrends;
+const handleSecurityCheck = scanModule.handleSecurityCheck;
 
 const app = express();
 const port = process.env.PORT ? Number(process.env.PORT) : 3000;
@@ -129,20 +132,15 @@ app.get("/api/proxy", async (req, res) => {
       return res.status(403).send('<html><body style="font-family:sans-serif;padding:2rem;color:#dc2626"><p>内部アドレスへのアクセスは許可されていません。</p></body></html>');
     }
     const dns = require("dns").promises;
-    let addresses = [];
+    let resolvedIp = null;
     try {
-      addresses = await dns.resolve4(hostname);
+      const result = await dns.lookup(hostname);
+      resolvedIp = result.address;
     } catch {
-      try {
-        addresses = await dns.resolve6(hostname);
-      } catch {
-        return res.status(400).send('<html><body><p>ホスト名を解決できません</p></body></html>');
-      }
+      return res.status(400).send('<html><body style="font-family:sans-serif;padding:2rem;color:#64748b"><p>ホスト名を解決できません。ネットワーク接続を確認してください。</p></body></html>');
     }
-    for (const ip of addresses) {
-      if (isPrivateOrInternalAddress(hostname, ip)) {
-        return res.status(403).send('<html><body style="font-family:sans-serif;padding:2rem;color:#dc2626"><p>内部アドレスへのアクセスは許可されていません。</p></body></html>');
-      }
+    if (isPrivateOrInternalAddress(hostname, resolvedIp)) {
+      return res.status(403).send('<html><body style="font-family:sans-serif;padding:2rem;color:#dc2626"><p>内部アドレスへのアクセスは許可されていません。</p></body></html>');
     }
     const resp = await fetch(targetUrl, {
       headers: { "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15" },
@@ -255,6 +253,9 @@ const scanStartLimiter = rateLimit({
 app.post("/api/scan-start", scanStartLimiter, (req, res, next) =>
   handleStart(req, res).catch(next)
 );
+app.get("/api/scans/result/:id/security-check", (req, res, next) =>
+  handleSecurityCheck(req, res).catch(next)
+);
 app.get("/api/scans/result/:id", (req, res, next) =>
   handleResult(req, res).catch(next)
 );
@@ -266,6 +267,7 @@ app.use("/api/scans", scanRoutes);
 app.use("/api/gsc", gscRoutes);
 app.use("/api/strategy", strategyRoutes);
 app.use("/api/ads", adsRoutes);
+app.use("/api/meta", metaRoutes); /* Meta 広告 API ルート */
 app.use("/api/action-items", actionItemsRoutes);
 
 // GET /api/link-analysis?scan_id=X — user もアクセス可能（/api/scans/:id/link-analysis へリダイレクト）
