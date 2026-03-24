@@ -3,7 +3,9 @@
  */
 const { fetchGoogleAdsReport, fetchGoogleAdsReportWithMeta } = require("./googleAds");
 const { fetchYahooAdsReport, fetchYahooAdsReportWithMeta } = require("./yahooAds");
+const { getCreativeReportsDebug } = require("./yahooAds");
 const { fetchMicrosoftAdsReport } = require("./microsoftAds");
+const { fetchMetaInsightsReport } = require("./metaAds");
 
 function getDateRangeForMonth(ym) {
   if (!ym || !/^\d{4}-\d{2}$/.test(ym)) {
@@ -16,6 +18,26 @@ function getDateRangeForMonth(ym) {
     startDate: `${y}-${pad(m)}-01`,
     endDate: `${y}-${pad(m)}-${new Date(y, m, 0).getDate()}`,
   };
+}
+
+function mergeDailyRows(yahoo, meta) {
+  const byDate = new Map();
+  yahoo.forEach((r) => {
+    const d = r.date || r.day;
+    if (d) byDate.set(String(d).slice(0, 8), { ...r });
+  });
+  meta.forEach((r) => {
+    const d = r.date || r.day;
+    if (!d) return;
+    const key = String(d).slice(0, 8);
+    if (!byDate.has(key)) byDate.set(key, { date: key, impressions: 0, clicks: 0, cost: 0, conversions: 0 });
+    const acc = byDate.get(key);
+    acc.impressions += Number(r.impressions) || 0;
+    acc.clicks += Number(r.clicks) || 0;
+    acc.cost += Number(r.cost) || 0;
+    acc.conversions += Number(r.conversions) || 0;
+  });
+  return [...byDate.values()].sort((a, b) => (a.date || a.day || "").localeCompare(b.date || b.day || ""));
 }
 
 /** startDate/endDate を直接指定した場合の日付範囲（YYYY-MM-DD形式） */
@@ -41,46 +63,115 @@ async function fetchAllReports(monthOrRange, userId = null, options = {}) {
   const fetchGoogle = status.google?.connected ?? false;
   const fetchYahoo = status.yahoo?.connected ?? false;
   const fetchMicrosoft = status.microsoft?.connected ?? false;
-
+  const adAccountId = (options?.ad_account_id || "").trim();
+  const hasMetaToken = !!(process.env.META_ACCESS_TOKEN || "").trim();
+  const fetchMeta = !!(adAccountId && hasMetaToken);
   const mediaCalled = [];
   if (fetchGoogle) mediaCalled.push("google");
   if (fetchYahoo) mediaCalled.push("yahoo");
   if (fetchMicrosoft) mediaCalled.push("microsoft");
+  if (fetchMeta) mediaCalled.push("meta");
   if (mediaCalled.length > 0) {
     console.log("[Ads] API呼び出し:", mediaCalled.join(", "), `(${startDate}〜${endDate})`);
   }
 
   const promises = [];
   if (fetchGoogle) promises.push(fetchGoogleAdsReportWithMeta(startDate, endDate, userId, options));
-  else promises.push(Promise.resolve({ rows: [], customerId: null }));
+  else promises.push(Promise.resolve({ rows: [], areaRows: [], hourRows: [], keywordRows: [], adRows: [], assetRows: [], customerId: null }));
   if (fetchYahoo) promises.push(fetchYahooAdsReportWithMeta(startDate, endDate, userId, options));
-  else promises.push(Promise.resolve({ rows: [], customerId: null }));
+  else promises.push(Promise.resolve({ rows: [], areaRows: [], hourRows: [], keywordRows: [], adRows: [], assetRows: [], customerId: null }));
   if (fetchMicrosoft) promises.push(fetchMicrosoftAdsReport(startDate, endDate));
   else promises.push(Promise.resolve([]));
+  if (fetchMeta) promises.push(fetchMetaInsightsReport(adAccountId, startDate, endDate));
+  else promises.push(Promise.resolve({ rows: [], areaRows: [], hourRows: [], dailyRows: [], keywordRows: [], adRows: [], meta: {} }));
 
-  const [googleResult, yahooResult, microsoft] = await Promise.all(promises);
+  const results = await Promise.all(promises);
+  const googleResult = results[0];
+  const yahooResult = results[1];
+  const microsoft = results[2];
+  const metaResult = results[3] || { rows: [], areaRows: [], hourRows: [], dailyRows: [], keywordRows: [], adRows: [], meta: {} };
 
   const googleRows = googleResult.rows || [];
   const yahooRows = yahooResult.rows || [];
   const microsoftRows = Array.isArray(microsoft) ? microsoft : [];
+  const metaRows = metaResult.rows || [];
+  let adRows = yahooResult.adRows || [];
+  let assetRows = yahooResult.assetRows || [];
+  let _fallbackAd = 0;
+  let _fallbackAsset = 0;
+  if (fetchYahoo && (adRows.length === 0 || assetRows.length === 0)) {
+    try {
+      const fallback = await getCreativeReportsDebug(startDate, endDate, userId);
+      const gotAd = adRows.length === 0 && Array.isArray(fallback.adRows) && fallback.adRows.length > 0;
+      const gotAsset = assetRows.length === 0 && Array.isArray(fallback.assetRows) && fallback.assetRows.length > 0;
+      if (gotAd) {
+        adRows = fallback.adRows;
+        _fallbackAd = adRows.length;
+      }
+      if (gotAsset) {
+        assetRows = fallback.assetRows;
+        _fallbackAsset = assetRows.length;
+      }
+      console.log("[Ads] クリエイティブフォールバック: ad=" + (gotAd ? adRows.length : "主取得") + ", asset=" + (gotAsset ? assetRows.length : "主取得") + (fallback.error ? " error=" + fallback.error : ""));
+    } catch (e) {
+      console.warn("[Ads] クリエイティブフォールバック失敗:", e.message);
+    }
+  }
+  if (adRows.length === 0 && yahooRows.length > 0) {
+    const yahooCampaigns = yahooRows.filter((r) => (r.media || "").indexOf("Yahoo") >= 0);
+    if (yahooCampaigns.length > 0) {
+      adRows = yahooCampaigns.map((r) => ({
+        campaign: r.campaign || r.name || "—",
+        adGroup: "—",
+        adName: "(キャンペーン)",
+        impressions: r.impressions || 0,
+        clicks: r.clicks || 0,
+        cost: r.cost || 0,
+        conversions: r.conversions || 0,
+      }));
+      console.log("[Ads] AD空のためキャンペーンデータで代替: " + adRows.length + " 件");
+    }
+  }
+  const metaAdRows = (metaResult.adRows || []).map((r) => ({ ...r, media: r.media || "Meta" }));
+  const yahooAdRowsWithMedia = adRows.map((r) => ({ ...r, media: "Yahoo広告" }));
+  adRows = [...yahooAdRowsWithMedia, ...metaAdRows];
+  const yahooDailyRows = yahooResult.dailyRows || [];
+  const metaDailyRows = metaResult.dailyRows || [];
+  const dailyRowsMerged = mergeDailyRows(yahooDailyRows, metaDailyRows);
+  const yahooAreaWithMedia = (yahooResult.areaRows || []).map((r) => ({ ...r, media: "Yahoo広告" }));
+  const yahooHourWithMedia = (yahooResult.hourRows || []).map((r) => ({ ...r, media: "Yahoo広告" }));
+  const yahooKeywordWithMedia = (yahooResult.keywordRows || []).map((r) => ({ ...r, media: "Yahoo広告" }));
+  const metaKeywordWithMedia = (metaResult.keywordRows || []).map((r) => ({ ...r, media: "Meta" }));
+  const metaError = (metaResult.meta && metaResult.meta.error) || (adAccountId && !hasMetaToken ? "META_ACCESS_TOKEN が .env に設定されていません" : null);
   const res = {
-    rows: [...googleRows, ...yahooRows, ...microsoftRows],
+    rows: [...googleRows, ...yahooRows, ...microsoftRows, ...metaRows],
+    areaRows: [...yahooAreaWithMedia, ...(metaResult.areaRows || [])],
+    hourRows: [...yahooHourWithMedia, ...(metaResult.hourRows || []).map((r) => ({ ...r, media: "Meta" }))],
+    dailyRows: dailyRowsMerged,
+    keywordRows: [...yahooKeywordWithMedia, ...metaKeywordWithMedia],
+    adRows,
+    assetRows,
     meta: {
       google_customer_id: googleResult.customerId || null,
       yahoo_account_id: yahooResult.customerId || null,
+      meta_account_id: adAccountId || null,
+      meta_error: metaError,
       requested_startDate: startDate,
       requested_endDate: endDate,
       google_row_count: googleRows.length,
       yahoo_row_count: yahooRows.length,
       microsoft_row_count: microsoftRows.length,
+      meta_row_count: metaRows.length,
       _media_called: mediaCalled,
     },
-    _debug: googleResult._debug,
+    _debug: { ...googleResult._debug, ...yahooResult._debug },
+    _yahooRawSample: yahooResult._yahooRawSample || null,
+    _creativeDiagnostic: yahooResult._creativeDiagnostic || null,
+    _fallbackCreative: _fallbackAd > 0 || _fallbackAsset > 0 ? { ad: _fallbackAd, asset: _fallbackAsset } : undefined,
   };
   if (googleResult._hint) res._hint = googleResult._hint;
   if (yahooResult._hint && !res._hint) res._hint = yahooResult._hint;
   else if (yahooResult._hint) res._hint = (res._hint || "") + " " + yahooResult._hint;
-  if (yahooResult._debug) res._yahoo_debug = yahooResult._debug;
   return res;
 }
 

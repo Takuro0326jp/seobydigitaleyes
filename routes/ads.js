@@ -11,8 +11,9 @@ const pool = require("../db");
 const { getUserWithContext } = require("../services/accessControl");
 const { getUserIdFromRequest } = require("../services/session");
 const { fetchAllReports, getConnectionStatus, getDateRangeForMonth, getDateRangeFromDates } = require("../services/ads");
+const { fetchMetaInsightsReport } = require("../services/ads/metaAds");
 const { fetchGoogleAdsReportWithMeta, validateCustomerAccess } = require("../services/ads/googleAds");
-const { fetchYahooAdsReportWithMeta, testYahooAccountService } = require("../services/ads/yahooAds");
+const { fetchYahooAdsReportWithMeta, testYahooAccountService, getCampaignRawDownload, getCreativeReportsDebug, cleanupReportJobs } = require("../services/ads/yahooAds");
 const {
   getOAuth2Client,
   getRedirectUri,
@@ -275,7 +276,13 @@ router.get("/report", async (req, res) => {
   const month = (req.query.month || "").trim();
   const startDate = (req.query.startDate || "").trim();
   const endDate = (req.query.endDate || "").trim();
+  const adAccountId = (req.query.ad_account_id || "").trim();
   const debug = /^(1|true|yes)$/i.test((req.query.debug || "").trim());
+  const force = /^(1|true|yes)$/i.test((req.query.force || "").trim());
+
+  res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+  res.setHeader("Pragma", "no-cache");
+  res.setHeader("Expires", "0");
 
   try {
     const userId = user.id;
@@ -286,14 +293,146 @@ router.get("/report", async (req, res) => {
     if (!param) {
       param = month || undefined;
     }
-    const result = await fetchAllReports(param, userId, { debug });
-    const json = { rows: result.rows || [], meta: result.meta || {} };
+    const result = await fetchAllReports(param, userId, { debug, force, ad_account_id: adAccountId || undefined });
+    const adRows = result.adRows ?? [];
+    const json = {
+      rows: result.rows ?? [],
+      areaRows: result.areaRows ?? [],
+      hourRows: result.hourRows ?? [],
+      dailyRows: result.dailyRows ?? [],
+      keywordRows: result.keywordRows ?? [],
+      adRows,
+      assetRows: result.assetRows ?? [],
+      meta: result.meta ?? {},
+    };
     if (result._debug) json._debug = result._debug;
     if (result._hint) json._hint = result._hint;
+    if (result._yahooRawSample) json._yahooRawSample = result._yahooRawSample;
+    if (result._creativeDiagnostic) json._creativeDiagnostic = result._creativeDiagnostic;
+    if (result._fallbackCreative) json._fallbackCreative = result._fallbackCreative;
+    res.setHeader("X-Ad-Rows-Count", String((result.adRows || []).length));
     res.json(json);
   } catch (e) {
     console.error("[ads] report error:", e.message);
     res.status(500).json({ error: "レポートの取得に失敗しました。" });
+  }
+});
+
+/** GET /api/ads/yahoo/cleanup-jobs - ReportDefinitionService の滞留ジョブを一括削除 */
+router.get("/yahoo/cleanup-jobs", async (req, res) => {
+  const user = await getUserWithContext(req);
+  if (!user) return res.status(401).json({ error: "ログインが必要です" });
+  try {
+    const result = await cleanupReportJobs(user.id);
+    if (result.error) return res.status(400).json({ error: result.error, removed: 0 });
+    res.json({ ok: true, removed: result.removed, total: result.total });
+  } catch (e) {
+    console.error("[ads] cleanup-jobs error:", e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+/** GET /api/ads/yahoo/creative-debug - AD/Asset レポートの診断（API応答をそのまま返す） */
+router.get("/yahoo/creative-debug", async (req, res) => {
+  const user = await getUserWithContext(req);
+  if (!user) return res.status(401).json({ error: "ログインが必要です" });
+  const month = (req.query.month || "").trim();
+  const startDate = (req.query.startDate || "").trim();
+  const endDate = (req.query.endDate || "").trim();
+  let range;
+  if (startDate && endDate && getDateRangeFromDates(startDate, endDate)) {
+    range = getDateRangeFromDates(startDate, endDate);
+  } else {
+    range = getDateRangeForMonth(month || undefined);
+  }
+  try {
+    const result = await getCreativeReportsDebug(range.startDate, range.endDate, user.id);
+    res.json(result);
+  } catch (e) {
+    res.status(500).json({ error: e.message, _diagnostic: true });
+  }
+});
+
+/** GET /api/ads/yahoo/campaign-raw - CAMPAIGNレポートの生CSV（デバッグ用） */
+router.get("/yahoo/campaign-raw", async (req, res) => {
+  const user = await getUserWithContext(req);
+  if (!user) return res.status(401).json({ error: "ログインが必要です" });
+  const month = (req.query.month || "").trim();
+  const startDate = (req.query.startDate || "").trim();
+  const endDate = (req.query.endDate || "").trim();
+  const range = startDate && endDate ? getDateRangeFromDates(startDate, endDate) : getDateRangeForMonth(month || undefined);
+  if (!range) return res.status(400).json({ error: "month または startDate+endDate を指定してください" });
+  try {
+    const result = await getCampaignRawDownload(range.startDate, range.endDate, user.id);
+    if (result.error) return res.status(400).json({ error: result.error });
+    res.json(result);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+/** POST /api/ads/cache/clear - キャッシュクリア（現状サーバー側キャッシュなし・将来用） */
+router.post("/cache/clear", async (req, res) => {
+  const user = await getUserWithContext(req);
+  if (!user) return res.status(401).json({ error: "ログインが必要です" });
+  res.json({ ok: true, message: "キャッシュをクリアしました（サーバー側キャッシュなし）" });
+});
+
+/** GET /api/ads/meta/report-debug - Meta Insights の直接取得テスト（診断用） */
+router.get("/meta/report-debug", async (req, res) => {
+  const user = await getUserWithContext(req);
+  if (!user) return res.status(401).json({ error: "ログインが必要です" });
+  const adAccountId = (req.query.ad_account_id || "").trim();
+  const month = (req.query.month || "").trim();
+  const startDate = (req.query.startDate || "").trim();
+  const endDate = (req.query.endDate || "").trim();
+  if (!adAccountId) return res.status(400).json({ error: "ad_account_id を指定してください" });
+  let range;
+  if (startDate && endDate && getDateRangeFromDates(startDate, endDate)) {
+    range = getDateRangeFromDates(startDate, endDate);
+  } else {
+    range = getDateRangeForMonth(month || undefined);
+  }
+  try {
+    const result = await fetchMetaInsightsReport(adAccountId, range.startDate, range.endDate);
+    res.json({
+      rows: result.rows || [],
+      meta: result.meta || {},
+      _debug: { adAccountId, startDate: range.startDate, endDate: range.endDate },
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message, _debug: { adAccountId } });
+  }
+});
+
+/** GET /api/ads/meta/adaccounts - Meta Graph API で広告アカウント一覧を取得（.env の META_ACCESS_TOKEN を使用） */
+router.get("/meta/adaccounts", async (req, res) => {
+  const user = await getUserWithContext(req);
+  if (!user) return res.status(401).json({ error: "ログインが必要です" });
+  const token = (process.env.META_ACCESS_TOKEN || "").trim();
+  if (!token) return res.status(503).json({ error: "META_ACCESS_TOKEN が .env に設定されていません" });
+  try {
+    const all = [];
+    let url = "https://graph.facebook.com/v25.0/me/adaccounts?fields=id,name&limit=100&access_token=" + encodeURIComponent(token);
+    while (url) {
+      const resp = await fetch(url);
+      const d = await resp.json().catch(() => ({}));
+      if (d.error) {
+        return res.status(400).json({
+          error: d.error?.code === 190 || /invalid|expired/i.test(d.error?.message || "")
+            ? "トークンが無効です。.env の META_ACCESS_TOKEN を確認してください"
+            : (d.error.message || "取得に失敗しました"),
+          fbError: d.error,
+        });
+      }
+      const data = d.data || [];
+      all.push(...data);
+      url = d.paging?.next || null;
+    }
+    res.json({ data: all });
+  } catch (e) {
+    console.error("[ads] meta adaccounts error:", e.message);
+    res.status(500).json({ error: "エラー: " + (e.message || "通信失敗") });
   }
 });
 
