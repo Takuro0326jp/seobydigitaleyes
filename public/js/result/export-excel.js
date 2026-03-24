@@ -191,14 +191,14 @@ function exportDirectoryExcel(){
   const totalPages = pages.length;
 
   const rows = [[
-    "Directory",
-    "Pages",
-    "Score",
-    "Issues",
-    "IndexRate",
-    "Share",
-    "AvgInternalLinks",
-    "AvgTitleLength"
+    "ディレクトリ",
+    "ページ数",
+    "スコア",
+    "問題数",
+    "インデックス率",
+    "シェア",
+    "平均内リンク数",
+    "平均タイトル文字数"
   ]];
 
   map.forEach(v=>{
@@ -241,7 +241,7 @@ applyBorders(ws);
   XLSX.utils.book_append_sheet(
     wb,
     ws,
-    "Directory"
+    "ディレクトリ"
   );
 
   XLSX.writeFile(

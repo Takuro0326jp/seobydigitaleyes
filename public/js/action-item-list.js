@@ -30,7 +30,15 @@
     try {
       return decodeURIComponent(str);
     } catch {
-      return str;
+      // Fallback: decode complete UTF-8 character sequences individually
+      // Handles truncated/incomplete sequences (e.g. "チャーム%e3%83%b...")
+      let result = str.replace(
+        /(?:%[fF][0-7](?:%[89aAbB][0-9a-fA-F]){3})|(?:%[eE][0-9a-fA-F](?:%[89aAbB][0-9a-fA-F]){2})|(?:%[cCdD][0-9a-fA-F]%[89aAbB][0-9a-fA-F])|(?:%[0-7][0-9a-fA-F])/g,
+        (seq) => { try { return decodeURIComponent(seq); } catch { return seq; } }
+      );
+      // Remove remaining partial percent sequences before trailing "..."
+      result = result.replace(/(?:%[0-9a-fA-F]{0,2})+(?=\.\.\.$)/, "");
+      return result;
     }
   }
 
@@ -40,7 +48,7 @@
     if (t.startsWith("fix_404_")) return "404修正";
     if (t.startsWith("fix_noindex_")) return "noindex修正";
     if (t === "fix_orphan_pages") return "孤立ページ";
-    if (t.startsWith("fix_dup_title_") || t.startsWith("fix_url_param_dup_")) return "重複ページ";
+    if (t.startsWith("fix_dup_title_") || t.startsWith("fix_url_param_dup_") || t.startsWith("fix_canonical_diff_")) return "重複ページ";
     if (t.startsWith("improve_ctr_")) return "CTR改善";
     if (t.startsWith("boost_near_top_")) return "順位強化";
     return "その他";
@@ -126,7 +134,49 @@
     let categoryFetchKey = "";
     let isLoadingCategory = false;
 
-    const CATEGORY_API_MAP = { 重複ページ: "duplicate" };
+    // 自動確認の状態管理
+    let autoCheckState = "idle"; // "idle" | "running" | "done"
+    let autoCheckResults = {};   // { [itemId]: { resolved, reason, checkable } }
+    let autoCheckTimer = null;
+
+    function runAutoCheck() {
+      if (autoCheckState === "running") return;
+      if (verifying.length === 0) return;
+      autoCheckState = "running";
+      render();
+      fetch("/api/action-items/check-verifying", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ scanId }),
+      })
+        .then((r) => r.ok ? r.json() : Promise.reject(new Error("api_error_" + r.status)))
+        .then((data) => {
+          autoCheckState = "done";
+          autoCheckResults = {};
+          (data.results || []).forEach((r) => { autoCheckResults[String(r.id)] = r; });
+          // resolved されたものがあればリストを再取得
+          const anyResolved = (data.results || []).some((r) => r.resolved);
+          if (anyResolved) {
+            fetchItems().then(() => render());
+          } else {
+            render();
+          }
+        })
+        .catch((err) => {
+          autoCheckState = String(err?.message || "").startsWith("api_error_") ? "error" : "done";
+          render();
+        });
+    }
+
+    const CATEGORY_API_MAP = {
+      "重複ページ": "duplicate",
+      "404修正": "404",
+      "noindex修正": "noindex",
+      "CTR改善": "ctr",
+      "順位強化": "boost",
+      "孤立ページ": "orphan",
+    };
 
     function fetchItems(extraParams = {}) {
       const qs = new URLSearchParams({ scanId });
@@ -198,6 +248,11 @@
             return;
           }
           render();
+          // 確認中アイテムがあれば3秒後に自動チェックを起動（初回のみ）
+          if (verifying.length > 0 && autoCheckState === "idle") {
+            if (autoCheckTimer) clearTimeout(autoCheckTimer);
+            autoCheckTimer = setTimeout(() => runAutoCheck(), 3000);
+          }
         })
         .catch((err) => {
           isLoading = false;
@@ -359,12 +414,14 @@
       const useCategoryApi = selectedCategory && CATEGORY_API_MAP[selectedCategory];
       let filteredItems = useCategoryApi ? categoryItems : filterByCategory(items);
       let filteredVerifying = useCategoryApi ? categoryVerifying : filterByCategory(verifying);
-      if (useCategoryApi && selectedCategory === "重複ページ") {
+      // When using category API, always apply client-side filter as safety net
+      // (server may not support all category filters yet)
+      if (useCategoryApi && selectedCategory) {
         filteredItems = filteredItems.filter(
-          (x) => getCategoryFromActionType(x.action_type) === "重複ページ"
+          (x) => getCategoryFromActionType(x.action_type) === selectedCategory
         );
         filteredVerifying = filteredVerifying.filter(
-          (x) => getCategoryFromActionType(x.action_type) === "重複ページ"
+          (x) => getCategoryFromActionType(x.action_type) === selectedCategory
         );
       }
       const filteredCompleted = filterByCategory(completed);
@@ -431,17 +488,44 @@
         filteredVerifying.length > 0
           ? `
         <div class="mt-4">
-          <p class="text-[10px] font-medium text-amber-600 dark:text-amber-400 uppercase tracking-wider mb-2">確認中</p>
+          <div class="flex items-center gap-2 mb-2">
+            <p class="text-[10px] font-medium text-amber-600 dark:text-amber-400 uppercase tracking-wider">確認中</p>
+            ${autoCheckState === "running"
+              ? `<span class="flex items-center gap-1 text-[10px] text-indigo-500 font-bold">
+                   <span class="animate-spin inline-block w-3 h-3 border border-indigo-400 border-t-transparent rounded-full"></span>
+                   自動確認中...
+                 </span>`
+              : autoCheckState === "done"
+              ? `<span class="text-[10px] text-slate-400">自動確認済み</span>
+                 <button type="button" class="text-[10px] text-indigo-500 bg-transparent border-none cursor-pointer hover:underline" data-action="recheck">再チェック</button>`
+              : autoCheckState === "error"
+              ? `<span class="text-[10px] text-amber-500">※サーバー再起動後に利用可能</span>
+                 <button type="button" class="text-[10px] text-indigo-500 bg-transparent border-none cursor-pointer hover:underline" data-action="recheck">再試行</button>`
+              : `<button type="button" class="text-[10px] text-indigo-500 bg-transparent border-none cursor-pointer hover:underline" data-action="recheck">自動確認を実行</button>`
+            }
+          </div>
           <div class="flex flex-col gap-2">
             ${filteredVerifying
               .map(
-                (item) => `
+                (item) => {
+                  const chk = autoCheckResults[String(item.id)];
+                  const statusBadge = chk
+                    ? chk.resolved
+                      ? `<span class="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700">✓ 修正済み</span>`
+                      : chk.checkable
+                      ? `<span class="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-red-100 text-red-700">未修正</span>`
+                      : `<span class="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500">手動確認</span>`
+                    : `<span class="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-200">確認中</span>`;
+                  const checkNote = chk && !chk.resolved && chk.checkable
+                    ? `<span class="text-[10px] text-red-500">${escapeHtml(chk.reason)}</span>` : "";
+                  return `
               <div class="flex items-start gap-2 p-3 rounded-r-xl border border-amber-200 dark:border-amber-800/50 bg-amber-50/50 dark:bg-amber-900/10 mb-2" style="border-left: 3px solid #F59E0B;">
                 <div class="flex-1 min-w-0">
                   <div class="flex items-center gap-1.5 mb-1 flex-wrap">
                     <span class="text-xs font-medium">${escapeHtml(decodeUriForDisplay(item.title))}</span>
-                    <span class="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-200">確認中</span>
+                    ${statusBadge}
                     <span class="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-400">対応: ${escapeHtml(item.effort)}</span>
+                    ${checkNote}
                   </div>
                   <div class="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed mb-1 whitespace-pre-line">${escapeHtml(decodeUriForDisplay(item.description))}</div>
                   <div class="flex gap-2 items-center flex-wrap">
@@ -456,7 +540,8 @@
                   </div>
                 </div>
               </div>
-            `
+            `;
+                }
               )
               .join("")}
           </div>
@@ -532,8 +617,42 @@
               )
               .join("");
 
+      // --- Progress card ---
+      const totalAll = totalPending + totalVerifying + totalCompleted;
+      const pct = totalAll > 0 ? Math.round((totalCompleted / totalAll) * 100) : 0;
+      function progressMessage(p) {
+        if (p === 100) return { emoji: "🎉", text: "すべて完了！素晴らしい成果です" };
+        if (p >= 75)   return { emoji: "✨", text: "もう少し！ゴールが見えています" };
+        if (p >= 50)   return { emoji: "🔥", text: "よく進んでます！半分以上クリアしています" };
+        if (p >= 25)   return { emoji: "👍", text: "順調に進んでいます！この調子で続けましょう" };
+        if (p >= 1)    return { emoji: "🌱", text: "スタートしましたね！この調子で進めましょう" };
+        return           { emoji: "💪", text: "さあ始めましょう！改善の第一歩を踏み出しましょう" };
+      }
+      const msg = progressMessage(pct);
+      const barColor = pct === 100 ? "#10B981" : pct >= 50 ? "#6366F1" : "#F59E0B";
+      const progressCardHtml = !isLoading && totalAll > 0 ? `
+        <div class="mb-6 p-6 rounded-2xl bg-white border border-slate-200 shadow-sm">
+          <div class="flex items-center justify-between mb-4">
+            <div class="flex items-center gap-3">
+              <span class="text-2xl">${msg.emoji}</span>
+              <span class="text-base font-bold text-slate-700">${msg.text}</span>
+            </div>
+            <span class="text-sm font-bold text-slate-500 shrink-0">${pct}%</span>
+          </div>
+          <div class="relative h-3 bg-slate-100 rounded-full overflow-hidden mb-4">
+            <div class="h-full rounded-full transition-all duration-700" style="width:${pct}%;background:${barColor};"></div>
+          </div>
+          <div class="flex gap-6 text-xs text-slate-500">
+            <span class="flex items-center gap-1.5"><span class="inline-block w-2.5 h-2.5 rounded-full bg-emerald-400"></span>${totalCompleted}件完了</span>
+            <span class="flex items-center gap-1.5"><span class="inline-block w-2.5 h-2.5 rounded-full bg-amber-400"></span>${totalVerifying}件確認中</span>
+            <span class="flex items-center gap-1.5"><span class="inline-block w-2.5 h-2.5 rounded-full bg-slate-300"></span>${totalPending}件未着手</span>
+          </div>
+        </div>
+      ` : "";
+
       container.innerHTML = `
         <div class="mb-4">
+          ${progressCardHtml}
           ${categoryFilterHtml}
           <div class="flex items-center justify-between mb-2">
             <span class="text-[11px] font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">今週やるべきこと</span>
@@ -560,6 +679,11 @@
         render();
       });
       container.querySelector("[data-action=load-more]")?.addEventListener("click", loadMoreItems);
+      container.querySelector("[data-action=recheck]")?.addEventListener("click", () => {
+        autoCheckState = "idle";
+        autoCheckResults = {};
+        runAutoCheck();
+      });
       container.querySelectorAll("[data-category]").forEach((btn) => {
         btn.addEventListener("click", () => {
           selectedCategory = (btn.dataset.category || "").trim();
@@ -568,15 +692,17 @@
             categoryFetchKey = apiKey;
             isLoadingCategory = true;
             render();
-            fetch(`/api/action-items?scanId=${encodeURIComponent(scanId)}&category=${encodeURIComponent(apiKey)}&limit=100`, {
+            fetch(`/api/action-items?scanId=${encodeURIComponent(scanId)}&category=${encodeURIComponent(apiKey)}&limit=500`, {
               credentials: "include",
             })
               .then((r) => (r.ok ? r.json() : { items: [], verifying: [], totalPending: 0, totalVerifying: 0 }))
               .then((d) => {
-                categoryItems = d.items || [];
-                categoryVerifying = d.verifying || [];
-                categoryTotalPending = parseInt(d.totalPending, 10) || categoryItems.length;
-                categoryTotalVerifying = parseInt(d.totalVerifying, 10) || categoryVerifying.length;
+                // Apply client-side filter as safety net (in case server doesn't support category param)
+                const cat = selectedCategory;
+                categoryItems = (d.items || []).filter((x) => getCategoryFromActionType(x.action_type) === cat);
+                categoryVerifying = (d.verifying || []).filter((x) => getCategoryFromActionType(x.action_type) === cat);
+                categoryTotalPending = categoryItems.length;
+                categoryTotalVerifying = categoryVerifying.length;
                 isLoadingCategory = false;
                 render();
               })
@@ -597,12 +723,16 @@
 
   function initActionItemList() {
     const container = document.getElementById("action-item-list-container");
+    if (!container) return;
     const sp = new URLSearchParams(window.location.search);
     const scanId = sp.get("scan") || sp.get("scanId");
-    if (container && scanId && !container.dataset.initialized) {
-      container.dataset.initialized = "1";
-      renderActionItemList(container, scanId);
+    if (!scanId) {
+      container.innerHTML = `<div class="p-5 text-center rounded-xl bg-amber-50 border border-amber-200"><div class="text-sm text-amber-800">スキャンID（?scan= または ?scanId=）が必要です。</div><a href="seo.html" class="inline-block mt-3 text-indigo-600 font-bold text-xs">診断一覧へ</a></div>`;
+      return;
     }
+    if (container.dataset.initialized) return;
+    container.dataset.initialized = "1";
+    renderActionItemList(container, scanId);
   }
 
   if (document.readyState === "loading") {

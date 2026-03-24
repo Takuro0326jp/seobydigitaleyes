@@ -201,7 +201,7 @@
 
   function exportLinkCsv() {
     sortPages();
-    const headers = ["URL", "タイトル", "PageRank", "被リンク数", "発リンク数", "ジュース受信", "ジュース送出", "状態"];
+    const headers = ["URL", "タイトル", "ページランク", "被リンク数", "発リンク数", "ジュース受信", "ジュース送出", "状態"];
     const rows = filteredPages.map((p) => {
       const status = getStatusBadge(p).replace(/<[^>]+>/g, "").trim() || "正常";
       return [
@@ -366,7 +366,7 @@
       linkMapCtx.fillStyle = "#94a3b8";
       linkMapCtx.font = "14px sans-serif";
       linkMapCtx.textAlign = "center";
-      linkMapCtx.fillText("PageRank データがありません。再スキャンしてください。", linkMapW / 2, linkMapH / 2);
+      linkMapCtx.fillText("ページランクデータがありません。再スキャンしてください。", linkMapW / 2, linkMapH / 2);
       return;
     }
 
@@ -454,7 +454,9 @@
         dirs.map((d) => {
           const v = d || "/";
           const escaped = String(v).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
-          return `<option value="${escaped}">${escapeHtml(v)}</option>`;
+          let label = v;
+          try { label = decodeURIComponent(v); } catch (e) {}
+          return `<option value="${escaped}">${escapeHtml(label)}</option>`;
         }).join("");
       dirSelect.value = dirFilter || "";
     }
@@ -483,7 +485,7 @@
       const tip = document.getElementById("linkMapTooltip");
       if (found) {
         document.getElementById("linkMapTipUrl").textContent = decodeUrlForDisplay(found.url || found.id) || (found.url || found.id);
-        document.getElementById("linkMapTipPr").textContent = `PageRank: ${(found.pr || 0).toFixed(2)}`;
+        document.getElementById("linkMapTipPr").textContent = `ページランク: ${(found.pr || 0).toFixed(2)}`;
         document.getElementById("linkMapTipIn").textContent = `被リンク: ${found.inbound ?? 0}件`;
         document.getElementById("linkMapTipOut").textContent = `発リンク: ${found.outbound ?? 0}件`;
         tip.classList.remove("hidden");
@@ -781,7 +783,9 @@
         dirs.map((d) => {
           const v = d || "/";
           const escaped = String(v).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
-          return `<option value="${escaped}">${escapeHtml(v)}</option>`;
+          let label = v;
+          try { label = decodeURIComponent(v); } catch (e) {}
+          return `<option value="${escaped}">${escapeHtml(label)}</option>`;
         }).join("");
       dirSelect.value = dirFilter || "";
     }

@@ -12,6 +12,25 @@
     return;
   }
 
+  const STORAGE_KEY = "security_completed_" + scanId;
+
+  function loadCompletedIds() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) {
+        const arr = JSON.parse(raw);
+        return Array.isArray(arr) ? new Set(arr) : new Set();
+      }
+    } catch (e) {}
+    return new Set();
+  }
+
+  function saveCompletedIds(ids) {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify([...ids]));
+    } catch (e) {}
+  }
+
   const EFFORT_DEFAULTS = {
     "x-frame-options": "対応: 5分",
     "cookie-httponly": "対応: 15分",
@@ -145,10 +164,25 @@
     return "#F59E0B";
   }
 
+  let completedIds = loadCompletedIds();
+  let showCompleted = false;
+  let currentChecks = null; // API から取得した最新チェック結果
+
   function render(checks) {
+    currentChecks = checks;
+    completedIds = loadCompletedIds();
+    // 実際に pass になった項目は手動完了から除外（自動検証で解消されたため）
+    for (const c of checks) {
+      if (c.status === "pass") completedIds.delete(c.id);
+    }
+    saveCompletedIds(completedIds);
     const score = computeScore(checks);
     const categoryScores = computeCategoryScores(checks);
-    const actionItems = checks.filter((c) => (c.severity === "high" || c.severity === "medium") && c.status !== "pass");
+    let actionItems = checks.filter((c) => (c.severity === "high" || c.severity === "medium") && c.status !== "pass");
+    const completedCount = actionItems.filter((c) => completedIds.has(c.id)).length;
+    if (!showCompleted) {
+      actionItems = actionItems.filter((c) => !completedIds.has(c.id));
+    }
     actionItems.sort((a, b) => {
       const ord = { high: 0, medium: 1 };
       return (ord[a.severity] ?? 2) - (ord[b.severity] ?? 2);
@@ -184,14 +218,15 @@
       </div>
     `;
 
-    document.getElementById("js-action-cards").innerHTML = actionItems.length === 0
+    const actionCardsHtml = actionItems.length === 0 && completedCount === 0
       ? '<p class="text-sm text-slate-500">現在、重大・中程度の問題はありません。</p>'
       : actionItems.map((c) => {
           const sev = c.severity;
+          const isCompleted = completedIds.has(c.id);
           const icon = c.icon || (sev === "high" ? "🛡" : "📋");
           const titleSuffix = c.id === "server-header" ? " ヘッダーが露出" : c.status === "fail" ? " が未設定" : "";
           return `
-            <div class="action-card ${sev}">
+            <div class="action-card ${sev} ${isCompleted ? "completed" : ""}" data-check-id="${escapeHtml(c.id)}">
               <div class="ac-icon ${sev}">${icon}</div>
               <div class="ac-body">
                 <div class="ac-title">${escapeHtml(c.name)}${titleSuffix}</div>
@@ -200,11 +235,33 @@
                   <span class="badge badge-${sev}">${sev === "high" ? "High" : "Medium"}</span>
                   <span class="badge badge-effort">${getEffortLabel(c)}</span>
                   ${c.hint ? `<span style="font-size:11px;color:var(--color-text-tertiary)">${escapeHtml(c.hint)}</span>` : ""}
+                  ${!isCompleted ? `<button type="button" class="ac-complete-btn" data-check-id="${escapeHtml(c.id)}">✓ 完了</button>` : ""}
                 </div>
               </div>
             </div>
           `;
         }).join("");
+
+    const completedToggleHtml = completedCount > 0
+      ? `<button type="button" id="js-show-completed-btn" class="text-xs text-slate-500 hover:text-slate-700 mt-2">${showCompleted ? "▲" : "▼"} 完了済みを${showCompleted ? "非表示" : "表示"}（${completedCount}件）</button>`
+      : "";
+    document.getElementById("js-action-cards").innerHTML = actionCardsHtml + completedToggleHtml;
+
+    document.querySelectorAll(".ac-complete-btn").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const id = btn.dataset.checkId;
+        if (id) {
+          completedIds.add(id);
+          saveCompletedIds(completedIds);
+          render(checks);
+        }
+      });
+    });
+    document.getElementById("js-show-completed-btn")?.addEventListener("click", () => {
+      showCompleted = !showCompleted;
+      render(checks);
+    });
 
     document.getElementById("js-category-scores").innerHTML = categoryScores.map((cs) => {
       const pct = cs.maxScore > 0 ? (cs.score / cs.maxScore) * 100 : 0;
@@ -312,6 +369,29 @@
     }
   }
 
+  async function fetchSecurityCheck() {
+    try {
+      const res = await fetch(`/api/scans/result/${encodeURIComponent(scanId)}/security-check`, {
+        credentials: "include",
+      });
+      if (res.ok) {
+        const data = await res.json();
+        return data.checks || null;
+      }
+    } catch (e) {
+      console.warn("security-check fetch failed", e);
+    }
+    return null;
+  }
+
+  function setRecheckLoading(loading) {
+    const btn = document.getElementById("js-recheck-btn");
+    if (btn) {
+      btn.disabled = loading;
+      btn.textContent = loading ? "チェック中..." : "再チェック";
+    }
+  }
+
   window.addEventListener("DOMContentLoaded", () => {
     void loadScanData();
   });
@@ -340,12 +420,28 @@
       updateHeader(scan);
       updateAnalysisDate(scan);
 
-      // TODO: API が security.checks / security.categoryScores を返す場合に差し替え
-      const checks = data.security?.checks || SECURITY_CHECKS;
+      // 自動セキュリティチェック: API で実態を取得、成功時はその結果を使用
+      const apiChecks = await fetchSecurityCheck();
+      const checks = apiChecks || data.security?.checks || SECURITY_CHECKS;
       render(checks);
+      wireRecheckButton();
     } catch (e) {
       console.error(e);
       showError("データの取得に失敗しました。");
+    }
+  }
+
+  function wireRecheckButton() {
+    const btn = document.getElementById("js-recheck-btn");
+    if (btn) {
+      btn.onclick = async () => {
+        setRecheckLoading(true);
+        const apiChecks = await fetchSecurityCheck();
+        setRecheckLoading(false);
+        if (apiChecks && apiChecks.length > 0) {
+          render(apiChecks);
+        }
+      };
     }
   }
 })();

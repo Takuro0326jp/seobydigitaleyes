@@ -24,7 +24,8 @@
     window.location.pathname.includes("gsc-monitoring.html")
   ) {
     const params = new URLSearchParams(window.location.search);
-    if (!params.get("scan")) {
+    const scanParam = params.get("scan") || params.get("scanId");
+    if (!scanParam) {
       window.location.replace("seo.html");
     }
   }
@@ -148,16 +149,50 @@ class="block px-4 py-3 text-[11px] font-bold text-slate-600 hover:bg-slate-50 ho
       path.includes("settings.html") ||
       path === "index";
 
-    const isActive = (target) => {
-      const isSeoActive = target === "seo" && path.includes("result.html");
-      const isGscActive = target === "gsc" && (path.includes("gsc.html") || path.includes("gsc-task.html") || path.includes("gsc-indexhealth.html") || path.includes("gsc-technical.html") || path.includes("gsc-opportunities.html") || path.includes("gsc-monitoring.html"));
-      const isAdsActive = target === "ads" && path.includes("ads.html");
-      const isLinkStructureActive = target === "link-structure" && path.includes("link-structure.html");
-      const isOtherActive = target !== "seo" && target !== "gsc" && target !== "ads" && (path.includes(target) || (target === "link-structure" && path.includes("link-structure.html")));
-      return isSeoActive || isGscActive || isAdsActive || isLinkStructureActive || isOtherActive
-        ? "border-blue-600 text-blue-600"
-        : "border-transparent text-slate-400 hover:text-slate-600";
+    // Detect active main group
+    const activeGroup = (() => {
+      if (path.includes("gsc-task.html")) return "task";
+      if (path.includes("result.html") || path.includes("link-structure.html") || path.includes("mobile.html") || path.includes("llmo.html")) return "seo";
+      if (path.includes("gsc.html") || path.includes("gsc-indexhealth.html") || path.includes("gsc-technical.html") || path.includes("gsc-opportunities.html") || path.includes("gsc-monitoring.html")) return "gsc";
+      if (path.includes("domain.html")) return "domain";
+      if (path.includes("security.html")) return "security";
+      if (path.includes("strategy.html")) return "strategy";
+      if (path.includes("ads.html")) return "ads";
+      return "";
+    })();
+
+    const mainTab = (group, label, href) => {
+      const active = activeGroup === group;
+      return `<a href="${href}${urlSuffix}" class="tab-btn pb-4 text-sm font-bold border-b-2 transition-colors whitespace-nowrap ${active ? "border-blue-600 text-blue-600" : "border-transparent text-slate-400 hover:text-slate-600"}">${label}</a>`;
     };
+
+    const subTab = (pageKey, label, href) => {
+      const active = path.includes(pageKey);
+      return `<a href="${href}${urlSuffix}" class="sub-tab-btn pb-4 text-xs font-black tracking-widest uppercase transition-colors whitespace-nowrap border-b-2 ${active ? "border-indigo-600 text-indigo-600" : "border-transparent text-slate-400 hover:text-slate-600"}">${label}</a>`;
+    };
+
+    const subNavWrapper = (content) => `
+      <div class="px-8 flex items-center bg-slate-50 border-t border-slate-100 overflow-x-auto ${isHideNavPage ? "hidden" : ""}" style="min-height:44px">
+        <div class="flex items-center gap-6 pt-4">
+          ${content}
+        </div>
+      </div>`;
+
+    // Secondary nav: SEO subtabs
+    const seoSubNav = activeGroup === "seo" ? subNavWrapper(`
+          ${subTab("result.html",        "Structure",      "result.html")}
+          ${subTab("link-structure.html","Link Structure",  "link-structure.html")}
+          ${subTab("mobile.html",        "Mobile Friendly", "mobile.html")}
+          ${subTab("llmo.html",          "LLMO Analysis",   "llmo.html")}
+    `) : "";
+
+    // Secondary nav: Search Console subtabs
+    const gscSubNav = activeGroup === "gsc" ? subNavWrapper(`
+          ${subTab("gsc.html",              "Performance",  "gsc.html")}
+          ${subTab("gsc-indexhealth.html",  "Index Health", "gsc-indexhealth.html")}
+          ${subTab("gsc-technical.html",    "Technical",    "gsc-technical.html")}
+          ${subTab("gsc-opportunities.html","Opportunities","gsc-opportunities.html")}
+    `) : "";
 
     container.innerHTML = `
     <header class="bg-white border-b border-slate-200 sticky top-0 z-40">
@@ -177,18 +212,18 @@ class="block px-4 py-3 text-[11px] font-bold text-slate-600 hover:bg-slate-50 ho
             </div>
         </div>
         <div class="px-8 flex items-center bg-white overflow-x-auto ${isHideNavPage ? "hidden" : ""}" style="scrollbar-gutter:stable">
-            <div class="flex items-center gap-4 sm:gap-6 whitespace-nowrap pt-4">
-                <a href="result.html${urlSuffix}" class="tab-btn pb-4 text-sm font-bold border-b-2 transition-colors ${isActive("seo")}">SEO & Structure</a>
-                <a href="link-structure.html${urlSuffix}" class="tab-btn pb-4 text-sm font-bold border-b-2 transition-colors ${isActive("link-structure")}">Link Structure</a>
-                <a href="mobile.html${urlSuffix}" class="tab-btn pb-4 text-sm font-bold border-b-2 transition-colors ${isActive("mobile")}">Mobile Friendly</a>
-                <a href="llmo.html${urlSuffix}" class="tab-btn pb-4 text-sm font-bold border-b-2 transition-colors ${isActive("llmo")}">LLMO Analysis</a>
-                <a href="gsc-task.html${urlSuffix}" class="tab-btn pb-4 text-sm font-bold border-b-2 transition-colors ${isActive("gsc")}">Search Console</a>
-                <a href="domain.html${urlSuffix}" class="tab-btn pb-4 text-sm font-bold border-b-2 transition-colors ${isActive("domain")}">Domain Authority</a>
-                <a href="security.html${urlSuffix}" class="tab-btn pb-4 text-sm font-bold border-b-2 transition-colors ${isActive("security")}">Security</a>
-                <a href="strategy.html${urlSuffix}" class="tab-btn pb-4 text-sm font-bold border-b-2 transition-colors ${isActive("strategy")}">SEO Strategy</a>
-                <a href="ads.html${urlSuffix}" class="tab-btn pb-4 text-sm font-bold border-b-2 transition-colors ${isActive("ads")}">ADs</a>
+            <div class="flex items-center gap-4 sm:gap-6 pt-4">
+                ${mainTab("task",     "TASK",             "gsc-task.html")}
+                ${mainTab("seo",      "SEO",                 "result.html")}
+                ${mainTab("gsc",      "Search Console",      "gsc.html")}
+                ${mainTab("domain",   "Domain Authority",    "domain.html")}
+                ${mainTab("security", "Security",            "security.html")}
+                ${mainTab("strategy", "SEO Strategy",        "strategy.html")}
+                ${mainTab("ads",      "ADs",                 "ads.html")}
             </div>
         </div>
+        ${seoSubNav}
+        ${gscSubNav}
     </header>
     `;
 
@@ -233,7 +268,7 @@ class="block px-4 py-3 text-[11px] font-bold text-slate-600 hover:bg-slate-50 ho
     if (!el) return;
 
     const params = new URLSearchParams(window.location.search);
-    const scanId = params.get("scan");
+    const scanId = params.get("scan") || params.get("scanId");
     if (!scanId) return;
 
     fetch(`/api/scans/${scanId}`, { credentials: "include" })

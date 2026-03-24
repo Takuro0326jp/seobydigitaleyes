@@ -29,11 +29,23 @@ router.get("/", async (req, res) => {
   }
 
   const offset = Math.max(0, parseInt(req.query.offset, 10) || 0);
-  const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 20));
   const category = (req.query.category || "").trim();
+  // Allow higher limits for category-specific queries to fetch all items in one request
+  const maxLimit = category ? 500 : 100;
+  const limit = Math.min(maxLimit, Math.max(1, parseInt(req.query.limit, 10) || 20));
   const categoryCond =
     category === "duplicate"
-      ? " AND (action_type LIKE 'fix_dup_title_%' OR action_type LIKE 'fix_url_param_dup_%')"
+      ? " AND (action_type LIKE 'fix_dup_title_%' OR action_type LIKE 'fix_url_param_dup_%' OR action_type LIKE 'fix_canonical_diff_%')"
+      : category === "404"
+      ? " AND action_type LIKE 'fix_404_%'"
+      : category === "noindex"
+      ? " AND action_type LIKE 'fix_noindex_%'"
+      : category === "ctr"
+      ? " AND action_type LIKE 'improve_ctr_%'"
+      : category === "boost"
+      ? " AND action_type LIKE 'boost_near_top_%'"
+      : category === "orphan"
+      ? " AND action_type = 'fix_orphan_pages'"
       : "";
 
   try {
@@ -355,6 +367,155 @@ router.post("/generate", async (req, res) => {
     console.error("[action-items] generate:", e);
     res.status(500).json({ error: e?.message || "生成に失敗しました" });
   }
+});
+
+// ─────────────────────────────────────────────
+// 自動確認ヘルパー
+// ─────────────────────────────────────────────
+
+/** action_type と description から対象URLを取り出す */
+function extractTargetUrl(item) {
+  // description に "対象URL: https://..." があればそこから
+  const m = (item.description || "").match(/対象URL:\s*(https?:\/\/[^\s\n]+)/);
+  if (m) return m[1].trim();
+  // title "カテゴリ: URL" 形式の場合
+  const t = (item.title || "").match(/:\s*(https?:\/\/.+)$/);
+  if (t) return t[1].trim();
+  return null;
+}
+
+/** 404修正チェック: URLが 2xx/3xx を返すか */
+async function check404Fixed(url) {
+  try {
+    const res = await fetch(url, {
+      method: "HEAD",
+      redirect: "follow",
+      signal: AbortSignal.timeout(12000),
+      headers: { "User-Agent": "SEOScan-AutoCheck/1.0" },
+    });
+    if (res.status >= 200 && res.status < 400) {
+      return { resolved: true, reason: `${res.status} を返しています（修正済み）` };
+    }
+    return { resolved: false, reason: `まだ ${res.status} を返しています` };
+  } catch (e) {
+    return { resolved: false, reason: "URL取得中にエラーが発生しました" };
+  }
+}
+
+/** noindex修正チェック: noindex が除去されているか */
+async function checkNoindexFixed(url) {
+  const cheerio = require("cheerio");
+  try {
+    const res = await fetch(url, {
+      redirect: "follow",
+      signal: AbortSignal.timeout(12000),
+      headers: { "User-Agent": "SEOScan-AutoCheck/1.0" },
+    });
+    if (!res.ok) return { resolved: false, reason: `${res.status} でURLが取得できません` };
+
+    const robotsHeader = (res.headers.get("x-robots-tag") || "").toLowerCase();
+    if (robotsHeader.includes("noindex")) {
+      return { resolved: false, reason: "X-Robots-Tagにnoindexが残っています" };
+    }
+    const html = await res.text();
+    const $ = cheerio.load(html);
+    const robotsMeta = ($('meta[name="robots"]').attr("content") || "").toLowerCase();
+    const googlebotMeta = ($('meta[name="googlebot"]').attr("content") || "").toLowerCase();
+    if (robotsMeta.includes("noindex") || googlebotMeta.includes("noindex")) {
+      return { resolved: false, reason: "metaタグにnoindexが残っています" };
+    }
+    return { resolved: true, reason: "noindexが解除されています" };
+  } catch (e) {
+    return { resolved: false, reason: "URL取得中にエラーが発生しました" };
+  }
+}
+
+/** canonical修正チェック: canonicalが自身を向いているか */
+async function checkCanonicalFixed(url) {
+  const cheerio = require("cheerio");
+  try {
+    const res = await fetch(url, {
+      redirect: "follow",
+      signal: AbortSignal.timeout(12000),
+      headers: { "User-Agent": "SEOScan-AutoCheck/1.0" },
+    });
+    if (!res.ok) return { resolved: false, reason: `${res.status} でURLが取得できません` };
+    const html = await res.text();
+    const $ = cheerio.load(html);
+    const canonical = ($('link[rel="canonical"]').attr("href") || "").trim();
+    if (!canonical) return { resolved: true, reason: "canonicalタグが削除されています" };
+    // 正規化して比較（末尾スラッシュは無視）
+    const normalize = (u) => u.replace(/\/+$/, "").toLowerCase();
+    if (normalize(canonical) === normalize(url)) {
+      return { resolved: true, reason: "canonicalが自身のURLを指しています" };
+    }
+    return { resolved: false, reason: `canonicalがまだ別URL（${canonical.slice(0, 60)}）を指しています` };
+  } catch (e) {
+    return { resolved: false, reason: "URL取得中にエラーが発生しました" };
+  }
+}
+
+/** POST /api/action-items/check-verifying - 確認中アイテムの自動チェック */
+router.post("/check-verifying", async (req, res) => {
+  const user = await getUserWithContext(req);
+  if (!user) return res.status(401).json({ error: "ログインが必要です" });
+
+  const scanId = (req.body?.scanId || "").trim();
+  if (!scanId) return res.status(400).json({ error: "scanId が必要です" });
+
+  if (!(await assertScanAccess(scanId, user))) {
+    return res.status(404).json({ error: "スキャンが見つかりません" });
+  }
+
+  let items;
+  try {
+    [items] = await pool.query(
+      `SELECT id, action_type, title, description
+       FROM gsc_action_items
+       WHERE scan_id = ? AND verifying_at IS NOT NULL AND completed_at IS NULL AND dismissed_at IS NULL
+       LIMIT 50`,
+      [scanId]
+    );
+  } catch (e) {
+    return res.status(500).json({ error: "取得に失敗しました" });
+  }
+
+  const results = [];
+
+  // 並列制限（最大5並列）して各アイテムをチェック
+  const concurrency = 5;
+  for (let i = 0; i < items.length; i += concurrency) {
+    const batch = items.slice(i, i + concurrency);
+    await Promise.all(
+      batch.map(async (item) => {
+        const url = extractTargetUrl(item);
+        let result = { resolved: false, reason: "自動確認対象外（手動確認してください）", checkable: false };
+
+        if (url) {
+          if (item.action_type.startsWith("fix_404_")) {
+            result = { ...(await check404Fixed(url)), checkable: true };
+          } else if (item.action_type.startsWith("fix_noindex_")) {
+            result = { ...(await checkNoindexFixed(url)), checkable: true };
+          } else if (item.action_type.startsWith("fix_canonical_diff_")) {
+            result = { ...(await checkCanonicalFixed(url)), checkable: true };
+          }
+        }
+
+        if (result.resolved) {
+          try {
+            await pool.query(
+              `UPDATE gsc_action_items SET completed_at = NOW() WHERE id = ? AND completed_at IS NULL`,
+              [item.id]
+            );
+          } catch (_) {}
+        }
+
+        results.push({ id: item.id, action_type: item.action_type, url, ...result });
+      })
+    );
+  }
+
+  res.json({ results, checkedAt: new Date().toISOString() });
 });
 
 module.exports = router;

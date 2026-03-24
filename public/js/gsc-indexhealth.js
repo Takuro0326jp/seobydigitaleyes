@@ -77,15 +77,8 @@
     return (u || "").replace(/\/$/, "").toLowerCase();
   }
 
-  async function loadData() {
-    const mappings = JSON.parse(localStorage.getItem("gsc_mappings") || "{}");
-    const propertyUrl = mappings[scanId];
-    if (!propertyUrl) {
-      showEmptyState();
-      return;
-    }
-
-    let scanData = { pages: [] };
+  async function loadData(noCache = false) {
+    let scanData = { pages: [], scan: {} };
     try {
       const scanRes = await fetch(`/api/scans/result/${encodeURIComponent(scanId)}`, {
         credentials: "include",
@@ -97,6 +90,23 @@
       console.warn("scan fetch failed", e);
     }
 
+    let propertyUrl = scanData.scan?.gsc_property_url || null;
+    if (!propertyUrl) {
+      try {
+        const fb = await fetch(`/api/scans/${encodeURIComponent(scanId)}`, { credentials: "include" });
+        if (fb.ok) {
+          const fbData = await fb.json();
+          propertyUrl = fbData.scan?.gsc_property_url || null;
+        }
+      } catch (e) {
+        console.warn("scan fallback fetch failed", e);
+      }
+    }
+    if (!propertyUrl) {
+      showEmptyState();
+      return;
+    }
+
     const localData = scanData.pages || [];
 
     try {
@@ -104,8 +114,9 @@
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ propertyUrl, scanId }),
+        body: JSON.stringify({ propertyUrl, scanId, noCache }),
       });
+      updateCacheLabel(gscRes.headers.get("X-GSC-Fetched-At"), gscRes.headers.get("X-GSC-Cache") === "HIT");
 
       if (!gscRes.ok) {
         const err = await gscRes.json().catch(() => ({}));
@@ -389,6 +400,31 @@
     } catch (e) {
       alert("出力失敗");
     }
+  };
+
+  function updateCacheLabel(fetchedAt, isHit) {
+    const el = document.getElementById("gsc-cache-label");
+    if (!el || !fetchedAt) return;
+    const d = new Date(fetchedAt);
+    const diffMin = Math.floor((Date.now() - d) / 60000);
+    const timeStr = diffMin < 1 ? "今" : diffMin < 60 ? `${diffMin}分前` : `${Math.floor(diffMin / 60)}時間前`;
+    if (!isHit) { el.textContent = ""; return; }
+    el.textContent = `キャッシュ（${timeStr}取得）`;
+    el.className = "text-[10px] text-amber-500 font-bold";
+  }
+
+  window.refreshGSCData = async function () {
+    const btn = document.getElementById("refresh-btn");
+    const origHtml = btn?.innerHTML || "";
+    if (btn) { btn.disabled = true; btn.innerHTML = "更新中..."; }
+    try {
+      await fetch("/api/gsc/cache/clear", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        credentials: "include", body: JSON.stringify({ scanId }),
+      });
+    } catch (e) { /* ignore */ }
+    await loadData(true);
+    if (btn) { btn.disabled = false; btn.innerHTML = origHtml; }
   };
 
   window.addEventListener("DOMContentLoaded", () => {

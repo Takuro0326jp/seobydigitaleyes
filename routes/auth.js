@@ -12,6 +12,7 @@ const {
   SCOPES,
   saveTokensForUser,
   saveTokensForScan,
+  saveTokensForCompany,
 } = require("../services/googleOAuth");
 
 const router = express.Router();
@@ -545,7 +546,9 @@ router.get("/google/callback", async (req, res) => {
   }
 
   const userId = rows[0].user_id;
-  const scanId = state.includes(":") ? state.split(":")[0] : null;
+  const linkForValue = state.includes(":") ? state.split(":")[0] : null;
+  const isCompanyLink = linkForValue === "company";
+  const scanId = (!isCompanyLink && linkForValue) ? linkForValue : null;
   const client = getOAuth2Client(getRedirectUri(req));
   if (!client) {
     return res.redirect("/seo.html?gsc_error=config");
@@ -553,6 +556,22 @@ router.get("/google/callback", async (req, res) => {
 
   try {
     const { tokens } = await client.getToken(code);
+
+    // 会社全体連携（管理者・マスターのみ）
+    if (isCompanyLink) {
+      const [userRows] = await pool.query("SELECT id, company_id, role FROM users WHERE id = ?", [userId]);
+      const user = userRows[0];
+      if (!user || (user.role !== "admin" && user.role !== "master")) {
+        return res.redirect("/seo.html?gsc_error=permission_denied");
+      }
+      if (!user.company_id) {
+        return res.redirect("/seo.html?gsc_error=no_company");
+      }
+      await saveTokensForCompany(user.company_id, userId, tokens);
+      return res.redirect("/seo.html?gsc=company_linked");
+    }
+
+    // scan固有連携
     if (scanId) {
       const { canAccessScan } = require("../services/accessControl");
       const [userRows] = await pool.query("SELECT id, company_id, role FROM users WHERE id = ?", [userId]);
@@ -562,10 +581,11 @@ router.get("/google/callback", async (req, res) => {
       }
       await saveTokensForScan(scanId, userId, tokens);
       return res.redirect("/seo.html?gsc=linked&scan=" + encodeURIComponent(scanId));
-    } else {
-      await saveTokensForUser(userId, tokens);
-      return res.redirect("/seo.html?gsc=linked");
     }
+
+    // ユーザー個人連携（後方互換）
+    await saveTokensForUser(userId, tokens);
+    return res.redirect("/seo.html?gsc=linked");
   } catch (e) {
     console.error("[Google OAuth] token exchange error:", e.message);
     return res.redirect("/seo.html?gsc_error=" + encodeURIComponent(e.message || "token_exchange_failed"));

@@ -109,6 +109,22 @@ export async function disconnectGsc(scanId = null) {
   return jsonOrThrow(res);
 }
 
+/** GET /api/gsc/company-status — 会社全体のGSC連携状態 */
+export async function fetchCompanyGscStatus() {
+  const res = await fetch("/api/gsc/company-status", { credentials: "include" });
+  const data = await res.json().catch(() => ({}));
+  return data;
+}
+
+/** DELETE /api/gsc/company-disconnect — 会社全体のGSC連携解除（管理者のみ） */
+export async function disconnectCompanyGsc() {
+  const res = await fetch("/api/gsc/company-disconnect", {
+    method: "DELETE",
+    credentials: "include",
+  });
+  return jsonOrThrow(res);
+}
+
 /** GET /api/companies — クライアント一覧 */
 export async function fetchCompanies() {
   const res = await fetch("/api/companies", { credentials: "include" });

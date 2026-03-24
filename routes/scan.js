@@ -17,6 +17,7 @@ const {
 const pool = require("../db");
 const { runScanCrawl } = require("../services/scanCrawl");
 const { enqueueCrawl, setScanStartTime } = require("../services/crawlQueue");
+const { runSecurityCheck } = require("../services/securityCheck");
 
 const router = express.Router();
 
@@ -320,6 +321,37 @@ async function handleStart(req, res) {
 
 router.post("/start", handleStart);
 
+async function handleSecurityCheck(req, res) {
+  const user = await getUserWithContext(req);
+  if (!user) {
+    return res.status(401).json({ error: "unauthorized" });
+  }
+
+  const scanId = req.params.id;
+  const canAccess = await canAccessScan(user.id, user.company_id, user.role, scanId);
+  if (!canAccess) {
+    return res.status(404).json({ error: "not found" });
+  }
+
+  const [scans] = await pool.query(
+    `SELECT id, target_url FROM scans WHERE id = ? LIMIT 1`,
+    [scanId]
+  );
+
+  if (!scans.length) {
+    return res.status(404).json({ error: "not found" });
+  }
+
+  const targetUrl = scans[0].target_url;
+  try {
+    const checks = await runSecurityCheck(targetUrl);
+    return res.json({ checks });
+  } catch (e) {
+    console.error("[security-check]", e);
+    return res.status(500).json({ error: "セキュリティチェックの実行に失敗しました。" });
+  }
+}
+
 async function handleResult(req, res) {
   const user = await getUserWithContext(req);
   if (!user) {
@@ -333,7 +365,7 @@ async function handleResult(req, res) {
   }
 
   const [scans] = await pool.query(
-    `SELECT id, target_url, status, avg_score, created_at, updated_at
+    `SELECT id, target_url, status, avg_score, created_at, updated_at, gsc_property_url
      FROM scans WHERE id = ? LIMIT 1`,
     [scanId]
   );
@@ -498,6 +530,7 @@ async function handleResult(req, res) {
         canonicalDomainKey(scanRow.target_url) ||
         domainFromTargetUrl(scanRow.target_url),
       status: scanRow.status,
+      gsc_property_url: scanRow.gsc_property_url ?? null,
       target_url: scanRow.target_url,
       created_at: scanRow.created_at,
       updated_at: scanRow.updated_at,
@@ -616,3 +649,4 @@ module.exports = router;
 module.exports.handleStart = handleStart;
 module.exports.handleResult = handleResult;
 module.exports.handleTrends = handleTrends;
+module.exports.handleSecurityCheck = handleSecurityCheck;

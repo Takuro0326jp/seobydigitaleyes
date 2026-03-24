@@ -59,7 +59,7 @@
     }
   }
 
-  async function fetchMonitoringData(propertyUrl, days) {
+  async function fetchMonitoringData(propertyUrl, days, noCache = false) {
     const endDate = new Date();
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - (days || 30));
@@ -73,8 +73,10 @@
           propertyUrl,
           scanId,
           dimensions: ["date"],
+          noCache,
         }),
       });
+      updateCacheLabel(res.headers.get("X-GSC-Fetched-At"), res.headers.get("X-GSC-Cache") === "HIT");
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
@@ -239,17 +241,65 @@
     aiEl.textContent = text;
   }
 
-  async function loadData(days) {
-    const mappings = JSON.parse(localStorage.getItem("gsc_mappings") || "{}");
-    const propertyUrl = mappings[scanId];
+  async function loadData(days, noCache = false) {
+    let propertyUrl = null;
+    try {
+      const res = await fetch(`/api/scans/result/${encodeURIComponent(scanId)}`, {
+        credentials: "include",
+      });
+      if (res.ok) {
+        const data = await res.json();
+        propertyUrl = data.scan?.gsc_property_url || null;
+      }
+    } catch (e) {
+      console.warn("scan fetch failed", e);
+    }
+
+    if (!propertyUrl) {
+      try {
+        const fb = await fetch(`/api/scans/${encodeURIComponent(scanId)}`, { credentials: "include" });
+        if (fb.ok) {
+          const fbData = await fb.json();
+          propertyUrl = fbData.scan?.gsc_property_url || null;
+        }
+      } catch (e) {
+        console.warn("scan fallback fetch failed", e);
+      }
+    }
 
     if (!propertyUrl) {
       showEmptyState("GSC API が接続されると、パフォーマンス推移が表示されます。seo.html の設定から「Google で連携」を行ってください。");
       return;
     }
 
-    await fetchMonitoringData(propertyUrl, days || 30);
+    await fetchMonitoringData(propertyUrl, days || 30, noCache);
   }
+
+  function updateCacheLabel(fetchedAt, isHit) {
+    const el = document.getElementById("gsc-cache-label");
+    if (!el || !fetchedAt) return;
+    const d = new Date(fetchedAt);
+    const diffMin = Math.floor((Date.now() - d) / 60000);
+    const timeStr = diffMin < 1 ? "今" : diffMin < 60 ? `${diffMin}分前` : `${Math.floor(diffMin / 60)}時間前`;
+    if (!isHit) { el.textContent = ""; return; }
+    el.textContent = `キャッシュ（${timeStr}取得）`;
+    el.className = "text-[10px] text-amber-500 font-bold";
+  }
+
+  let lastDays = 30;
+  window.refreshGSCData = async function () {
+    const btn = document.getElementById("refresh-btn");
+    const origHtml = btn?.innerHTML || "";
+    if (btn) { btn.disabled = true; btn.innerHTML = "更新中..."; }
+    try {
+      await fetch("/api/gsc/cache/clear", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        credentials: "include", body: JSON.stringify({ scanId }),
+      });
+    } catch (e) { /* ignore */ }
+    await loadData(lastDays, true);
+    if (btn) { btn.disabled = false; btn.innerHTML = origHtml; }
+  };
 
   window.addEventListener("DOMContentLoaded", () => {
     updateNavLinks();
@@ -259,6 +309,7 @@
     const btn90 = document.getElementById("btn-90d");
     if (btn30) {
       btn30.addEventListener("click", () => {
+        lastDays = 30;
         btn30.classList.add("bg-white", "shadow-sm");
         btn30.classList.remove("text-slate-400");
         if (btn90) {
@@ -270,6 +321,7 @@
     }
     if (btn90) {
       btn90.addEventListener("click", () => {
+        lastDays = 90;
         btn90.classList.add("bg-white", "shadow-sm");
         btn90.classList.remove("text-slate-400");
         if (btn30) {

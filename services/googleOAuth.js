@@ -1,6 +1,7 @@
 /**
  * Google OAuth2 クライアント（GSC 連携用）
- * URL（scan）ごとに別の Google アカウントと連携可能
+ * URL（scan）ごと、ユーザーごと、会社全体で Google アカウントと連携可能
+ * 優先順位: scan > user > company（会社全体）
  */
 const { OAuth2Client } = require("google-auth-library");
 const pool = require("../db");
@@ -85,11 +86,94 @@ async function deleteTokensForScan(scanId, userId) {
   await pool.query("DELETE FROM scan_google_tokens WHERE scan_id = ? AND user_id = ?", [scanId, userId]);
 }
 
-/** scan_id 指定時はそのURLのトークン、未指定時はユーザー全体のトークンで認証クライアント取得 */
+/** 会社全体のトークン取得 */
+async function getTokensForCompany(companyId) {
+  if (!companyId) return null;
+  const [rows] = await pool.query(
+    "SELECT access_token, refresh_token, expiry_date, admin_user_id FROM company_google_tokens WHERE company_id = ? LIMIT 1",
+    [companyId]
+  );
+  return rows.length ? rows[0] : null;
+}
+
+/** 会社全体のトークン保存（管理者が連携時 or トークンリフレッシュ時） */
+async function saveTokensForCompany(companyId, adminUserId, tokens) {
+  const accessToken = tokens.access_token || null;
+  const refreshToken = tokens.refresh_token || null;
+  const expiryDate = tokens.expiry_date || null;
+
+  if (refreshToken) {
+    // 新規連携 or refresh_tokenが更新された場合
+    await pool.query(
+      `INSERT INTO company_google_tokens (company_id, admin_user_id, access_token, refresh_token, expiry_date)
+       VALUES (?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE
+         admin_user_id = COALESCE(VALUES(admin_user_id), admin_user_id),
+         access_token = VALUES(access_token),
+         refresh_token = VALUES(refresh_token),
+         expiry_date = VALUES(expiry_date),
+         updated_at = NOW()`,
+      [companyId, adminUserId || 0, accessToken, refreshToken, expiryDate]
+    );
+  } else {
+    // アクセストークンのリフレッシュのみ
+    await pool.query(
+      `UPDATE company_google_tokens
+       SET access_token = ?, expiry_date = ?, updated_at = NOW()
+       WHERE company_id = ?`,
+      [accessToken, expiryDate, companyId]
+    );
+  }
+}
+
+/** 会社全体のトークン削除 */
+async function deleteTokensForCompany(companyId) {
+  if (!companyId) return;
+  await pool.query("DELETE FROM company_google_tokens WHERE company_id = ?", [companyId]);
+}
+
+/**
+ * 認証済みクライアントを取得
+ * 優先順位: scan固有 > ユーザー個人 > 会社全体
+ *
+ * @param {number} userId - ログインユーザーID
+ * @param {object} req - Express request（リダイレクトURI生成用）
+ * @param {string|null} scanId - scan固有トークンを使う場合のscan ID
+ */
 async function getAuthenticatedClient(userId, req, scanId = null) {
-  const tokens = scanId
-    ? await getTokensForScan(scanId, userId)
-    : await getTokensForUser(userId);
+  let tokens = null;
+  let tokenSource = null;
+  let companyId = null;
+
+  // 1. scan固有のトークンを試みる
+  if (scanId) {
+    tokens = await getTokensForScan(scanId, userId);
+    if (tokens?.refresh_token) tokenSource = "scan";
+  }
+
+  // 2. ユーザー個人のトークンを試みる
+  if (!tokens?.refresh_token) {
+    tokens = await getTokensForUser(userId);
+    if (tokens?.refresh_token) tokenSource = "user";
+  }
+
+  // 3. 会社全体のトークンを試みる
+  if (!tokens?.refresh_token) {
+    try {
+      const [userRows] = await pool.query(
+        "SELECT company_id FROM users WHERE id = ? LIMIT 1",
+        [userId]
+      );
+      companyId = userRows[0]?.company_id || null;
+      if (companyId) {
+        tokens = await getTokensForCompany(companyId);
+        if (tokens?.refresh_token) tokenSource = "company";
+      }
+    } catch (e) {
+      console.warn("[GSC OAuth] company token lookup failed:", e.message);
+    }
+  }
+
   if (!tokens?.refresh_token) return null;
 
   const redirectUri = getRedirectUri(req);
@@ -106,10 +190,12 @@ async function getAuthenticatedClient(userId, req, scanId = null) {
   if (expiry && Date.now() >= expiry - 5 * 60 * 1000) {
     try {
       const { credentials } = await client.refreshAccessToken();
-      if (scanId) {
+      if (tokenSource === "scan") {
         await saveTokensForScan(scanId, userId, credentials);
-      } else {
+      } else if (tokenSource === "user") {
         await saveTokensForUser(userId, credentials);
+      } else if (tokenSource === "company" && companyId) {
+        await saveTokensForCompany(companyId, null, credentials);
       }
       client.setCredentials(credentials);
     } catch (e) {
@@ -130,5 +216,8 @@ module.exports = {
   getTokensForScan,
   saveTokensForScan,
   deleteTokensForScan,
+  getTokensForCompany,
+  saveTokensForCompany,
+  deleteTokensForCompany,
   getAuthenticatedClient,
 };

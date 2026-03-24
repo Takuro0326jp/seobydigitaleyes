@@ -39,7 +39,28 @@ async function navigate(route) {
   }
 
   setNavActive(normalized);
-  container.innerHTML = "<p class='text-slate-500'>読み込み中...</p>";
+  const titles = {
+    "/": "ダッシュボード",
+    "/users": "ユーザー管理",
+    "/companies": "企業管理",
+    "/scans": "スキャン管理",
+    "/link-analysis": "リンク分析"
+  };
+  const topbarTitle = document.getElementById("topbar-title");
+  if (topbarTitle) topbarTitle.textContent = titles[normalized] || "管理コンソール";
+
+  container.innerHTML = `
+    <div class="space-y-6">
+      <div class="skeleton h-8 w-48"></div>
+      <div class="grid grid-cols-4 gap-5">
+        <div class="skeleton h-28 rounded-2xl"></div>
+        <div class="skeleton h-28 rounded-2xl"></div>
+        <div class="skeleton h-28 rounded-2xl"></div>
+        <div class="skeleton h-28 rounded-2xl"></div>
+      </div>
+      <div class="skeleton h-64 rounded-2xl"></div>
+    </div>
+  `;
 
   try {
     await render(container);

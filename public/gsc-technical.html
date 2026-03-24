@@ -21,25 +21,14 @@
     <div id="header-container"></div>
 
     <main class="flex-grow max-w-[1400px] mx-auto w-full px-4 sm:px-6 lg:px-8 py-6 lg:py-8 space-y-8">
-        <!-- ナビゲーション -->
-        <div class="overflow-x-auto -mx-4 sm:mx-0 scrollbar-thin">
-            <div class="flex items-center gap-6 sm:gap-8 border-b border-slate-200 pb-0 min-w-max sm:min-w-0 px-4 sm:px-0">
-                <a href="gsc-task.html" id="nav-task" class="nav-item pb-4 text-xs sm:text-sm font-black tracking-widest uppercase transition-all text-slate-400 hover:text-slate-600 border-b-2 border-transparent shrink-0">
-                    TASK
-                </a>
-                <a href="gsc.html" id="nav-performance" class="nav-item pb-4 text-xs sm:text-sm font-black tracking-widest uppercase transition-all text-slate-400 hover:text-slate-600 border-b-2 border-transparent shrink-0">
-                    Performance
-                </a>
-                <a href="gsc-indexhealth.html" id="nav-indexHealth" class="nav-item pb-4 text-xs sm:text-sm font-black tracking-widest uppercase transition-all text-slate-400 hover:text-slate-600 border-b-2 border-transparent shrink-0">
-                    Index Health
-                </a>
-                <a href="gsc-technical.html" id="nav-technical" class="nav-item pb-4 text-xs sm:text-sm font-black tracking-widest uppercase transition-all border-b-2 border-indigo-600 text-indigo-600 shrink-0">
-                    Technical
-                </a>
-                <a href="gsc-opportunities.html" id="nav-opportunities" class="nav-item pb-4 text-xs sm:text-sm font-black tracking-widest uppercase transition-all text-slate-400 hover:text-slate-600 border-b-2 border-transparent shrink-0">
-                    Opportunities
-                </a>
-            </div>
+
+        <!-- 更新ボタン -->
+        <div class="flex items-center justify-end gap-3">
+            <span id="gsc-cache-label" class="text-[10px] text-amber-500 font-bold"></span>
+            <button id="refresh-btn" onclick="window.refreshGSCData && window.refreshGSCData()" class="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl text-[12px] font-black hover:bg-indigo-700 transition-all shadow-md active:scale-95 whitespace-nowrap">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                最新データに更新
+            </button>
         </div>
 
         <!-- サマリーカード -->
@@ -73,7 +62,7 @@
                     <div class="w-10 h-10 md:w-12 md:h-12 bg-indigo-600 rounded-xl md:rounded-2xl flex items-center justify-center text-white shadow-lg shrink-0">
                         <svg class="w-5 h-5 md:w-6 md:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
                     </div>
-                    <span class="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">TECH INSIGHT</span>
+                    <span class="text-[10px] font-black text-slate-400 uppercase tracking-[0.15em] whitespace-nowrap">TECH INSIGHT</span>
                 </div>
                 <div class="p-5 md:p-8 flex-grow">
                     <div class="flex items-center gap-3 mb-2">
@@ -96,13 +85,13 @@
                 </div>
                 <p class="text-[11px] sm:text-[12px] text-slate-400 font-bold uppercase tracking-widest">コアウェブバイタルとリッチリザルトの検出状況</p>
             </div>
-            <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 sm:gap-4">
-                <select id="techFilter" onchange="window.filterTechTable && window.filterTechTable()" class="h-12 sm:h-14 px-4 sm:px-6 bg-white border border-slate-200 rounded-xl sm:rounded-2xl text-[12px] sm:text-[13px] font-bold text-slate-600 outline-none shadow-sm focus:ring-2 focus:ring-indigo-500 min-w-0 sm:min-w-[200px]">
+            <div class="flex flex-row items-center gap-3">
+                <select id="techFilter" onchange="window.filterTechTable && window.filterTechTable()" class="h-10 px-4 bg-white border border-slate-200 rounded-xl text-[13px] font-bold text-slate-600 outline-none shadow-sm focus:ring-2 focus:ring-indigo-500 min-w-[160px]">
                     <option value="POOR" selected>Poor のみ</option>
                     <option value="IMPROVE">要改善以上</option>
                     <option value="">全件</option>
                 </select>
-                <input type="text" id="techSearchInput" oninput="window.filterTechTable && window.filterTechTable()" placeholder="URL検索..." class="h-12 sm:h-14 w-full sm:w-80 px-4 sm:px-6 bg-white border border-slate-200 rounded-xl sm:rounded-2xl text-[12px] sm:text-[13px] font-bold text-slate-700 outline-none shadow-sm focus:ring-2 focus:ring-indigo-500">
+                <input type="text" id="techSearchInput" oninput="window.filterTechTable && window.filterTechTable()" placeholder="URL検索..." class="h-10 w-72 px-4 bg-white border border-slate-200 rounded-xl text-[13px] font-bold text-slate-700 outline-none shadow-sm focus:ring-2 focus:ring-indigo-500">
             </div>
         </div>
 

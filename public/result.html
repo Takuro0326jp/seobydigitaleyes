@@ -364,11 +364,11 @@ focus:outline-none focus:ring-2 focus:ring-blue-500/20"
 <table class="w-full text-xs table-fixed">
 <thead class="bg-slate-50 text-slate-400 border-b border-slate-200 sticky top-0 z-10">
                     <tr>
-                        <th class="bg-slate-50 px-6 py-3 text-left font-bold w-[50%]">Directory</th>
-                        <th class="bg-slate-50 px-4 py-3 text-center font-bold w-[10%]">Pages</th>
-                        <th class="bg-slate-50 px-4 py-3 text-center font-bold w-[13%]">Score</th>
-                        <th class="bg-slate-50 px-4 py-3 text-center font-bold w-[13%]">Issues</th>
-                        <th class="bg-slate-50 px-4 py-3 text-center font-bold w-[14%]">Index</th>
+                        <th class="bg-slate-50 px-6 py-3 text-left font-bold w-[50%]">ディレクトリ</th>
+                        <th class="bg-slate-50 px-4 py-3 text-center font-bold w-[10%]">ページ数</th>
+                        <th class="bg-slate-50 px-4 py-3 text-center font-bold w-[13%]">スコア</th>
+                        <th class="bg-slate-50 px-4 py-3 text-center font-bold w-[13%]">問題数</th>
+                        <th class="bg-slate-50 px-4 py-3 text-center font-bold w-[14%]">インデックス</th>
                     </tr>
                 </thead>
                 <tbody
@@ -383,17 +383,17 @@ focus:outline-none focus:ring-2 focus:ring-blue-500/20"
 <!-- legend -->
 <div class="flex flex-wrap gap-6 text-[11px] text-slate-400 p-4 border-t border-slate-100 bg-slate-50">
     <div class="flex items-center gap-2">
-        <span class="font-semibold text-slate-500">Score</span>
+        <span class="font-semibold text-slate-500">スコア</span>
         <span>= ページSEOスコア平均</span>
     </div>
 
     <div class="flex items-center gap-2">
-        <span class="font-semibold text-slate-500">Issues</span>
+        <span class="font-semibold text-slate-500">問題数</span>
         <span>= SEO問題ページ数</span>
     </div>
 
     <div class="flex items-center gap-2">
-        <span class="font-semibold text-slate-500">Index</span>
+        <span class="font-semibold text-slate-500">インデックス</span>
         <span>= index可能ページ割合</span>
     </div>
 </div>
@@ -447,26 +447,25 @@ focus:outline-none focus:ring-2 focus:ring-blue-500/20"
     </div>
 
     <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-        <div class="table-container scrollbar-thin scroll-area" style="height:450px;overflow-y:auto;">
+        <div class="table-container scrollbar-thin scroll-area" style="height:450px;overflow-y:auto;overflow-x:auto;">
             <table class="w-full text-left border-collapse table-fixed">
                 <thead class="bg-slate-50 shadow-sm sticky top-0 z-10">
                     <tr class="text-[10px] uppercase tracking-wider text-slate-400 border-b border-slate-200">
-                        <th class="py-4 px-2 font-bold text-center w-[50px]">No.</th>
-                        <th class="py-4 px-4 font-bold text-left w-[300px] truncate">URL</th>
-                        <th class="py-4 px-2 font-bold text-center w-[60px]">階層</th>
-                        <th class="py-4 px-2 font-bold text-center w-[70px]">Status</th>
-                        <th class="py-4 px-2 font-bold text-center w-[60px]">Index</th>
-                        <th class="py-4 px-4 font-bold text-left w-[350px] truncate">タイトル内容</th>
-                        <th class="py-4 px-2 font-bold text-center w-[70px]">タイトル文字数</th>
-                        <th class="py-4 px-2 font-bold text-center w-[60px]">文字数</th>
-                        <th class="py-4 px-2 font-bold text-center w-[60px]">H1</th>
-                        <th class="py-4 px-2 font-bold text-center w-[70px]">内リンク</th>
-                        <th class="py-4 px-2 font-bold text-center w-[70px]">Score</th>
-                        <th class="py-4 px-2 font-bold text-center w-[65px]">PageRank</th>
-                        <th class="py-4 px-2 font-bold text-center w-[70px]">被リンク</th>
-                        <th class="py-4 px-2 font-bold text-center w-[70px]">発リンク</th>
-                        <th class="py-4 px-4 font-bold text-center w-[100px]">優先度</th>
-                        <th class="py-4 px-2 font-bold text-center w-[50px]">詳細</th>
+                        <th class="py-4 px-2 font-bold text-center" style="width:50px">No.</th>
+                        <th class="py-4 px-2 font-bold text-left truncate" style="width:250px">URL</th>
+                        <th class="py-4 px-2 font-bold text-center" style="width:50px">階層</th>
+                        <th class="py-4 px-2 font-bold text-center" style="width:60px">Status</th>
+                        <th class="py-4 px-2 font-bold text-center" style="width:55px">Index</th>
+                        <th class="py-4 px-2 font-bold text-left truncate" style="width:290px">タイトル内容</th>
+                        <th class="py-4 px-2 font-bold text-center" style="width:55px">文字数</th>
+                        <th class="py-4 px-2 font-bold text-center" style="width:50px">H1</th>
+                        <th class="py-4 px-2 font-bold text-center" style="width:60px">内リンク</th>
+                        <th class="py-4 px-2 font-bold text-center" style="width:60px">Score</th>
+                        <th class="py-4 px-2 font-bold text-center" style="width:70px">PageRank</th>
+                        <th class="py-4 px-2 font-bold text-center" style="width:60px">被リンク</th>
+                        <th class="py-4 px-2 font-bold text-center" style="width:60px">発リンク</th>
+                        <th class="py-4 px-2 font-bold text-center" style="width:80px">優先度</th>
+                        <th class="py-4 px-2 font-bold text-center" style="width:45px">詳細</th>
                     </tr>
                 </thead>
                 <tbody id="tableBody" class="text-[12px] text-slate-600 divide-y divide-slate-100 bg-white">

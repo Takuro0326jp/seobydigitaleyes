@@ -184,12 +184,8 @@ window.renderTable = function (data) {
                     ${p.index_status || '-'}
                 </td>
 
-                <td class="py-3 px-4 truncate">
+                <td class="py-3 px-2 truncate">
                     ${escapeHtml(p.title || "-")}
-                </td>
-
-                <td class="py-3 px-2 text-center">
-                    ${p.title_char_count ?? (p.title || "").length}
                 </td>
 
                 <td class="py-3 px-2 text-center">
@@ -208,7 +204,7 @@ window.renderTable = function (data) {
                     ${p.score || 0}
                 </td>
 
-                <td class="py-3 px-2 text-center font-mono text-xs font-bold ${prColor}">
+                <td class="py-3 px-2 text-center font-mono text-xs font-bold whitespace-nowrap ${prColor}">
                     ${p.page_rank != null ? pr.toFixed(2) : "-"}
                 </td>
 
@@ -929,7 +925,7 @@ for(let c=0;c<header.length;c++){
 
 const wb = XLSX.utils.book_new();
 
-XLSX.utils.book_append_sheet(wb,ws,"Directory Analysis");
+XLSX.utils.book_append_sheet(wb,ws,"ディレクトリ分析");
 
 XLSX.writeFile(wb,"seo_directory_analysis.xlsx");
 

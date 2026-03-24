@@ -3,7 +3,7 @@
  * - GET /api/scans で一覧取得・テーブル描画
  * - 検索・並び替えはフロントのみ（拡張しやすいよう分割）
  */
-import { fetchMe, fetchScansList, fetchScanProgress, createScan, deleteScan, fetchGscStatus, fetchGscSites, disconnectGsc, fetchCompanies, patchScanSettings, resetStuckScan } from "./api.js";
+import { fetchMe, fetchScansList, fetchScanProgress, createScan, deleteScan, fetchGscStatus, fetchGscSites, disconnectGsc, fetchCompanyGscStatus, disconnectCompanyGsc, fetchCompanies, patchScanSettings, resetStuckScan } from "./api.js";
 
 let rawList = [];
 let newScanPollStop = null;
@@ -170,8 +170,7 @@ function normalizeGscUrlForCompare(url) {
 }
 
 function getGscLabel(row) {
-  const mappings = JSON.parse(localStorage.getItem("gsc_mappings") || "{}");
-  const saved = row.gsc_property_url || mappings[row.domain] || mappings[row.id];
+  const saved = row.gsc_property_url;
   return saved ? "連携済み" : "—";
 }
 
@@ -343,6 +342,33 @@ async function openGscModal(scanId, domain, options = {}) {
 
   const currentCompanyId = rawList.find((r) => r.id === scanId)?.company_id ?? null;
 
+  // 会社全体のGSC連携状態を反映
+  try {
+    const companyStatus = await fetchCompanyGscStatus();
+    const gscCompanyNotLinked = document.getElementById("gscCompanyNotLinked");
+    const gscCompanyLinked = document.getElementById("gscCompanyLinked");
+    const gscCompanyLinkBtn = document.getElementById("gscCompanyLinkBtn");
+    const gscCompanyDisconnectBtn = document.getElementById("gscCompanyDisconnectBtn");
+
+    if (companyStatus?.linked) {
+      gscCompanyNotLinked?.classList.add("hidden");
+      gscCompanyLinked?.classList.remove("hidden");
+      // 管理者のみ解除ボタンを表示
+      if (gscCompanyDisconnectBtn) {
+        gscCompanyDisconnectBtn.classList.toggle("hidden", !companyStatus.can_manage);
+      }
+    } else {
+      gscCompanyNotLinked?.classList.remove("hidden");
+      gscCompanyLinked?.classList.add("hidden");
+      // 管理者のみ連携ボタンを表示
+      if (gscCompanyLinkBtn) {
+        gscCompanyLinkBtn.classList.toggle("hidden", !companyStatus.can_manage);
+      }
+    }
+  } catch (e) {
+    // 会社GSC状態取得失敗は無視（個別連携UIはそのまま表示）
+  }
+
   try {
     const companies = await fetchCompanies();
     if (clientSelect) {
@@ -359,7 +385,8 @@ async function openGscModal(scanId, domain, options = {}) {
   }
 
   try {
-    const actuallyLinked = justLinked || (await fetchGscStatus(scanId))?.linked;
+    const gscStatus = await fetchGscStatus(scanId);
+    const actuallyLinked = justLinked || gscStatus?.individual_linked || gscStatus?.linked;
     if (!actuallyLinked) {
       gscNotLinked?.classList.remove("hidden");
       gscLinked?.classList.add("hidden");
@@ -377,9 +404,7 @@ async function openGscModal(scanId, domain, options = {}) {
     gscNotLinked?.classList.add("hidden");
     gscLinked?.classList.remove("hidden");
     const row = rawList.find((r) => r.id === scanId);
-    const domain = row?.domain || "";
-    const mappings = JSON.parse(localStorage.getItem("gsc_mappings") || "{}");
-    const saved = row?.gsc_property_url || mappings[domain] || mappings[scanId] || "";
+    const saved = row?.gsc_property_url || "";
     const hasUrlMapping = !!saved;
 
     if (gscUrlStatus) gscUrlStatus.className = `text-xs font-bold flex items-center gap-2 ${hasUrlMapping ? "text-emerald-600" : "text-slate-500"}`;
@@ -599,18 +624,6 @@ function wireModals() {
     const propertyUrl = (gscPropertySelect?.value || "").trim();
     const companyId = (clientSelect?.value || "").trim() ? parseInt(clientSelect.value, 10) : null;
     const row = rawList.find((r) => r.id === currentSettingsScanId);
-    const domain = row?.domain || "";
-
-    const mappings = JSON.parse(localStorage.getItem("gsc_mappings") || "{}");
-    if (propertyUrl) {
-      if (domain) mappings[domain] = propertyUrl;
-      mappings[currentSettingsScanId] = propertyUrl;
-      localStorage.setItem("gsc_mappings", JSON.stringify(mappings));
-    } else {
-      if (domain) delete mappings[domain];
-      delete mappings[currentSettingsScanId];
-      localStorage.setItem("gsc_mappings", JSON.stringify(mappings));
-    }
 
     try {
       const patchBody = { gsc_property_url: propertyUrl || null };
@@ -638,13 +651,8 @@ function wireModals() {
     if (!currentSettingsScanId) return;
     if (!confirm("このURLとGSCプロパティの紐づけを解除しますか？")) return;
     const row = rawList.find((r) => r.id === currentSettingsScanId);
-    const domain = row?.domain || "";
     try {
       await patchScanSettings(currentSettingsScanId, { gsc_property_url: null });
-      const mappings = JSON.parse(localStorage.getItem("gsc_mappings") || "{}");
-      if (domain) delete mappings[domain];
-      delete mappings[currentSettingsScanId];
-      localStorage.setItem("gsc_mappings", JSON.stringify(mappings));
       const row = rawList.find((r) => r.id === currentSettingsScanId);
       if (row) row.gsc_property_url = null;
       updateView();
@@ -667,6 +675,18 @@ function wireModals() {
       alert(e.message || "連携解除に失敗しました");
     }
   });
+
+  document.getElementById("gscCompanyDisconnectBtn")?.addEventListener("click", async () => {
+    if (!confirm("会社全体のGSC連携を解除しますか？全メンバーがGSCデータを参照できなくなります。")) return;
+    try {
+      await disconnectCompanyGsc();
+      document.getElementById("gscCompanyNotLinked")?.classList.remove("hidden");
+      document.getElementById("gscCompanyLinked")?.classList.add("hidden");
+      alert("会社全体のGSC連携を解除しました。");
+    } catch (e) {
+      alert(e.message || "連携解除に失敗しました");
+    }
+  });
 }
 
 async function init() {
@@ -676,9 +696,18 @@ async function init() {
     history.replaceState(null, "", "/seo.html");
     alert("Google Search Console と連携しました。プロパティを選択して保存してください。");
   }
+  if (params.get("gsc") === "company_linked") {
+    history.replaceState(null, "", "/seo.html");
+    alert("会社全体のGSC連携が完了しました。全メンバーがGSCデータを利用できるようになりました。各サイトの設定でGSCプロパティを選択してください。");
+  }
   if (params.get("gsc_error")) {
     history.replaceState(null, "", "/seo.html");
-    alert("Google 連携に失敗しました: " + params.get("gsc_error"));
+    const errMap = {
+      permission_denied: "管理者権限が必要です",
+      no_company: "会社に所属していないため、会社全体連携はできません",
+    };
+    const errMsg = errMap[params.get("gsc_error")] || params.get("gsc_error");
+    alert("Google 連携に失敗しました: " + errMsg);
   }
 
   const me = await fetchMe();

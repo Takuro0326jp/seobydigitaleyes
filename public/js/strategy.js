@@ -666,8 +666,29 @@
   }
 
   async function fetchAiProposals() {
-    const mappings = JSON.parse(localStorage.getItem("gsc_mappings") || "{}");
-    const propertyUrl = (scanId && mappings[scanId]) || "";
+    let propertyUrl = null;
+    try {
+      const res = await fetch(`/api/scans/result/${encodeURIComponent(scanId)}`, {
+        credentials: "include",
+      });
+      if (res.ok) {
+        const data = await res.json();
+        propertyUrl = data.scan?.gsc_property_url || null;
+      }
+    } catch (e) {
+      console.warn("scan fetch failed", e);
+    }
+    if (!propertyUrl) {
+      try {
+        const fb = await fetch(`/api/scans/${encodeURIComponent(scanId)}`, { credentials: "include" });
+        if (fb.ok) {
+          const fbData = await fb.json();
+          propertyUrl = fbData.scan?.gsc_property_url || null;
+        }
+      } catch (e) {
+        console.warn("scan fallback fetch failed", e);
+      }
+    }
     if (!propertyUrl) {
       alert("GSC プロパティが紐づけられていません。seo.html のサイト設定から GSC プロパティを選択・保存してください。");
       return;

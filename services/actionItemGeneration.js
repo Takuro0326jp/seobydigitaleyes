@@ -13,7 +13,13 @@ function decodeUriForDisplay(str) {
   try {
     return decodeURIComponent(str);
   } catch {
-    return str;
+    // Fallback: decode complete UTF-8 character sequences individually
+    let result = str.replace(
+      /(?:%[fF][0-7](?:%[89aAbB][0-9a-fA-F]){3})|(?:%[eE][0-9a-fA-F](?:%[89aAbB][0-9a-fA-F]){2})|(?:%[cCdD][0-9a-fA-F]%[89aAbB][0-9a-fA-F])|(?:%[0-7][0-9a-fA-F])/g,
+      (seq) => { try { return decodeURIComponent(seq); } catch { return seq; } }
+    );
+    result = result.replace(/(?:%[0-9a-fA-F]{0,2})+(?=\.\.\.$)/, "");
+    return result;
   }
 }
 
@@ -422,17 +428,45 @@ async function generateActionItems(scanId, userId, req) {
         return Object.values(tc).filter((c) => c >= 2).length;
       })()
     : 0;
+  // ===== Medium: canonical 別ページ指定（重複ページ扱い） =====
+  const canonicalDiffPages = pages.filter(
+    (p) => Array.isArray(p.issues) && p.issues.some((i) => i.code === "canonical_diff")
+  );
+  for (const p of canonicalDiffPages) {
+    if (!p.url) continue;
+    const issue = (p.issues || []).find((i) => i.code === "canonical_diff");
+    const canonicalTarget = issue?.canonical || "";
+    const actionType = "fix_canonical_diff_" + crypto.createHash("md5").update(p.url).digest("hex").slice(0, 24);
+    if (completedTypes.has(actionType)) continue;
+    const displayUrl = decodeUriForDisplay(p.url);
+    const shortUrl = displayUrl.length > 55 ? displayUrl.slice(0, 52) + "..." : displayUrl;
+    const displayCanonical = decodeUriForDisplay(canonicalTarget);
+    candidates.push({
+      scanId,
+      userId,
+      actionType,
+      priority: "medium",
+      title: `canonical設定確認: ${shortUrl}`,
+      description: `対象URL: ${displayUrl}\n\nこのページのcanonicalタグが別のURL（${displayCanonical}）を指定しています。Googleはこのページをインデックスせず、指定先ページを正規URLとして扱います。\n\n【確認事項】\n①意図的な設定か確認する（例: ページネーションや印刷用ページなど、意図的であれば問題なし）\n②誤設定の場合は、canonicalタグをこのページ自身のURLに修正する`,
+      effort: "5分",
+      source: "SEO診断: 重複ページ",
+      sourceTab: "SEO",
+    });
+  }
+
   console.log(
     "[actionItemGeneration] 重複ページ: paramUrls=" +
       paramUrls.length +
       ", paramDupTasks=" +
       paramDupByNormalized.size +
       ", dupTitleTasks=" +
-      dupTitleCount
+      dupTitleCount +
+      ", canonicalDiffTasks=" +
+      canonicalDiffPages.length
   );
 
   // DB に挿入（重複ページは UPSERT、それ以外は INSERT IGNORE）
-  const duplicateActionPrefixes = ["fix_url_param_dup_", "fix_dup_title_"];
+  const duplicateActionPrefixes = ["fix_url_param_dup_", "fix_dup_title_", "fix_canonical_diff_"];
   for (const item of candidates) {
     const isDuplicatePage = duplicateActionPrefixes.some((pre) => String(item.actionType || "").startsWith(pre));
     try {

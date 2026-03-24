@@ -7,60 +7,127 @@
   <link href="/css/tailwind.css" rel="stylesheet">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
-    body { font-family: 'Inter', sans-serif; background-color: #f8fafc; -webkit-font-smoothing: antialiased; }
-    .nav-active { background: linear-gradient(135deg, #4f46e5 0%, #6366f1 100%) !important; color: white !important; box-shadow: 0 4px 12px rgba(79, 70, 229, 0.25); }
-    .nav-item { transition: all 0.2s ease; }
+    html, body { height: 100%; margin: 0; }
+    body { font-family: 'Inter', sans-serif; background-color: #f1f5f9; -webkit-font-smoothing: antialiased; }
+
+    /* サイドバー */
+    .nav-active {
+      background: rgba(255,255,255,0.12) !important;
+      color: white !important;
+      border-left: 3px solid #818cf8;
+    }
+    .nav-item {
+      transition: all 0.15s ease;
+      color: #94a3b8;
+      border-left: 3px solid transparent;
+      display: flex;
+      align-items: center;
+    }
+    .nav-item:hover {
+      background: rgba(255,255,255,0.07);
+      color: #e2e8f0;
+    }
+
+    /* スケルトンアニメーション */
+    @keyframes shimmer {
+      0% { background-position: -200% 0; }
+      100% { background-position: 200% 0; }
+    }
+    .skeleton {
+      background: linear-gradient(90deg, #e2e8f0 25%, #f8fafc 50%, #e2e8f0 75%);
+      background-size: 200% 100%;
+      animation: shimmer 1.5s infinite;
+      border-radius: 8px;
+    }
   </style>
 </head>
-<body class="text-slate-900 min-h-screen">
-  <div class="flex">
-    <aside class="w-72 bg-white border-r border-slate-200/60 h-screen sticky top-0 flex flex-col">
-      <div class="p-8 mb-4 shrink-0">
-        <div class="flex items-center gap-4">
-          <img src="/img/d_logo.png" alt="SEO Scan" class="w-11 h-11 shrink-0 object-contain" onerror="this.style.display='none'">
-          <div class="min-w-0 flex-1">
-            <h1 class="text-lg font-bold tracking-tight text-slate-800 leading-tight">SEO Scan</h1>
-            <p class="text-[10px] uppercase tracking-[0.15em] text-slate-400 font-bold">Admin Console</p>
+<body class="text-slate-900">
+  <!-- 外枠: flex + h-screen でサイドバーと右側を固定 -->
+  <div style="display:flex; height:100vh; overflow:hidden;">
+
+    <!-- サイドバー -->
+    <aside style="width:240px; flex-shrink:0;" class="bg-slate-900 flex flex-col overflow-hidden">
+      <!-- ロゴエリア -->
+      <div class="px-5 py-5 shrink-0 border-b border-slate-700/50">
+        <div class="flex items-center gap-3">
+          <div class="w-8 h-8 bg-indigo-500 rounded-lg flex items-center justify-center shrink-0">
+            <img src="/img/d_logo.png" alt="S" class="w-5 h-5 object-contain" style="filter:brightness(0) invert(1);" onerror="this.style.display='none'">
+          </div>
+          <div>
+            <h1 class="text-sm font-bold text-white leading-tight">SEO Scan</h1>
+            <p style="font-size:10px; letter-spacing:0.12em;" class="text-slate-500 font-medium uppercase">Admin</p>
           </div>
         </div>
       </div>
-      <nav class="flex-1 px-4 space-y-1.5">
-        <a href="#/" class="nav-item flex items-center gap-3 px-4 py-3 rounded-xl text-slate-500 hover:bg-slate-50 transition-all" data-route="/">
-          <span class="text-sm font-medium">ダッシュボード</span>
+
+      <!-- ナビゲーション -->
+      <nav class="flex-1 overflow-y-auto" style="padding: 12px 10px;">
+        <p style="font-size:10px; letter-spacing:0.12em;" class="font-bold text-slate-600 uppercase px-3 mb-2">メニュー</p>
+
+        <a href="#/" class="nav-item gap-3 px-3 py-2 rounded-lg text-sm font-medium mb-0.5" data-route="/">
+          <svg style="width:16px;height:16px;flex-shrink:0;opacity:.6;" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+          <span>ダッシュボード</span>
         </a>
-        <a href="#/users" class="nav-item flex items-center gap-3 px-4 py-3 rounded-xl text-slate-500 hover:bg-slate-50 transition-all" data-route="/users">
-          <span class="text-sm font-medium">ユーザー管理</span>
+        <a href="#/users" class="nav-item gap-3 px-3 py-2 rounded-lg text-sm font-medium mb-0.5" data-route="/users">
+          <svg style="width:16px;height:16px;flex-shrink:0;opacity:.6;" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
+          <span>ユーザー管理</span>
         </a>
-        <a href="#/companies" class="nav-item flex items-center gap-3 px-4 py-3 rounded-xl text-slate-500 hover:bg-slate-50 transition-all" data-route="/companies">
-          <span class="text-sm font-medium">企業管理</span>
+        <a href="#/companies" class="nav-item gap-3 px-3 py-2 rounded-lg text-sm font-medium mb-0.5" data-route="/companies">
+          <svg style="width:16px;height:16px;flex-shrink:0;opacity:.6;" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/></svg>
+          <span>企業管理</span>
         </a>
-        <a href="#/scans" class="nav-item flex items-center gap-3 px-4 py-3 rounded-xl text-slate-500 hover:bg-slate-50 transition-all" data-route="/scans">
-          <span class="text-sm font-medium">スキャン管理</span>
+        <a href="#/scans" class="nav-item gap-3 px-3 py-2 rounded-lg text-sm font-medium mb-0.5" data-route="/scans">
+          <svg style="width:16px;height:16px;flex-shrink:0;opacity:.6;" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+          <span>スキャン管理</span>
         </a>
-        <a href="#/link-analysis" class="nav-item flex items-center gap-3 px-4 py-3 rounded-xl text-slate-500 hover:bg-slate-50 transition-all" data-route="/link-analysis">
-          <span class="text-sm font-medium">リンク分析</span>
+        <a href="#/link-analysis" class="nav-item gap-3 px-3 py-2 rounded-lg text-sm font-medium mb-0.5" data-route="/link-analysis">
+          <svg style="width:16px;height:16px;flex-shrink:0;opacity:.6;" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/></svg>
+          <span>リンク分析</span>
         </a>
       </nav>
-      <div class="p-4 border-t border-slate-100">
-        <a href="/seo.html" class="flex items-center justify-center gap-2 px-4 py-2 text-xs font-medium text-slate-500 border border-slate-200 bg-white rounded-xl hover:border-indigo-300 hover:text-indigo-600 shadow-sm transition-all">
-          <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/></svg>
-          サイト一覧に戻る
+
+      <!-- フッター（戻るボタン） -->
+      <div style="padding:12px 10px; border-top: 1px solid rgba(255,255,255,0.08); flex-shrink:0;">
+        <a href="/seo.html" style="display:flex; align-items:center; gap:8px; padding:8px 12px; border-radius:8px; font-size:12px; font-weight:500; color:#64748b; text-decoration:none; transition:all .15s;" onmouseover="this.style.color='#cbd5e1';this.style.background='rgba(255,255,255,0.07)'" onmouseout="this.style.color='#64748b';this.style.background='transparent'">
+          <svg style="width:13px;height:13px;flex-shrink:0;" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18"/>
+          </svg>
+          <span>サイト一覧に戻る</span>
         </a>
       </div>
     </aside>
 
-    <main class="flex-1 p-10">
-      <div class="max-w-7xl mx-auto">
-        <div id="admin-content" class="min-h-[calc(100vh-5rem)]">
-          <div class="animate-pulse flex flex-col gap-4">
-            <div class="h-8 bg-slate-200 rounded w-1/4"></div>
-            <div class="h-64 bg-white rounded-2xl border border-slate-200/60 shadow-sm"></div>
+    <!-- 右側: ヘッダー + スクロールコンテンツ -->
+    <div style="flex:1; display:flex; flex-direction:column; min-width:0; overflow:hidden;">
+
+      <!-- トップバー（幅100%固定） -->
+      <div style="background:#fff; border-bottom:1px solid #e2e8f0; padding:14px 32px; display:flex; align-items:center; justify-content:space-between; flex-shrink:0; z-index:10;">
+        <div id="topbar-title" style="font-size:14px; font-weight:600; color:#334155;">管理コンソール</div>
+        <span style="font-size:11px; color:#94a3b8; background:#f8fafc; padding:4px 12px; border-radius:999px; border:1px solid #e2e8f0;">Admin Console</span>
+      </div>
+
+      <!-- スクロール可能なコンテンツエリア -->
+      <div style="flex:1; overflow-y:auto;">
+        <div style="padding:32px; max-width:1280px; margin:0 auto;">
+          <div id="admin-content">
+            <!-- スケルトンローディング -->
+            <div class="space-y-6">
+              <div class="skeleton" style="height:32px; width:180px;"></div>
+              <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:20px;">
+                <div class="skeleton" style="height:112px; border-radius:16px;"></div>
+                <div class="skeleton" style="height:112px; border-radius:16px;"></div>
+                <div class="skeleton" style="height:112px; border-radius:16px;"></div>
+                <div class="skeleton" style="height:112px; border-radius:16px;"></div>
+              </div>
+              <div class="skeleton" style="height:256px; border-radius:16px;"></div>
+            </div>
           </div>
         </div>
       </div>
-    </main>
+
+    </div>
   </div>
 
-  <script type="module" src="/admin/js/init.js?v=2"></script>
+  <script type="module" src="/admin/js/init.js?v=4"></script>
 </body>
 </html>

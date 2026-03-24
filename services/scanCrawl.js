@@ -292,6 +292,19 @@ async function fetchAndParse(url, depth) {
       wordCount = bodyText.length ? bodyText.split(/\s+/).length : 0;
       noindex = detectNoindex($);
 
+      // canonical タグ検出（別ページ指定＝重複扱い）
+      const canonicalHref = ($('link[rel="canonical"]').attr("href") || "").trim();
+      if (canonicalHref) {
+        try {
+          const canonicalResolved = normalizeUrl(new URL(canonicalHref, normalized).toString());
+          if (canonicalResolved && canonicalResolved !== normalized && sameHost(normalized, canonicalResolved)) {
+            issues.push({ code: "canonical_diff", label: "canonical別ページ指定", canonical: canonicalResolved });
+          }
+        } catch {
+          /* ignore invalid canonical href */
+        }
+      }
+
       if (!title) issues.push({ code: "no_title", label: "タイトル未設定" });
       if (h1Count === 0) issues.push({ code: "no_h1", label: "H1未設定" });
       if (title && title.length < 10) issues.push({ code: "short_title", label: "タイトルが短い" });

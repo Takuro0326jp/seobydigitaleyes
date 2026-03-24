@@ -9,6 +9,7 @@
   let gscConnected = false;
   let performanceChart = null;
   let gscPropertyUrlForChart = null;
+  let lastFetchedAt = null; // キャッシュ取得日時
 
   const params = new URLSearchParams(window.location.search);
   const scanId = params.get("scan") || params.get("scanId");
@@ -320,8 +321,22 @@
     void init();
   });
 
-  async function init() {
+  function updateCacheLabel(fetchedAt, isHit) {
+    const el = document.getElementById("gsc-cache-label");
+    if (!el) return;
+    if (!fetchedAt) { el.textContent = ""; return; }
+    const d = new Date(fetchedAt);
+    const now = new Date();
+    const diffMin = Math.floor((now - d) / 60000);
+    const timeStr = diffMin < 1 ? "今" : diffMin < 60 ? `${diffMin}分前` : `${Math.floor(diffMin / 60)}時間前`;
+    if (!isHit) { el.textContent = ""; return; }
+    el.textContent = `キャッシュ（${timeStr}取得）`;
+    el.className = "text-[10px] text-amber-500 font-bold";
+  }
+
+  async function init(noCache = false) {
     let scanTargetUrl = "";
+    let propertyUrl = null;
 
     try {
       const res = await fetch(`/api/scans/result/${encodeURIComponent(scanId)}`, {
@@ -335,30 +350,42 @@
       if (res.ok) {
         const data = await res.json();
         scanTargetUrl = data.scan?.target_url || data.pages?.[0]?.url || "";
+        propertyUrl = data.scan?.gsc_property_url || null;
       }
     } catch (e) {
       console.warn("scan fetch failed", e);
     }
 
-    setHeaderTargetDomain(scanTargetUrl);
+    if (!propertyUrl) {
+      try {
+        const fb = await fetch(`/api/scans/${encodeURIComponent(scanId)}`, { credentials: "include" });
+        if (fb.ok) {
+          const fbData = await fb.json();
+          propertyUrl = fbData.scan?.gsc_property_url || null;
+          if (!scanTargetUrl && fbData.scan?.target_url) scanTargetUrl = fbData.scan.target_url;
+        }
+      } catch (e) {
+        console.warn("scan fallback fetch failed", e);
+      }
+    }
 
-    // GSC プロパティ取得（将来: API または localStorage gsc_mappings）
-    const mappings = JSON.parse(localStorage.getItem("gsc_mappings") || "{}");
-    const propertyUrl = mappings[scanId] || mappings[scanTargetUrl];
+    setHeaderTargetDomain(scanTargetUrl);
 
     if (!propertyUrl) {
       showEmptyState();
       return;
     }
 
-    // GSC API 呼び出し（将来実装）
+    // GSC API 呼び出し
     try {
       const apiRes = await fetch("/api/gsc/performance", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ propertyUrl, scanId }),
+        body: JSON.stringify({ propertyUrl, scanId, noCache }),
       });
+      lastFetchedAt = apiRes.headers.get("X-GSC-Fetched-At") || null;
+      updateCacheLabel(lastFetchedAt, apiRes.headers.get("X-GSC-Cache") === "HIT");
 
       if (!apiRes.ok) {
         const err = await apiRes.json().catch(() => ({}));
@@ -399,7 +426,16 @@
       btn.disabled = true;
       btn.innerHTML = `<span class="flex items-center gap-2"><svg class="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle class="opacity-25" cx="12" cy="12" r="10" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> 更新中...</span>`;
     }
-    await init();
+    // キャッシュをクリアしてから再取得
+    try {
+      await fetch("/api/gsc/cache/clear", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ scanId }),
+      });
+    } catch (e) { /* ignore */ }
+    await init(true); // noCache=true
     if (btn) {
       btn.disabled = false;
       btn.innerHTML = originalHtml;

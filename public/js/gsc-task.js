@@ -25,10 +25,15 @@
     if (oppLink) oppLink.setAttribute("href", "gsc-opportunities.html" + suffix);
   }
 
-  document.addEventListener("DOMContentLoaded", () => {
+  function bootstrap() {
     updateNavLinks();
     if (window.initActionItemList) {
       window.initActionItemList();
     }
-  });
+  }
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", bootstrap);
+  } else {
+    bootstrap();
+  }
 })();
