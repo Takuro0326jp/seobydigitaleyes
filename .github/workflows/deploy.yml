@@ -6,6 +6,8 @@
 #   DEPLOY_PATH    - デプロイ先パス（任意・デフォルト: ~/seoscan）
 #   DEPLOY_PORT    - SSH ポート（任意・デフォルト: 22）
 # 事前: サーバーで git clone し、.env を配置、pm2 をインストール
+# DNS: 公開ドメインの A レコードは DEPLOY_HOST（Elastic IP）を指すこと。
+#      別 IP（CDN のエッジのみ等）のままだと EC2 上のアプリに届かない。Route 53 なら scripts/route53-upsert-a.sh を参照。
 name: Deploy
 
 on:

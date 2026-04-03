@@ -122,6 +122,8 @@ const POLL_INITIAL_MS = 1000;
 const POLL_INTERVAL_MS = 1000;
 /** ポーリング最大試行回数 */
 const MAX_POLL_ATTEMPTS = 30;
+/** 複数レポート同時開始による Yahoo 側 Frequency limit（get 403）を避ける、開始間隔（ms） */
+const REPORT_STAGGER_MS = 500;
 
 function withReportTimeout(promise, ms) {
   return Promise.race([
@@ -665,22 +667,27 @@ async function fetchYahooAdsReportWithMeta(startDate, endDate, userId = null, op
 
     const results = await Promise.all(
       reportConfigs.map((cfg, idx) =>
-        withReportTimeout(
-          fetchOneReport({
-            headers,
-            accountId,
-            start,
-            end,
-            reportType: cfg.reportType,
-            fields: cfg.fields,
-            reportName: cfg.reportName,
-            parseRows: cfg.parseRows,
-            diagnosticOnly,
-            captureRaw: wantDebug && idx === 0,
-            timeoutMs: REPORT_TIMEOUT_MS,
-          }),
-          REPORT_TIMEOUT_MS + 60000
-        )
+        (async () => {
+          if (idx > 0) {
+            await new Promise((r) => setTimeout(r, idx * REPORT_STAGGER_MS));
+          }
+          return withReportTimeout(
+            fetchOneReport({
+              headers,
+              accountId,
+              start,
+              end,
+              reportType: cfg.reportType,
+              fields: cfg.fields,
+              reportName: cfg.reportName,
+              parseRows: cfg.parseRows,
+              diagnosticOnly,
+              captureRaw: wantDebug && idx === 0,
+              timeoutMs: REPORT_TIMEOUT_MS,
+            }),
+            REPORT_TIMEOUT_MS + 60000
+          );
+        })()
       )
     );
 

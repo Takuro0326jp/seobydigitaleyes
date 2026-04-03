@@ -9,6 +9,36 @@
   if (window.__seoHeaderInitialized) return;
   window.__seoHeaderInitialized = true;
 
+  /** 上部タブ遷移時に scan が消えないよう、最後に開いたスキャン ID を保持 */
+  const LAST_SCAN_STORAGE_KEY = "seoscan:lastScanId";
+
+  function persistScanIdFromCurrentUrl() {
+    try {
+      const p = new URLSearchParams(window.location.search);
+      const s = (p.get("scan") || p.get("scanId") || "").trim();
+      if (s) sessionStorage.setItem(LAST_SCAN_STORAGE_KEY, s);
+    } catch (_e) {
+      /* ignore */
+    }
+  }
+
+  function navQuerySuffix() {
+    const raw = window.location.search || "";
+    if (/\bscan=/.test(raw) || /\bscanId=/.test(raw)) return raw;
+    try {
+      const last = (sessionStorage.getItem(LAST_SCAN_STORAGE_KEY) || "").trim();
+      if (!last) return raw;
+      if (!raw) return `?scan=${encodeURIComponent(last)}`;
+      const q = raw.startsWith("?") ? raw.slice(1) : raw;
+      const p = new URLSearchParams(q);
+      if (p.has("scan") || p.has("scanId")) return raw;
+      p.set("scan", last);
+      return "?" + p.toString();
+    } catch (_e) {
+      return raw;
+    }
+  }
+
   if (
     window.location.pathname.includes("result.html") ||
     window.location.pathname.includes("link-structure.html") ||
@@ -136,12 +166,92 @@ class="block px-4 py-3 text-[11px] font-bold text-slate-600 hover:bg-slate-50 ho
     }
   }
 
+  function injectAiBadgeStyles() {
+    if (document.getElementById("header-ai-badge-css")) return;
+    const s = document.createElement("style");
+    s.id = "header-ai-badge-css";
+    s.textContent = `
+      @keyframes header-ai-rainbow-glow {
+        0%, 100% { box-shadow: 0 0 10px 1px rgba(99,102,241,0.18), 0 0 22px 3px rgba(99,102,241,0.07); }
+        14% { box-shadow: 0 0 10px 1px rgba(139,92,246,0.2), 0 0 22px 3px rgba(139,92,246,0.08); }
+        28% { box-shadow: 0 0 10px 1px rgba(168,85,247,0.18), 0 0 22px 3px rgba(168,85,247,0.07); }
+        42% { box-shadow: 0 0 10px 1px rgba(236,72,153,0.16), 0 0 22px 3px rgba(236,72,153,0.06); }
+        57% { box-shadow: 0 0 10px 1px rgba(251,146,60,0.17), 0 0 22px 3px rgba(251,146,60,0.07); }
+        71% { box-shadow: 0 0 10px 1px rgba(250,204,21,0.16), 0 0 22px 3px rgba(250,204,21,0.06); }
+        85% { box-shadow: 0 0 10px 1px rgba(45,212,191,0.17), 0 0 22px 3px rgba(45,212,191,0.07); }
+      }
+      @keyframes header-ai-diamond-spin {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
+      }
+      @keyframes header-ai-gradient-shift {
+        0%, 100% { background-position: 0% 50%; }
+        50% { background-position: 100% 50%; }
+      }
+      .header-ai-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.3rem;
+        padding: 0.2rem 0.6rem 0.2rem 0.45rem;
+        border-radius: 9999px;
+        background: rgba(255, 255, 255, 0.92);
+        border: 1px solid rgba(196, 181, 253, 0.45);
+        font-size: 10px;
+        font-weight: 800;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: #64748b;
+        white-space: nowrap;
+        animation: header-ai-rainbow-glow 14s ease-in-out infinite;
+        box-shadow: 0 0 10px 1px rgba(99,102,241,0.15), 0 0 20px 2px rgba(99,102,241,0.06);
+      }
+      .header-ai-badge .header-ai-diamond {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 0.65rem;
+        height: 0.65rem;
+        font-size: 7px;
+        line-height: 1;
+        color: #a78bfa;
+        animation: header-ai-diamond-spin 12s linear infinite;
+        transform-origin: center center;
+      }
+      .header-ai-badge .header-ai-mode-label {
+        font-size: 9px;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        background: linear-gradient(
+          105deg,
+          #64748b 0%,
+          #6366f1 14%,
+          #8b5cf6 28%,
+          #a855f7 42%,
+          #db2777 56%,
+          #ea580c 70%,
+          #0d9488 84%,
+          #64748b 100%
+        );
+        background-size: 220% auto;
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+        -webkit-text-fill-color: transparent;
+        animation: header-ai-gradient-shift 12s ease-in-out infinite;
+      }
+    `;
+    document.head.appendChild(s);
+  }
+
   function loadCommonHeader() {
     const container = document.getElementById("header-container");
     if (!container) return;
 
+    injectAiBadgeStyles();
+    persistScanIdFromCurrentUrl();
+
     const path = window.location.pathname.split("/").pop() || "index.html";
-    const urlSuffix = window.location.search || "";
+    const urlSuffix = navQuerySuffix();
 
     const isHideNavPage =
       path.includes("index.html") ||
@@ -198,12 +308,18 @@ class="block px-4 py-3 text-[11px] font-bold text-slate-600 hover:bg-slate-50 ho
     <header class="bg-white border-b border-slate-200 sticky top-0 z-40">
         <div class="h-16 flex items-center justify-between px-8 border-b border-slate-100">
            <div class="flex items-center gap-6">
+    <div class="flex items-center gap-2 sm:gap-3 shrink-0">
     <a href="seo.html" class="flex items-center gap-3 hover:opacity-80 transition-opacity">
         <img src="/img/d_logo.png" alt="Logo" class="w-8 h-8" onerror="this.style.display='none'">
         <span class="text-lg font-bold text-slate-900">
             SEO Scan <span class="text-slate-400 font-medium text-[10px] ml-1 uppercase tracking-wider">by DIGITALEYES</span>
         </span>
     </a>
+    <span class="header-ai-badge" title="AIを活用した分析・提案モード" role="img" aria-label="+ AI mode">
+        <span class="header-ai-diamond" aria-hidden="true">◆</span>
+        <span class="header-ai-mode-label">+ AI mode</span>
+    </span>
+    </div>
     <div id="header-target-domain" class="text-xs font-bold text-slate-500"></div>
     <div id="header-nav-left"></div>
 </div>
@@ -268,7 +384,14 @@ class="block px-4 py-3 text-[11px] font-bold text-slate-600 hover:bg-slate-50 ho
     if (!el) return;
 
     const params = new URLSearchParams(window.location.search);
-    const scanId = params.get("scan") || params.get("scanId");
+    let scanId = params.get("scan") || params.get("scanId");
+    if (!scanId) {
+      try {
+        scanId = sessionStorage.getItem(LAST_SCAN_STORAGE_KEY);
+      } catch (_e) {
+        scanId = null;
+      }
+    }
     if (!scanId) return;
 
     fetch(`/api/scans/${scanId}`, { credentials: "include" })

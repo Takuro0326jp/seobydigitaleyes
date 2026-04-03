@@ -6,7 +6,7 @@ const express = require("express");
 const fs = require("fs");
 const path = require("path");
 const pool = require("../db");
-const { getUserWithContext } = require("../services/accessControl");
+const { getUserWithContext, canAccessScan, isAdmin } = require("../services/accessControl");
 
 const router = express.Router();
 
@@ -66,20 +66,138 @@ async function resolveCompanyId(user) {
   }
 }
 
-/** GET /api/strategy?company_id=xxx - 一覧取得（company_id 省略時はユーザーの company を使用） */
+/**
+ * 戦略APIのスコープ: scan 指定時はそのスキャンの企業＋scan_id で分離（全アカウント同一 company 問題を防ぐ）
+ * @param {string|null|undefined} scanIdRaw - scans.id (UUID)
+ */
+async function resolveStrategyContext(user, scanIdRaw) {
+  const scanId = (scanIdRaw || "").trim() || null;
+  if (!scanId) {
+    const companyId = await resolveCompanyId(user);
+    if (!companyId) {
+      return {
+        ok: false,
+        status: 400,
+        error:
+          "company_id が設定されていません。他タブから SEO Strategy を開き直すか、URL に ?scan=サイトID を付けてください。",
+      };
+    }
+    return { ok: true, companyId, scanId: null };
+  }
+
+  const [[scan]] = await pool.query(
+    "SELECT id, company_id, user_id FROM scans WHERE id = ? LIMIT 1",
+    [scanId]
+  );
+  if (!scan) {
+    return { ok: false, status: 404, error: "スキャン（サイト）が見つかりません。" };
+  }
+
+  const allowed = await canAccessScan(user.id, user.company_id, user.role, scanId);
+  if (!allowed) {
+    return { ok: false, status: 403, error: "このサイトの戦略データにアクセスできません。" };
+  }
+
+  let companyId = scan.company_id != null ? parseInt(scan.company_id, 10) : null;
+  if (!companyId || isNaN(companyId)) {
+    const [[owner]] = await pool.query("SELECT company_id FROM users WHERE id = ? LIMIT 1", [scan.user_id]);
+    companyId = owner?.company_id != null ? parseInt(owner.company_id, 10) : null;
+  }
+  if (!companyId || isNaN(companyId)) {
+    companyId = user.company_id != null ? parseInt(user.company_id, 10) : null;
+  }
+  if (!companyId || isNaN(companyId)) {
+    companyId = await resolveCompanyId(user);
+  }
+  if (!companyId || isNaN(companyId)) {
+    return { ok: false, status: 400, error: "企業IDを解決できませんでした。" };
+  }
+
+  return { ok: true, companyId, scanId };
+}
+
+function scanFilterClause(scanId) {
+  if (!scanId) return { sql: "", params: [] };
+  /** NULL scan_id は旧データで全サイトに共有表示されていたため、サイト指定時は一致する行のみ */
+  return { sql: " AND scan_id = ?", params: [scanId] };
+}
+
+const STRATEGY_AGENT_LOG_PATHS = [
+  path.join(__dirname, "..", "debug-159bed.log"),
+  path.join(__dirname, "..", ".cursor", "debug-159bed.log"),
+];
+function strategyAgentFileLog(payload) {
+  const line = JSON.stringify({ sessionId: "159bed", timestamp: Date.now(), ...payload }) + "\n";
+  try {
+    process.stderr.write("[debug-159bed] " + line);
+  } catch (_) {}
+  for (const p of STRATEGY_AGENT_LOG_PATHS) {
+    try {
+      const dir = path.dirname(p);
+      if (dir && dir !== ".") fs.mkdirSync(dir, { recursive: true });
+      fs.appendFileSync(p, line);
+    } catch (_) {}
+  }
+}
+
+/** GET /api/strategy?scan=xxx&company_id=xxx - 一覧（scan 必須: 未指定時は空。管理者のみ ?company_id= で全件可） */
 router.get("/", async (req, res) => {
   const user = await getUserWithContext(req);
   if (!user) {
     return res.status(401).json({ error: "ログインが必要です" });
   }
 
-  let companyId = req.query.company_id ? parseInt(req.query.company_id, 10) : null;
-  if (!companyId || isNaN(companyId)) {
-    companyId = await resolveCompanyId(user);
+  const scanParam = (req.query.scan || req.query.scanId || "").trim() || null;
+  const overrideCid = req.query.company_id ? parseInt(req.query.company_id, 10) : null;
+  const adminCompanyDump =
+    !scanParam && overrideCid && !isNaN(overrideCid) && isAdmin(user);
+
+  /** scan なしだと company 全件になり全ドメインで同じ一覧になるため、管理者の明示用途以外は返さない */
+  if (!scanParam && !adminCompanyDump) {
+    // #region agent log
+    fetch("http://127.0.0.1:7591/ingest/d7a5fde3-9c6b-445c-8f0d-e1414fbf33cc", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "159bed" },
+      body: JSON.stringify({
+        sessionId: "159bed",
+        location: "routes/strategy.js:GET/",
+        message: "strategy list blocked no scan",
+        data: { earlyEmpty: true },
+        timestamp: Date.now(),
+        hypothesisId: "H1",
+        runId: "verify",
+      }),
+    }).catch(() => {});
+    strategyAgentFileLog({
+      hypothesisId: "H1",
+      runId: "verify",
+      location: "routes/strategy.js:GET/",
+      message: "strategy list blocked no scan",
+      data: { earlyEmpty: true },
+    });
+    // #endregion
+    return res.json([]);
   }
-  if (!companyId) {
-    return res.status(400).json({ error: "company_id が設定されていません。管理者に企業登録を依頼してください。" });
+
+  let ctx;
+  if (adminCompanyDump) {
+    ctx = { ok: true, companyId: overrideCid, scanId: null };
+  } else {
+    ctx = await resolveStrategyContext(user, scanParam);
   }
+  if (!ctx.ok) {
+    strategyAgentFileLog({
+      hypothesisId: "H2",
+      runId: "verify",
+      location: "routes/strategy.js:GET/",
+      message: "strategy list context error",
+      data: { status: ctx.status, scanParam: scanParam || null },
+    });
+    return res.status(ctx.status).json({ error: ctx.error });
+  }
+  let { companyId, scanId } = ctx;
+
+  const { sql: scanSql, params: scanParams } = scanFilterClause(scanId);
 
   try {
     await ensureStrategyTable();
@@ -90,16 +208,16 @@ router.get("/", async (req, res) => {
         `SELECT id, keyword, intent, relevance, \`rank\`, is_ai, accepted, url, created_at,
                 search_volume, competition, ai_reason, status, scan_id, excluded_at
          FROM strategy_keywords
-         WHERE company_id = ?
+         WHERE company_id = ?${scanSql}
          ORDER BY accepted DESC, \`rank\` ASC, relevance DESC, id ASC`,
-        [companyId]
+        [companyId, ...scanParams]
       );
     } catch (colErr) {
       if (colErr.code === "ER_BAD_FIELD_ERROR") {
         [rows] = await pool.query(
           `SELECT id, keyword, intent, relevance, \`rank\`, is_ai, accepted, url, created_at
-           FROM strategy_keywords WHERE company_id = ? ORDER BY accepted DESC, \`rank\` ASC, relevance DESC, id ASC`,
-          [companyId]
+           FROM strategy_keywords WHERE company_id = ?${scanSql} ORDER BY accepted DESC, \`rank\` ASC, relevance DESC, id ASC`,
+          [companyId, ...scanParams]
         );
       } else throw colErr;
     }
@@ -124,6 +242,39 @@ router.get("/", async (req, res) => {
       };
     });
 
+    // #region agent log
+    fetch("http://127.0.0.1:7591/ingest/d7a5fde3-9c6b-445c-8f0d-e1414fbf33cc", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "159bed" },
+      body: JSON.stringify({
+        sessionId: "159bed",
+        location: "routes/strategy.js:GET/",
+        message: "strategy list result",
+        data: {
+          rowCount: list.length,
+          hasScanParam: Boolean(scanParam),
+          scanId: scanId ?? null,
+          adminCompanyDump,
+        },
+        timestamp: Date.now(),
+        hypothesisId: "H1",
+        runId: "verify",
+      }),
+    }).catch(() => {});
+    strategyAgentFileLog({
+      hypothesisId: "H1",
+      runId: "verify",
+      location: "routes/strategy.js:GET/",
+      message: "strategy list result",
+      data: {
+        rowCount: list.length,
+        hasScanParam: Boolean(scanParam),
+        scanId: scanId ?? null,
+        companyId,
+        adminCompanyDump,
+      },
+    });
+    // #endregion
     res.json(list);
   } catch (e) {
     console.error("[strategy] GET error:", e.message);
@@ -138,10 +289,27 @@ router.post("/", async (req, res) => {
     return res.status(401).json({ error: "ログインが必要です" });
   }
 
-  const companyId = await resolveCompanyId(user);
-  if (!companyId) {
-    return res.status(400).json({ error: "company_id が設定されていません。" });
+  const scanParam = (req.body?.scanId || req.body?.scan || "").trim() || null;
+  if (!scanParam) {
+    // #region agent log
+    strategyAgentFileLog({
+      hypothesisId: "H3",
+      runId: "verify",
+      location: "routes/strategy.js:POST/",
+      message: "strategy post blocked no scanId",
+      data: {},
+    });
+    // #endregion
+    return res.status(400).json({
+      error:
+        "サイトごとに登録するため scanId が必要です。対象サイトを選んでから追加してください。",
+    });
   }
+  const ctx = await resolveStrategyContext(user, scanParam);
+  if (!ctx.ok) {
+    return res.status(ctx.status).json({ error: ctx.error });
+  }
+  const { companyId, scanId } = ctx;
 
   const keyword = (req.body?.keyword || "").trim();
   if (!keyword) {
@@ -158,9 +326,9 @@ router.post("/", async (req, res) => {
     let r;
     try {
       [r] = await pool.query(
-        `INSERT INTO strategy_keywords (company_id, keyword, intent, relevance, \`rank\`, is_ai, accepted, url, status)
-         VALUES (?, ?, ?, 0, 0, ?, ?, ?, ?)`,
-        [companyId, keyword, intent, isAi ? 1 : 0, accepted ? 1 : 0, url, accepted ? "active" : "pending"]
+        `INSERT INTO strategy_keywords (company_id, scan_id, keyword, intent, relevance, \`rank\`, is_ai, accepted, url, status)
+         VALUES (?, ?, ?, ?, 0, 0, ?, ?, ?, ?)`,
+        [companyId, scanId, keyword, intent, isAi ? 1 : 0, accepted ? 1 : 0, url, accepted ? "active" : "pending"]
       );
     } catch (insErr) {
       if (insErr.code === "ER_BAD_FIELD_ERROR") {
@@ -180,11 +348,21 @@ router.post("/", async (req, res) => {
           await pool.query(
             `INSERT INTO keyword_watchlist (company_id, scan_id, strategy_keyword_id, keyword, source, intent, status)
              VALUES (?, ?, ?, ?, ?, ?, 'active')`,
-            [companyId, (req.body?.scanId || "").trim() || null, insertId, keyword, isAi ? "ai" : "manual", intent]
+            [companyId, scanId, insertId, keyword, isAi ? "ai" : "manual", intent]
           );
         }
       } catch (_) {}
     }
+
+    // #region agent log
+    strategyAgentFileLog({
+      hypothesisId: "H3",
+      runId: "verify",
+      location: "routes/strategy.js:POST/",
+      message: "strategy post inserted",
+      data: { insertId, scanId: scanId ?? null, companyId },
+    });
+    // #endregion
 
     res.status(201).json({
       id: insertId,
@@ -210,15 +388,17 @@ router.post("/accept", async (req, res) => {
   const id = req.body?.id ? parseInt(req.body.id, 10) : null;
   if (!id || isNaN(id)) return res.status(400).json({ error: "id は必須です" });
 
-  const companyId = await resolveCompanyId(user);
-  if (!companyId) return res.status(400).json({ error: "company_id が設定されていません。" });
-
-  const scanId = (req.body?.scanId || "").trim() || null;
+  const scanParam = (req.body?.scanId || req.body?.scan || "").trim() || null;
+  const ctx = await resolveStrategyContext(user, scanParam);
+  if (!ctx.ok) return res.status(ctx.status).json({ error: ctx.error });
+  const { companyId, scanId } = ctx;
 
   try {
+    const scanClause = scanId != null ? " AND scan_id = ?" : "";
+    const qparams = scanId != null ? [id, companyId, scanId] : [id, companyId];
     const [[kw]] = await pool.query(
-      `SELECT id, keyword, intent, search_volume, competition, ai_reason FROM strategy_keywords WHERE id = ? AND company_id = ?`,
-      [id, companyId]
+      `SELECT id, keyword, intent, search_volume, competition, ai_reason, scan_id FROM strategy_keywords WHERE id = ? AND company_id = ?${scanClause}`,
+      qparams
     );
     if (!kw) return res.status(404).json({ error: "キーワードが見つかりません" });
 
@@ -255,15 +435,17 @@ router.post("/accept-bulk", async (req, res) => {
   const ids = Array.isArray(req.body?.ids) ? req.body.ids.map((x) => parseInt(x, 10)).filter((n) => !isNaN(n)) : [];
   if (ids.length === 0) return res.status(400).json({ error: "ids 配列が必要です" });
 
-  const companyId = await resolveCompanyId(user);
-  if (!companyId) return res.status(400).json({ error: "company_id が設定されていません。" });
-
-  const scanId = (req.body?.scanId || "").trim() || null;
+  const scanParam = (req.body?.scanId || req.body?.scan || "").trim() || null;
+  const ctx = await resolveStrategyContext(user, scanParam);
+  if (!ctx.ok) return res.status(ctx.status).json({ error: ctx.error });
+  const { companyId, scanId } = ctx;
 
   try {
+    const scanClause = scanId != null ? " AND scan_id = ?" : "";
+    const qparams = scanId != null ? [ids, companyId, scanId] : [ids, companyId];
     const [rows] = await pool.query(
-      `SELECT id, keyword, intent, search_volume, competition, ai_reason FROM strategy_keywords WHERE id IN (?) AND company_id = ? AND accepted = 0`,
-      [ids, companyId]
+      `SELECT id, keyword, intent, search_volume, competition, ai_reason FROM strategy_keywords WHERE id IN (?) AND company_id = ? AND accepted = 0${scanClause}`,
+      qparams
     );
 
     for (const kw of rows || []) {
@@ -298,19 +480,25 @@ router.delete("/:id", async (req, res) => {
   const id = parseInt(req.params.id, 10);
   if (!id || isNaN(id)) return res.status(400).json({ error: "無効な id です" });
 
-  const companyId = await resolveCompanyId(user);
-  if (!companyId) return res.status(400).json({ error: "company_id が設定されていません。" });
+  const scanParam = (req.query.scan || req.query.scanId || "").trim() || null;
+  const ctx = await resolveStrategyContext(user, scanParam);
+  if (!ctx.ok) return res.status(ctx.status).json({ error: ctx.error });
+  const { companyId, scanId } = ctx;
+
+  const scanClause = scanId != null ? " AND scan_id = ?" : "";
 
   try {
+    const upParams = scanId != null ? [id, companyId, scanId] : [id, companyId];
     const [r] = await pool.query(
-      `UPDATE strategy_keywords SET status = 'excluded', excluded_at = NOW() WHERE id = ? AND company_id = ?`,
-      [id, companyId]
+      `UPDATE strategy_keywords SET status = 'excluded', excluded_at = NOW() WHERE id = ? AND company_id = ?${scanClause}`,
+      upParams
     );
 
     if (r.affectedRows === 0) {
+      const delParams = scanId != null ? [id, companyId, scanId] : [id, companyId];
       const [r2] = await pool.query(
-        `DELETE FROM strategy_keywords WHERE id = ? AND company_id = ?`,
-        [id, companyId]
+        `DELETE FROM strategy_keywords WHERE id = ? AND company_id = ?${scanClause}`,
+        delParams
       );
       if (r2.affectedRows === 0) return res.status(404).json({ error: "キーワードが見つかりません" });
     }
@@ -329,10 +517,16 @@ router.post("/ai-proposals", async (req, res) => {
     return res.status(401).json({ error: "ログインが必要です" });
   }
 
-  const companyId = await resolveCompanyId(user);
-  if (!companyId) {
-    return res.status(400).json({ error: "company_id が設定されていません。" });
+  const scanParam = (req.body?.scanId || req.body?.scan || "").trim() || null;
+  if (!scanParam) {
+    return res.status(400).json({
+      error:
+        "サイトごとに提案するため scanId が必要です。検証サイト一覧から対象を選び、SEO Strategy を開いてから実行してください。",
+    });
   }
+  const ctx = await resolveStrategyContext(user, scanParam);
+  if (!ctx.ok) return res.status(ctx.status).json({ error: ctx.error });
+  const { companyId, scanId } = ctx;
 
   const propertyUrl = (req.body?.propertyUrl || "").trim();
   if (!propertyUrl) {
@@ -340,8 +534,6 @@ router.post("/ai-proposals", async (req, res) => {
       error: "propertyUrl が必要です。GSC プロパティを指定してください。",
     });
   }
-
-  const scanId = (req.body?.scanId || "").trim() || null;
   const { getUserIdFromRequest } = require("../services/session");
   const { getAuthenticatedClient, deleteTokensForUser, deleteTokensForScan } = require("../services/googleOAuth");
   const { searchconsole } = require("@googleapis/searchconsole");
@@ -400,9 +592,10 @@ router.post("/ai-proposals", async (req, res) => {
       return impressions > 100 && position > 10;
     });
 
+    const { sql: exScanSql, params: exScanParams } = scanFilterClause(scanId);
     const [existing] = await pool.query(
-      "SELECT keyword FROM strategy_keywords WHERE company_id = ? AND (status IS NULL OR status != 'excluded')",
-      [companyId]
+      `SELECT keyword FROM strategy_keywords WHERE company_id = ? AND (status IS NULL OR status != 'excluded')${exScanSql}`,
+      [companyId, ...exScanParams]
     );
     const existingSet = new Set(existing.map((r) => (r.keyword || "").toLowerCase().trim()));
 
@@ -418,11 +611,21 @@ router.post("/ai-proposals", async (req, res) => {
       const competition = position > 20 ? "high" : position > 10 ? "medium" : "low";
       const aiReason = `インプレッション${impressions}回・平均順位${position.toFixed(1)}位で改善余地あり`;
 
-      await pool.query(
-        `INSERT INTO strategy_keywords (company_id, keyword, intent, relevance, \`rank\`, is_ai, accepted, search_volume, competition, ai_reason, status)
-         VALUES (?, ?, ?, 0, 0, 1, 0, ?, ?, ?, 'pending')`,
-        [companyId, query, intent, searchVolume, competition, aiReason]
-      );
+      try {
+        await pool.query(
+          `INSERT INTO strategy_keywords (company_id, scan_id, keyword, intent, relevance, \`rank\`, is_ai, accepted, search_volume, competition, ai_reason, status)
+           VALUES (?, ?, ?, ?, 0, 0, 1, 0, ?, ?, ?, 'pending')`,
+          [companyId, scanId, query, intent, searchVolume, competition, aiReason]
+        );
+      } catch (insE) {
+        if (insE.code === "ER_BAD_FIELD_ERROR") {
+          await pool.query(
+            `INSERT INTO strategy_keywords (company_id, keyword, intent, relevance, \`rank\`, is_ai, accepted, search_volume, competition, ai_reason, status)
+             VALUES (?, ?, ?, 0, 0, 1, 0, ?, ?, ?, 'pending')`,
+            [companyId, query, intent, searchVolume, competition, aiReason]
+          );
+        } else throw insE;
+      }
       added.push({ keyword: query, intent, search_volume: searchVolume, competition, ai_reason: aiReason });
       existingSet.add(query.toLowerCase());
     }
@@ -450,16 +653,27 @@ router.get("/watchlist", async (req, res) => {
   const user = await getUserWithContext(req);
   if (!user) return res.status(401).json({ error: "ログインが必要です" });
 
-  const companyId = await resolveCompanyId(user);
-  if (!companyId) return res.status(400).json({ error: "company_id が設定されていません。" });
+  const scanParam = (req.query.scan || req.query.scanId || "").trim() || null;
+  const overrideCid = req.query.company_id ? parseInt(req.query.company_id, 10) : null;
+  const adminCompanyDump =
+    !scanParam && overrideCid && !isNaN(overrideCid) && isAdmin(user);
+  if (!scanParam && !adminCompanyDump) return res.json([]);
 
-  const scanId = (req.query.scanId || "").trim() || null;
+  let ctx;
+  if (adminCompanyDump) {
+    ctx = { ok: true, companyId: overrideCid, scanId: null };
+  } else {
+    ctx = await resolveStrategyContext(user, scanParam);
+  }
+  if (!ctx.ok) return res.status(ctx.status).json({ error: ctx.error });
+  const { companyId, scanId } = ctx;
 
   try {
     const [rows] = await pool.query(
       `SELECT kw.id, kw.keyword, kw.intent, kw.search_volume, kw.competition, kw.ai_reason, kw.created_at
        FROM keyword_watchlist kw
-       WHERE kw.company_id = ? AND kw.status = 'active' AND (? IS NULL OR kw.scan_id = ?)
+       WHERE kw.company_id = ? AND kw.status = 'active'
+         AND (? IS NULL OR kw.scan_id = ?)
        ORDER BY kw.created_at DESC`,
       [companyId, scanId, scanId]
     );
@@ -487,8 +701,20 @@ router.get("/ranks", async (req, res) => {
   const user = await getUserWithContext(req);
   if (!user) return res.status(401).json({ error: "ログインが必要です" });
 
-  const companyId = await resolveCompanyId(user);
-  if (!companyId) return res.status(400).json({ error: "company_id が設定されていません。" });
+  const scanParam = (req.query.scan || req.query.scanId || "").trim() || null;
+  const overrideCid = req.query.company_id ? parseInt(req.query.company_id, 10) : null;
+  const adminCompanyDump =
+    !scanParam && overrideCid && !isNaN(overrideCid) && isAdmin(user);
+  if (!scanParam && !adminCompanyDump) return res.json([]);
+
+  let ctx;
+  if (adminCompanyDump) {
+    ctx = { ok: true, companyId: overrideCid, scanId: null };
+  } else {
+    ctx = await resolveStrategyContext(user, scanParam);
+  }
+  if (!ctx.ok) return res.status(ctx.status).json({ error: ctx.error });
+  const { companyId, scanId } = ctx;
 
   try {
     const [[hasRh]] = await pool.query("SHOW TABLES LIKE 'rank_history'").catch(() => [[null]]);
@@ -496,17 +722,21 @@ router.get("/ranks", async (req, res) => {
     let histByKw = {};
 
     const [watchRows] = await pool.query(
-      `SELECT id, keyword, search_volume FROM keyword_watchlist WHERE company_id = ? AND status = 'active' ORDER BY keyword`,
-      [companyId]
+      `SELECT id, keyword, search_volume FROM keyword_watchlist
+       WHERE company_id = ? AND status = 'active'
+         AND (? IS NULL OR scan_id = ?)
+       ORDER BY keyword`,
+      [companyId, scanId, scanId]
     );
     rows = watchRows || [];
 
     if (hasRh) {
       const [histRows] = await pool.query(
         `SELECT rh.keyword_id, rh.\`rank\`, rh.scanned_at FROM rank_history rh
-         INNER JOIN keyword_watchlist kw ON rh.keyword_id = kw.id WHERE kw.company_id = ?
+         INNER JOIN keyword_watchlist kw ON rh.keyword_id = kw.id
+         WHERE kw.company_id = ? AND (? IS NULL OR kw.scan_id = ?)
          ORDER BY rh.scanned_at DESC`,
-        [companyId]
+        [companyId, scanId, scanId]
       ).catch(() => [[]]);
 
       for (const h of histRows || []) {
@@ -553,8 +783,20 @@ router.get("/recommendations", async (req, res) => {
   const user = await getUserWithContext(req);
   if (!user) return res.status(401).json({ error: "ログインが必要です" });
 
-  const companyId = await resolveCompanyId(user);
-  if (!companyId) return res.status(400).json({ error: "company_id が設定されていません。" });
+  const scanParam = (req.query.scan || req.query.scanId || "").trim() || null;
+  const overrideCid = req.query.company_id ? parseInt(req.query.company_id, 10) : null;
+  const adminCompanyDump =
+    !scanParam && overrideCid && !isNaN(overrideCid) && isAdmin(user);
+  if (!scanParam && !adminCompanyDump) return res.json([]);
+
+  let ctx;
+  if (adminCompanyDump) {
+    ctx = { ok: true, companyId: overrideCid, scanId: null };
+  } else {
+    ctx = await resolveStrategyContext(user, scanParam);
+  }
+  if (!ctx.ok) return res.status(ctx.status).json({ error: ctx.error });
+  const { companyId, scanId } = ctx;
 
   try {
     const [tables] = await pool.query("SHOW TABLES LIKE 'keyword_watchlist'");
@@ -571,8 +813,9 @@ router.get("/recommendations", async (req, res) => {
               (SELECT rh.\`rank\` FROM rank_history rh WHERE rh.keyword_id = kw.id ORDER BY rh.scanned_at DESC LIMIT 1) AS current_rank
               ${hasGa ? ", (SELECT 1 FROM generated_articles ga WHERE ga.keyword_id = kw.id LIMIT 1) AS has_article" : ""}
        FROM keyword_watchlist kw
-       WHERE kw.company_id = ? AND kw.status = 'active'`,
-      [companyId]
+       WHERE kw.company_id = ? AND kw.status = 'active'
+         AND (? IS NULL OR kw.scan_id = ?)`,
+      [companyId, scanId, scanId]
     );
 
     const recs = [];

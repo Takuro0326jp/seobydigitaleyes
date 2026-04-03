@@ -67,7 +67,8 @@ async function initializeResultPage() {
     SEOState.scanId = scanId;
 
     let tries = 0;
-    const maxTries = 600;
+    // 本番は最大約3時間のクロールあり得るため 2秒×7200 ≒ 4時間まで待機
+    const maxTries = 7200;
 
     while (tries < maxTries) {
       const res = await fetch(

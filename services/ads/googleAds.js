@@ -1,9 +1,107 @@
 /**
  * Google Ads API 連携
  * 1. 環境変数から取得（GOOGLE_ADS_DEVELOPER_TOKEN, GOOGLE_ADS_*）
- * 2. userId 指定時は google_ads_tokens からトークンを取得
+ * 2. userId 指定時は google_ads_tokens / getSelectedAccount からトークンを取得
+ *
+ * 媒体ラベル: 仕様上「Google」表記の例もあるが、ダッシュボードの媒体フィルタと一致させるため "Google Ads" を使用する。
  */
 const pool = require("../../db");
+
+/** 依頼マッピング: cost_micros / average_cpc は円に換算 */
+function microsToYen(v) {
+  return Number(v || 0) / 1_000_000;
+}
+
+function num(v) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+}
+
+/** CTR は API 上は比率（例: 0.05 = 5%）→ パーセント表示用に ×100 */
+function ctrToPercent(m) {
+  const v = num(m);
+  if (v <= 1 && v >= 0) return v * 100;
+  return v;
+}
+
+function pickHourFromSegment(seg) {
+  if (!seg) return "";
+  let h = seg.hour ?? seg.hour_of_day ?? seg.hourOfDay;
+  if (h == null || h === "") return "";
+  if (typeof h === "object" && h !== null) h = h.name ?? h.toString?.() ?? "";
+  const s = String(h).toUpperCase();
+  const m = s.match(/HOUR_OF_DAY_(\d{1,2})|(\d{1,2})/);
+  if (!m) return "";
+  const n = parseInt(m[1] || m[2], 10);
+  return Number.isFinite(n) && n >= 0 && n <= 23 ? String(n) : "";
+}
+
+function pickDowFromSegment(seg) {
+  if (!seg) return "";
+  let d = seg.day_of_week ?? seg.dayOfWeek;
+  if (d == null || d === "") return "";
+  if (typeof d === "object" && d !== null) d = d.name ?? d.toString?.() ?? "";
+  return String(d).replace(/^DAY_OF_WEEK_/, "").toUpperCase();
+}
+
+const GOOGLE_MEDIA = "Google Ads";
+
+/** API 例外を画面・_hint 用の短文に（権限エラー時は MCC の案内を付与） */
+function userMessageFromGoogleAdsException(err) {
+  const m = err?.message || String(err);
+  const short = m.length > 380 ? m.slice(0, 380) + "…" : m;
+  let extra = "";
+  if (/permission|PERMISSION_DENIED|not permitted|does not have permission|USER_PERMISSION_DENIED/i.test(m)) {
+    extra =
+      " MCC配下の運用アカウントでは、API認証元に MCC ID（login_customer_id）を登録し、Customer ID はクライアント（広告運用）側を指定してください。";
+  }
+  return `Google Ads API エラー: ${short}${extra}`;
+}
+
+async function collectQueryRows(customer, gaql, toArray) {
+  const result = await customer.query(gaql);
+  const rows = [];
+  if (Array.isArray(result)) rows.push(...result);
+  else if (result && typeof result[Symbol.asyncIterator] === "function") {
+    for await (const row of result) rows.push(row);
+  } else if (result && typeof result[Symbol.iterator] === "function") {
+    rows.push(...result);
+  } else {
+    const arr = toArray(result);
+    rows.push(...arr);
+  }
+  return rows;
+}
+
+async function safeQuery(customer, gaql, label, toArray) {
+  try {
+    return await collectQueryRows(customer, gaql, toArray);
+  } catch (e) {
+    const gaDetail = e?.errors?.map?.((x) => x.message || x).join("; ") || e?.failure?.errors?.[0]?.message || "";
+    console.warn(`[Google Ads] GAQL ${label} failed:`, e.message || e, gaDetail ? `| ${gaDetail}` : "");
+    return [];
+  }
+}
+
+/** 主クエリが例外のときだけフォールバック GAQL を試す（空行は「データなし」とみなす） */
+async function safeQueryPrimaryFallback(customer, primaryGaql, fallbackGaql, label, toArray) {
+  try {
+    return await collectQueryRows(customer, primaryGaql, toArray);
+  } catch (e) {
+    const gaDetail = e?.errors?.map?.((x) => x.message || x).join("; ") || "";
+    console.warn(`[Google Ads] GAQL ${label} primary failed:`, e.message || e, gaDetail ? `| ${gaDetail}` : "");
+    if (!fallbackGaql) return [];
+    try {
+      const rows = await collectQueryRows(customer, fallbackGaql, toArray);
+      console.warn(`[Google Ads] GAQL ${label} fallback ok, rows=${rows.length}`);
+      return rows;
+    } catch (e2) {
+      const d2 = e2?.errors?.map?.((x) => x.message || x).join("; ") || "";
+      console.warn(`[Google Ads] GAQL ${label} fallback failed:`, e2.message || e2, d2 ? `| ${d2}` : "");
+      return [];
+    }
+  }
+}
 
 async function fetchGoogleAdsReportWithMeta(startDate, endDate, userId = null, options = {}) {
   const wantDebug = !!(options && options.debug);
@@ -24,14 +122,6 @@ async function fetchGoogleAdsReportWithMeta(startDate, endDate, userId = null, o
         customerId = String(acc.customer_id || "").trim().replace(/-/g, "") || customerId;
         const lid = String(acc.login_customer_id ?? "").trim().replace(/-/g, "");
         if (lid) loginCustomerId = lid;
-        if (process.env.NODE_ENV !== "production") {
-          console.log("[Google Ads] アカウント使用:", {
-            account_id: acc?.id,
-            customer_id: customerId,
-            login_customer_id: loginCustomerId || "(未設定)",
-            has_refresh: !!refreshToken,
-          });
-        }
       }
     } catch (e) {
       if (process.env.NODE_ENV !== "production") console.warn("[Google Ads] getSelectedAccount error:", e.message);
@@ -52,21 +142,45 @@ async function fetchGoogleAdsReportWithMeta(startDate, endDate, userId = null, o
   }
 
   if (!developerToken || !clientId || !clientSecret || !refreshToken || !customerId) {
+    console.warn("[Google Ads] skip fetch: missing_config", {
+      has_developer_token: !!developerToken,
+      has_customer_id: !!customerId,
+    });
+    const missingMsg =
+      "Google Ads の認証情報が不足しています（Developer Token / OAuth / 選択中アカウントの Customer ID など）。API連携設定と「使用中のアカウント」を確認してください。";
     return {
       rows: [],
+      areaRows: [],
+      hourRows: [],
+      dailyRows: [],
+      keywordRows: [],
+      adRows: [],
+      assetRows: [],
       customerId: null,
-      _debug: wantDebug ? {
-        error: "missing_config",
-        hint: "developerToken/clientId/clientSecret/refreshToken/customerId のいずれかが未設定",
-        has_developer_token: !!developerToken,
-        has_client_id: !!clientId,
-        has_client_secret: !!clientSecret,
-        has_refresh_token: !!refreshToken,
-        has_customer_id: !!customerId,
-        has_login_customer_id: !!loginCustomerId,
-      } : undefined,
+      google_api_error: missingMsg,
+      _hint: missingMsg,
+      _debug: wantDebug
+        ? {
+            error: "missing_config",
+            hint: "developerToken/clientId/clientSecret/refreshToken/customerId のいずれかが未設定",
+            has_developer_token: !!developerToken,
+            has_client_id: !!clientId,
+            has_client_secret: !!clientSecret,
+            has_refresh_token: !!refreshToken,
+            has_customer_id: !!customerId,
+            has_login_customer_id: !!loginCustomerId,
+          }
+        : undefined,
     };
   }
+
+  const toArray = (r) => {
+    if (Array.isArray(r)) return r;
+    if (r?.results?.length) return r.results;
+    if (r?.response?.length) return r.response;
+    if (r?.rows?.length) return r.rows;
+    return [];
+  };
 
   try {
     const { GoogleAdsApi } = require("google-ads-api");
@@ -82,17 +196,16 @@ async function fetchGoogleAdsReportWithMeta(startDate, endDate, userId = null, o
     };
     if (loginCustomerId) {
       customerOptions.login_customer_id = loginCustomerId;
+    } else if (userId) {
+      // MCC 配下のクライアントアカウントには login_customer_id が必須
+      console.warn(
+        "[Google Ads] login_customer_id が未設定です (customerId=%s, userId=%s)。" +
+        "MCC配下のアカウントの場合、API認証元にMCCのCustomer IDを設定してください。",
+        customerId, userId
+      );
     }
     const customer = client.Customer(customerOptions);
 
-    /** MCC（マネージャー）アカウントかどうか判定。MCC の場合は metrics を取得できない */
-    const toArray = (r) => {
-      if (Array.isArray(r)) return r;
-      if (r?.results?.length) return r.results;
-      if (r?.response?.length) return r.response;
-      if (r?.rows?.length) return r.rows;
-      return [];
-    };
     let isManagerAccount = false;
     try {
       const custResult = await customer.query("SELECT customer.id, customer.manager FROM customer LIMIT 1");
@@ -118,215 +231,429 @@ async function fetchGoogleAdsReportWithMeta(startDate, endDate, userId = null, o
         " は MCC（マネージャー）アカウントです。MCC 自身には広告実績がありません。MCC 配下のクライアント（広告運用）アカウントの Customer ID を連携してください。MCC ID は API 認証元の「MCC設定」に登録し、クライアント ID をアカウントとして追加してください。";
       return {
         rows: [],
+        areaRows: [],
+        hourRows: [],
+        dailyRows: [],
+        keywordRows: [],
+        adRows: [],
+        assetRows: [],
         customerId,
+        google_api_error: hint,
         _debug: wantDebug ? { is_manager_account: true, hint } : undefined,
         _hint: hint,
       };
     }
 
-    const pad = (s) => String(s).replace(/-/g, "");
-    const startCompact = pad(startDate);
-    const endCompact = pad(endDate);
-
-    let campaigns = [];
-    let result = null;
-    let methodUsed = "query";
-    /** report() を優先（ATOM 等で動く構成と同様、レスポンス形式が安定） */
-    try {
-      const reportResult = await customer.report({
-        entity: "campaign",
-        attributes: ["campaign.id", "campaign.name"],
-        metrics: [
-          "metrics.impressions",
-          "metrics.clicks",
-          "metrics.cost_micros",
-          "metrics.conversions",
-          "metrics.all_conversions",
-        ],
-        segments: ["segments.date"],
-        from_date: startDate,
-        to_date: endDate,
-      });
-      const reportRows = Array.isArray(reportResult) ? reportResult : toArray(reportResult);
-      if (reportRows.length > 0) {
-        campaigns = reportRows;
-        result = reportResult;
-        methodUsed = "report";
-      }
-    } catch (reportErr) {
-      if (process.env.NODE_ENV !== "production") {
-        console.warn("[Google Ads] report() fallback error:", reportErr.message);
-      }
-    }
-    /** report で取れなければ GAQL query を試行
-     * 注意: segments.date は SELECT に含める必要あり（WHERE で絞る場合は必須）
-     * ref: https://developers.google.com/google-ads/api/docs/reporting/segmentation
-     */
-    const gaqlPrimary = `SELECT campaign.id, campaign.name, segments.date,
-      metrics.impressions, metrics.clicks, metrics.cost_micros, metrics.conversions, metrics.all_conversions
-    FROM campaign
-    WHERE segments.date BETWEEN '${startDate}' AND '${endDate}'
-      AND campaign.status != 'REMOVED'`;
-    const gaqlCompact = `SELECT campaign.id, campaign.name, segments.date,
-      metrics.impressions, metrics.clicks, metrics.cost_micros, metrics.conversions, metrics.all_conversions
-    FROM campaign
-    WHERE segments.date BETWEEN '${startCompact}' AND '${endCompact}'
-      AND campaign.status != 'REMOVED'`;
-    const gaqlLast30 = `SELECT campaign.id, campaign.name, segments.date,
-      metrics.impressions, metrics.clicks, metrics.cost_micros, metrics.conversions, metrics.all_conversions
-    FROM campaign
-    WHERE segments.date DURING LAST_30_DAYS
-      AND campaign.status != 'REMOVED'`;
-    let lastQueryError = null;
-    for (const [gaql, label] of [[gaqlPrimary, "BETWEEN"], [gaqlCompact, "BETWEEN_compact"], [gaqlLast30, "LAST_30_DAYS"]]) {
-      try {
-        result = await customer.query(gaql);
-        if (Array.isArray(result)) {
-          campaigns = result;
-        } else if (result && typeof result[Symbol.asyncIterator] === "function") {
-          campaigns = [];
-          for await (const row of result) campaigns.push(row);
-        } else if (result && typeof result[Symbol.iterator] === "function") {
-          campaigns = [...result];
-        } else {
-          campaigns = toArray(result);
-        }
-        if (campaigns.length > 0) {
-          if (process.env.NODE_ENV !== "production" && label !== "BETWEEN") {
-            console.log("[Google Ads] " + label + " で取得");
-          }
-          break;
-        }
-        lastQueryError = null;
-      } catch (qErr) {
-        lastQueryError = { label, message: qErr.message || "", errors: qErr.errors };
-        if (process.env.NODE_ENV !== "production") {
-          console.warn("[Google Ads] query error (" + label + "):", qErr.message);
-        }
-      }
-    }
-
-    if (campaigns.length === 0 && !result) {
-      try {
-        const reportOptions = {
-          entity: "campaign",
-          attributes: ["campaign.id", "campaign.name"],
-          metrics: [
-            "metrics.impressions",
-            "metrics.clicks",
-            "metrics.cost_micros",
-            "metrics.conversions",
-            "metrics.all_conversions",
-          ],
-          segments: ["segments.date"],
-          from_date: startDate,
-          to_date: endDate,
-        };
-        result = await customer.report(reportOptions);
-        campaigns = Array.isArray(result) ? result : toArray(result);
-      } catch (_) {}
-    }
-    const gaql = gaqlPrimary;
-    if (process.env.NODE_ENV !== "production") {
-      console.log("[Google Ads] campaigns count:", campaigns.length);
-      if (campaigns.length > 0) {
-        console.log("[Google Ads] first row:", JSON.stringify(campaigns[0], null, 2).slice(0, 500));
-      }
-    }
-    let debugInfo;
-    if (wantDebug) {
-      debugInfo = {
-        customer_id_used: customerId,
-        login_customer_id_used: loginCustomerId || "(MCC未設定・MCC配下の場合は必須)",
+    const toIso = (d) => {
+      const s = String(d || "").trim();
+      if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+      const c = s.replace(/\D/g, "");
+      if (c.length === 8) return `${c.slice(0, 4)}-${c.slice(4, 6)}-${c.slice(6, 8)}`;
+      return s;
+    };
+    const startIso = toIso(startDate);
+    const endIso = toIso(endDate);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(startIso) || !/^\d{4}-\d{2}-\d{2}$/.test(endIso) || startIso > endIso) {
+      const badRange = { startDate, endDate, startIso, endIso };
+      console.warn("[Google Ads] skip fetch: invalid_date_range", badRange);
+      const dateHint = "Google Ads の取得に使う日付（開始・終了）が無効です。YYYY-MM-DD 形式で指定してください。";
+      return {
+        rows: [],
+        areaRows: [],
+        hourRows: [],
+        dailyRows: [],
+        keywordRows: [],
+        adRows: [],
+        assetRows: [],
+        customerId,
+        google_api_error: dateHint,
+        _debug: wantDebug ? { error: "invalid_date_range", ...badRange } : undefined,
+        _hint: dateHint,
       };
-      let rawTruncated = "";
-      try {
-        rawTruncated = result && typeof result === "object" ? JSON.stringify(result).slice(0, 1500) : String(result || "null");
-      } catch (e) {
-        rawTruncated = "[JSON.stringify failed: " + (e.message || "?") + "]";
-      }
-      let firstRow = null;
-      if (campaigns.length > 0) {
-        try {
-          firstRow = JSON.parse(JSON.stringify(campaigns[0]));
-        } catch {
-          firstRow = { _parse_error: "could not serialize first row" };
-        }
-      }
-      debugInfo = {
-        ...debugInfo,
-        wantDebug: true,
-        method: methodUsed || "query",
-        last_query_error: lastQueryError,
-        date_range: { startDate, endDate },
-        login_customer_id: loginCustomerId || "(未設定・MCC配下の場合は.envにGOOGLE_ADS_LOGIN_CUSTOMER_IDを指定)",
-        raw_type: result && Array.isArray(result) ? "array" : (result ? "object" : "null"),
-        raw_keys: result && typeof result === "object" && !Array.isArray(result) ? Object.keys(result) : null,
-        raw_length: Array.isArray(result) ? result.length : (result?.results?.length ?? result?.response?.length ?? null),
-        campaigns_length: campaigns.length,
-        first_row: firstRow,
-        raw_truncated: rawTruncated,
-        hint_empty:
-          campaigns.length === 0
-            ? "指定期間にキャンペーンデータがありません。想定原因：(1) 期間内に広告実績がない (2) 全キャンペーンが削除済み (3) Customer ID が MCC の場合→MCC配下のクライアントIDを連携してください。別の月を選択するか、Google Ads 管理画面で確認してください。"
-            : null,
-        gaql_primary: gaqlPrimary,
-      };
-    } else {
-      debugInfo = undefined;
     }
-    const rows = [];
+    const dateWhere = `segments.date BETWEEN '${startIso}' AND '${endIso}'`;
+
+    const qCampaign = `
+      SELECT
+        segments.date,
+        campaign.name,
+        metrics.cost_micros,
+        metrics.impressions,
+        metrics.clicks,
+        metrics.ctr,
+        metrics.conversions,
+        metrics.cost_per_conversion,
+        metrics.conversions_value
+      FROM campaign
+      WHERE ${dateWhere}
+        AND campaign.status != 'REMOVED'`;
+
+    const qCampaignNoConvValue = `
+      SELECT
+        segments.date,
+        campaign.name,
+        metrics.cost_micros,
+        metrics.impressions,
+        metrics.clicks,
+        metrics.ctr,
+        metrics.conversions,
+        metrics.cost_per_conversion
+      FROM campaign
+      WHERE ${dateWhere}
+        AND campaign.status != 'REMOVED'`;
+
+    const qCampaignMinimal = `
+      SELECT
+        segments.date,
+        campaign.name,
+        metrics.cost_micros,
+        metrics.impressions,
+        metrics.clicks,
+        metrics.conversions
+      FROM campaign
+      WHERE ${dateWhere}
+        AND campaign.status != 'REMOVED'`;
+
+    const qArea = `
+      SELECT
+        segments.date,
+        user_location_view.country_criterion_id,
+        metrics.cost_micros,
+        metrics.impressions,
+        metrics.conversions
+      FROM user_location_view
+      WHERE ${dateWhere}
+        AND user_location_view.country_criterion_id != 0`;
+
+    const qHour = `
+      SELECT
+        segments.date,
+        segments.hour,
+        segments.day_of_week,
+        metrics.cost_micros,
+        metrics.impressions,
+        metrics.clicks,
+        metrics.conversions
+      FROM campaign
+      WHERE ${dateWhere}
+        AND campaign.status != 'REMOVED'`;
+
+    const qAd = `
+      SELECT
+        segments.date,
+        campaign.name,
+        ad_group.name,
+        ad_group_ad.ad.name,
+        ad_group_ad.ad.type,
+        metrics.cost_micros,
+        metrics.impressions,
+        metrics.clicks,
+        metrics.conversions,
+        metrics.cost_per_conversion
+      FROM ad_group_ad
+      WHERE ${dateWhere}
+        AND ad_group_ad.status != 'REMOVED'`;
+
+    const qAdNoCostPerConv = `
+      SELECT
+        segments.date,
+        campaign.name,
+        ad_group.name,
+        ad_group_ad.ad.name,
+        ad_group_ad.ad.type,
+        metrics.cost_micros,
+        metrics.impressions,
+        metrics.clicks,
+        metrics.conversions
+      FROM ad_group_ad
+      WHERE ${dateWhere}
+        AND ad_group_ad.status != 'REMOVED'`;
+
+    const qKeyword = `
+      SELECT
+        segments.date,
+        ad_group_criterion.keyword.text,
+        campaign.name,
+        metrics.cost_micros,
+        metrics.impressions,
+        metrics.clicks,
+        metrics.ctr,
+        metrics.conversions,
+        metrics.average_cpc
+      FROM keyword_view
+      WHERE ${dateWhere}
+        AND ad_group_criterion.type = 'KEYWORD'
+        AND ad_group_criterion.status != 'REMOVED'`;
+
+    const qKeywordNoAvgCpc = `
+      SELECT
+        segments.date,
+        ad_group_criterion.keyword.text,
+        campaign.name,
+        metrics.cost_micros,
+        metrics.impressions,
+        metrics.clicks,
+        metrics.ctr,
+        metrics.conversions
+      FROM keyword_view
+      WHERE ${dateWhere}
+        AND ad_group_criterion.type = 'KEYWORD'
+        AND ad_group_criterion.status != 'REMOVED'`;
+
+    const qDaily = `
+      SELECT
+        segments.date,
+        metrics.cost_micros,
+        metrics.impressions,
+        metrics.clicks,
+        metrics.conversions
+      FROM campaign
+      WHERE ${dateWhere}
+        AND campaign.status != 'REMOVED'`;
+
+    let campaignRows = await safeQuery(customer, qCampaign, "campaign", toArray);
+    if (campaignRows.length === 0) {
+      campaignRows = await safeQuery(customer, qCampaignNoConvValue, "campaign_no_conversions_value", toArray);
+    }
+    if (campaignRows.length === 0) {
+      campaignRows = await safeQuery(customer, qCampaignMinimal, "campaign_minimal", toArray);
+    }
+
+    const [areaRowsRaw, hourRowsRaw, dailyRowsRaw, adRowsRaw, keywordRowsRaw] = await Promise.all([
+      safeQuery(customer, qArea, "user_location_view", toArray),
+      safeQuery(customer, qHour, "hour", toArray),
+      safeQuery(customer, qDaily, "daily", toArray),
+      safeQueryPrimaryFallback(customer, qAd, qAdNoCostPerConv, "ad_group_ad", toArray),
+      safeQueryPrimaryFallback(customer, qKeyword, qKeywordNoAvgCpc, "keyword_view", toArray),
+    ]);
+
     const byCampaign = new Map();
-
-    for (const row of campaigns) {
-      const camp = row.campaign || row;
-      const m = row.metrics || row;
-      const cid = String(
-        camp?.id ?? camp?.campaign_id ?? row.campaign_id ?? row["campaign.id"] ?? "0"
-      );
-      const name =
-        camp?.name ?? camp?.campaign_name ?? row.campaign_name ?? row["campaign.name"] ?? "";
-      if (!byCampaign.has(cid)) {
-        byCampaign.set(cid, { name, impressions: 0, clicks: 0, cost: 0, conversions: 0 });
+    for (const row of campaignRows) {
+      const name = row.campaign?.name || "";
+      const m = row.metrics || {};
+      if (!byCampaign.has(name)) {
+        byCampaign.set(name, {
+          name,
+          impressions: 0,
+          clicks: 0,
+          cost: 0,
+          conversions: 0,
+          conversionsValue: 0,
+          ctrNumerator: 0,
+        });
       }
-      const acc = byCampaign.get(cid);
-      acc.impressions += Number(
-        m?.impressions ?? m?.impression_count ?? row.impressions ?? row["metrics.impressions"] ?? 0
-      );
-      acc.clicks += Number(
-        m?.clicks ?? m?.click_count ?? row.clicks ?? row["metrics.clicks"] ?? 0
-      );
-      acc.cost +=
-        Number(
-          m?.cost_micros ?? m?.cost ?? row.cost_micros ?? row["metrics.cost_micros"] ?? 0
-        ) / 1_000_000;
-      acc.conversions += Number(
-        m?.conversions ??
-          m?.all_conversions ??
-          row.conversions ??
-          row.all_conversions ??
-          row["metrics.conversions"] ??
-          row["metrics.all_conversions"] ??
-          0
-      );
+      const acc = byCampaign.get(name);
+      acc.impressions += num(m.impressions);
+      acc.clicks += num(m.clicks);
+      acc.cost += microsToYen(m.cost_micros);
+      acc.conversions += num(m.conversions);
+      acc.conversionsValue += num(m.conversions_value);
+      acc.ctrNumerator += ctrToPercent(m.ctr) * num(m.impressions);
     }
 
+    const rows = [];
     for (const [, v] of byCampaign) {
+      const ctrPct = v.impressions > 0 ? v.ctrNumerator / v.impressions : 0;
       rows.push({
-        media: "Google Ads",
+        media: GOOGLE_MEDIA,
         campaign: v.name,
         impressions: v.impressions,
         clicks: v.clicks,
         cost: v.cost,
         conversions: v.conversions,
+        conversionsValue: v.conversionsValue,
+        ctr: ctrPct,
       });
     }
+
+    const byCountry = new Map();
+    for (const row of areaRowsRaw) {
+      const ulv = row.user_location_view || row;
+      const id = ulv.country_criterion_id ?? ulv.countryCriterionId;
+      const key = String(id != null ? id : "unknown");
+      const m = row.metrics || {};
+      if (!byCountry.has(key)) {
+        byCountry.set(key, { pref: `country:${key}`, impressions: 0, cost: 0, conversions: 0 });
+      }
+      const a = byCountry.get(key);
+      a.impressions += num(m.impressions);
+      a.cost += microsToYen(m.cost_micros);
+      a.conversions += num(m.conversions);
+    }
+    const areaRows = [...byCountry.values()].map((v) => ({
+      media: GOOGLE_MEDIA,
+      pref: v.pref,
+      impressions: v.impressions,
+      cost: v.cost,
+      conversions: v.conversions,
+    }));
+
+    const byHour = new Map();
+    for (const row of hourRowsRaw) {
+      const seg = row.segments || {};
+      const hourVal = pickHourFromSegment(seg);
+      const dowVal = pickDowFromSegment(seg);
+      const hkey = `${hourVal}_${dowVal}`;
+      const m = row.metrics || {};
+      if (!byHour.has(hkey)) {
+        byHour.set(hkey, {
+          hourOfDay: hourVal || "—",
+          dayOfWeek: dowVal || "—",
+          impressions: 0,
+          clicks: 0,
+          cost: 0,
+          conversions: 0,
+        });
+      }
+      const h = byHour.get(hkey);
+      h.impressions += num(m.impressions);
+      h.clicks += num(m.clicks);
+      h.cost += microsToYen(m.cost_micros);
+      h.conversions += num(m.conversions);
+    }
+    const hourRows = [...byHour.values()];
+
+    const byAd = new Map();
+    for (const row of adRowsRaw) {
+      const camp = row.campaign?.name || "";
+      const ag = row.ad_group?.name || row.adGroup?.name || "";
+      const ad = row.ad_group_ad?.ad || row.adGroupAd?.ad || {};
+      const adName = ad.name || "(広告)";
+      const adType = ad.type != null ? String(ad.type).replace(/^AD_TYPE_/, "") : "";
+      const key = `${camp}\t${ag}\t${adName}\t${adType}`;
+      const m = row.metrics || {};
+      if (!byAd.has(key)) {
+        byAd.set(key, {
+          campaign: camp,
+          adGroup: ag,
+          adName,
+          format: adType,
+          impressions: 0,
+          clicks: 0,
+          cost: 0,
+          conversions: 0,
+        });
+      }
+      const a = byAd.get(key);
+      a.impressions += num(m.impressions);
+      a.clicks += num(m.clicks);
+      a.cost += microsToYen(m.cost_micros);
+      a.conversions += num(m.conversions);
+    }
+    const adRows = [...byAd.values()].map((v) => ({
+      media: GOOGLE_MEDIA,
+      campaign: v.campaign,
+      adGroup: v.adGroup,
+      adName: v.adName,
+      impressions: v.impressions,
+      clicks: v.clicks,
+      cost: v.cost,
+      conversions: v.conversions,
+      format: v.format,
+    }));
+
+    const byKeyword = new Map();
+    for (const row of keywordRowsRaw) {
+      const crit = row.ad_group_criterion || row.adGroupCriterion || {};
+      const kw = crit.keyword || {};
+      const text = kw.text || "";
+      const camp = row.campaign?.name || "";
+      const key = `${camp}\t${text}`;
+      const m = row.metrics || {};
+      const imp = num(m.impressions);
+      const clk = num(m.clicks);
+      if (!byKeyword.has(key)) {
+        byKeyword.set(key, {
+          keyword: text,
+          campaign: camp,
+          impressions: 0,
+          clicks: 0,
+          cost: 0,
+          conversions: 0,
+          ctrNumerator: 0,
+          avgCpcMicrosWeighted: 0,
+          avgCpcClkWeight: 0,
+        });
+      }
+      const k = byKeyword.get(key);
+      k.impressions += imp;
+      k.clicks += clk;
+      k.cost += microsToYen(m.cost_micros);
+      k.conversions += num(m.conversions);
+      k.ctrNumerator += ctrToPercent(m.ctr) * imp;
+      const cpcMicros = num(m.average_cpc);
+      if (cpcMicros > 0 && clk > 0) {
+        k.avgCpcMicrosWeighted += cpcMicros * clk;
+        k.avgCpcClkWeight += clk;
+      }
+    }
+    const keywordRows = [...byKeyword.values()].map((v) => ({
+      media: GOOGLE_MEDIA,
+      keyword: v.keyword,
+      campaign: v.campaign,
+      impressions: v.impressions,
+      clicks: v.clicks,
+      cost: v.cost,
+      ctr: v.impressions > 0 ? v.ctrNumerator / v.impressions : 0,
+      conversions: v.conversions,
+      avgCpc:
+        v.avgCpcClkWeight > 0
+          ? microsToYen(v.avgCpcMicrosWeighted / v.avgCpcClkWeight)
+          : v.clicks > 0
+            ? v.cost / v.clicks
+            : 0,
+    }));
+
+    const byDay = new Map();
+    for (const row of dailyRowsRaw) {
+      const seg = row.segments || {};
+      const d = seg.date;
+      if (!d) continue;
+      const key = String(d).replace(/\D/g, "").slice(0, 8);
+      if (!/^\d{8}$/.test(key)) continue;
+      const m = row.metrics || {};
+      if (!byDay.has(key)) {
+        byDay.set(key, { date: key, impressions: 0, clicks: 0, cost: 0, conversions: 0 });
+      }
+      const a = byDay.get(key);
+      a.impressions += num(m.impressions);
+      a.clicks += num(m.clicks);
+      a.cost += microsToYen(m.cost_micros);
+      a.conversions += num(m.conversions);
+    }
+    const dailyRows = [...byDay.values()].sort((a, b) => a.date.localeCompare(b.date));
+
+    let debugInfo;
+    if (wantDebug) {
+      debugInfo = {
+        customer_id_used: customerId,
+        login_customer_id_used: loginCustomerId || "(MCC未設定・MCC配下の場合は必須)",
+        date_range: { startDate: startIso, endDate: endIso },
+        counts: {
+          campaign: rows.length,
+          area: areaRows.length,
+          hour: hourRows.length,
+          ad: adRows.length,
+          keyword: keywordRows.length,
+          daily: dailyRows.length,
+        },
+        gaql_campaign: qCampaign.slice(0, 400),
+      };
+    }
+
     const emptyHint =
       rows.length === 0
         ? "指定期間にキャンペーンデータがありません。別の月を試すか、Google Ads 管理画面で該当アカウントのキャンペーン・実績を確認してください。MCC の場合は、クライアント（広告運用）アカウント ID を連携してください。"
         : null;
+
     return {
       rows,
+      areaRows,
+      hourRows,
+      dailyRows,
+      keywordRows,
+      adRows,
+      assetRows: [],
       customerId,
       _debug: debugInfo,
       _hint: emptyHint,
@@ -343,7 +670,14 @@ async function fetchGoogleAdsReportWithMeta(startDate, endDate, userId = null, o
         " は MCC（マネージャー）アカウントの可能性があります。MCC からは広告実績を取得できません。MCC 配下のクライアント（広告運用）アカウントの Customer ID を連携し、MCC ID を API 認証元の「MCC設定」に登録してください。";
       return {
         rows: [],
+        areaRows: [],
+        hourRows: [],
+        dailyRows: [],
+        keywordRows: [],
+        adRows: [],
+        assetRows: [],
         customerId,
+        google_api_error: hint,
         _debug: wantDebug ? { error: err.message, is_manager_error: true, hint } : undefined,
         _hint: hint,
       };
@@ -373,7 +707,20 @@ async function fetchGoogleAdsReportWithMeta(startDate, endDate, userId = null, o
     } else {
       debugInfo = undefined;
     }
-    return { rows: [], customerId, _debug: debugInfo };
+    const apiUserMsg = userMessageFromGoogleAdsException(err);
+    return {
+      rows: [],
+      areaRows: [],
+      hourRows: [],
+      dailyRows: [],
+      keywordRows: [],
+      adRows: [],
+      assetRows: [],
+      customerId,
+      google_api_error: apiUserMsg,
+      _hint: apiUserMsg,
+      _debug: debugInfo,
+    };
   }
 }
 

@@ -13,8 +13,110 @@
   let currentArticleId = null;
   let currentArticleRawBody = "";
 
-  const params = new URLSearchParams(window.location.search);
-  const scanId = params.get("scan") || params.get("scanId");
+  const LAST_SCAN_STORAGE_KEY = "seoscan:lastScanId";
+
+  /** 現在の戦略スコープ（URL・セレクト・sessionStorage で更新） */
+  let strategyScanId = "";
+
+  function syncSessionToUrl() {
+    try {
+      const p0 = new URLSearchParams(window.location.search);
+      const fromUrl = (p0.get("scan") || p0.get("scanId") || "").trim();
+      if (fromUrl) {
+        sessionStorage.setItem(LAST_SCAN_STORAGE_KEY, fromUrl);
+      } else {
+        const last = (sessionStorage.getItem(LAST_SCAN_STORAGE_KEY) || "").trim();
+        if (last) {
+          const u = new URL(window.location.href);
+          u.searchParams.set("scan", last);
+          window.history.replaceState({}, "", u.pathname + u.search);
+        }
+      }
+    } catch (_e) {
+      /* ignore */
+    }
+  }
+
+  syncSessionToUrl();
+  try {
+    const p = new URLSearchParams(window.location.search);
+    strategyScanId = (p.get("scan") || p.get("scanId") || "").trim();
+    /** replaceState 直後に location.search が未更新な環境向け */
+    if (!strategyScanId) {
+      strategyScanId = (sessionStorage.getItem(LAST_SCAN_STORAGE_KEY) || "").trim();
+    }
+    if (strategyScanId) sessionStorage.setItem(LAST_SCAN_STORAGE_KEY, strategyScanId);
+  } catch (_e) {
+    strategyScanId = "";
+  }
+
+  function apiScanQuery() {
+    return strategyScanId ? `?scan=${encodeURIComponent(strategyScanId)}` : "";
+  }
+
+  /** /api/scans から実スキャンのみ。未選択・1件なら自動選択。 */
+  async function ensureStrategySiteSelected() {
+    const sel = document.getElementById("strategySiteSelect");
+    const hint = document.getElementById("strategy-site-hint");
+    if (!sel) return;
+
+    try {
+      const res = await fetch("/api/scans", { credentials: "include" });
+      if (!res.ok) {
+        sel.innerHTML = '<option value="">一覧を取得できませんでした</option>';
+        return;
+      }
+      const raw = await res.json().catch(() => []);
+      const list = (Array.isArray(raw) ? raw : []).filter(
+        (s) => s && s.id && String(s.id).indexOf("no_scan:") !== 0
+      );
+
+      sel.innerHTML =
+        '<option value="">— サイトを選択してください —</option>' +
+        list
+          .map((s) => {
+            const id = String(s.id);
+            const label = String(s.domain || s.target_url || s.id);
+            return `<option value="${escapeHtml(id)}">${escapeHtml(label)}</option>`;
+          })
+          .join("");
+
+      const valid = new Set(list.map((s) => String(s.id)));
+
+      if (strategyScanId && valid.has(strategyScanId)) {
+        sel.value = strategyScanId;
+      } else if (!strategyScanId && list.length === 1) {
+        strategyScanId = String(list[0].id);
+        sessionStorage.setItem(LAST_SCAN_STORAGE_KEY, strategyScanId);
+        const u = new URL(window.location.href);
+        u.searchParams.set("scan", strategyScanId);
+        window.history.replaceState({}, "", u.pathname + u.search);
+        sel.value = strategyScanId;
+      } else {
+        if (strategyScanId && !valid.has(strategyScanId)) strategyScanId = "";
+        sel.value = strategyScanId || "";
+      }
+
+      if (hint) hint.classList.toggle("hidden", !!strategyScanId);
+
+      sel.onchange = () => {
+        const v = (sel.value || "").trim();
+        if (!v) return;
+        strategyScanId = v;
+        sessionStorage.setItem(LAST_SCAN_STORAGE_KEY, strategyScanId);
+        const u = new URL(window.location.href);
+        u.searchParams.set("scan", strategyScanId);
+        window.history.replaceState({}, "", u.pathname + u.search);
+        if (hint) hint.classList.add("hidden");
+        fetchStrategy();
+        fetchWatchlist();
+        fetchRanks();
+        fetchRecommendations();
+      };
+    } catch (_e) {
+      sel.innerHTML = '<option value="">読み込みエラー</option>';
+    }
+  }
 
   function escapeHtml(s) {
     const div = document.createElement("div");
@@ -140,7 +242,7 @@
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ id, scanId }),
+        body: JSON.stringify({ id, scanId: strategyScanId }),
       });
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "承認に失敗しました");
       const item = strategyData.find((d) => d.id === id);
@@ -156,7 +258,7 @@
   async function rejectKeyword(id) {
     if (!confirm("この提案を却下しますか？次回のAI提案から除外されます。")) return;
     try {
-      const res = await fetch(`/api/strategy/${id}`, { method: "DELETE", credentials: "include" });
+      const res = await fetch(`/api/strategy/${id}${apiScanQuery()}`, { method: "DELETE", credentials: "include" });
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "却下に失敗しました");
       strategyData = strategyData.filter((d) => d.id !== id);
       updateMetrics();
@@ -174,7 +276,7 @@
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ ids: pending, scanId }),
+        body: JSON.stringify({ ids: pending, scanId: strategyScanId }),
       });
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "一括承認に失敗しました");
       strategyData.forEach((d) => { if (!d.accepted && d.status !== "excluded") d.accepted = true; });
@@ -568,8 +670,20 @@
   }
 
   async function fetchStrategy() {
+    if (!strategyScanId) {
+      strategyData = [];
+      updateMetrics();
+      const body = document.getElementById("strategyTableBody");
+      if (body) {
+        body.innerHTML =
+          '<tr><td colspan="7" class="p-12 text-center text-slate-500">上の「対象サイト」からサイトを選ぶと、そのサイト専用のキーワードが表示されます。</td></tr>';
+      }
+      const hint = document.getElementById("strategy-site-hint");
+      if (hint) hint.classList.remove("hidden");
+      return;
+    }
     try {
-      const res = await fetch("/api/strategy", { credentials: "include" });
+      const res = await fetch("/api/strategy" + apiScanQuery(), { credentials: "include" });
       if (res.status === 401) { window.location.replace("/"); return; }
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
@@ -584,16 +698,25 @@
   }
 
   async function fetchWatchlist() {
+    if (!strategyScanId) {
+      watchlistData = [];
+      return;
+    }
     try {
-      const url = scanId ? `/api/strategy/watchlist?scanId=${encodeURIComponent(scanId)}` : "/api/strategy/watchlist";
+      const url = "/api/strategy/watchlist" + apiScanQuery();
       const res = await fetch(url, { credentials: "include" });
       if (res.ok) watchlistData = await res.json().catch(() => []);
     } catch (_) {}
   }
 
   async function fetchRanks() {
+    if (!strategyScanId) {
+      ranksData = [];
+      renderRankTable();
+      return;
+    }
     try {
-      const res = await fetch("/api/strategy/ranks", { credentials: "include" });
+      const res = await fetch("/api/strategy/ranks" + apiScanQuery(), { credentials: "include" });
       ranksData = res.ok ? (await res.json().catch(() => [])) : [];
       if (!Array.isArray(ranksData)) ranksData = [];
       renderRankTable();
@@ -604,8 +727,13 @@
   }
 
   async function fetchRecommendations() {
+    if (!strategyScanId) {
+      recsData = [];
+      renderRecommendations();
+      return;
+    }
     try {
-      const res = await fetch("/api/strategy/recommendations", { credentials: "include" });
+      const res = await fetch("/api/strategy/recommendations" + apiScanQuery(), { credentials: "include" });
       if (res.ok) recsData = await res.json().catch(() => []);
       renderRecommendations();
     } catch (_) {
@@ -642,6 +770,10 @@
   }
 
   async function addNewKeyword() {
+    if (!strategyScanId) {
+      alert("先に「対象サイト」を選択してください。");
+      return;
+    }
     const kw = (document.getElementById("newKw")?.value || "").trim();
     if (!kw) { alert("キーワードを入力してください"); return; }
     const intent = document.getElementById("newIntent")?.value || "Informational";
@@ -651,7 +783,7 @@
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ keyword: kw, intent, accepted: true }),
+        body: JSON.stringify({ keyword: kw, intent, accepted: true, scanId: strategyScanId }),
       });
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "追加に失敗しました");
       const created = await res.json();
@@ -666,9 +798,13 @@
   }
 
   async function fetchAiProposals() {
+    if (!strategyScanId) {
+      alert("先に上の「対象サイト」でサイトを選択してください。");
+      return;
+    }
     let propertyUrl = null;
     try {
-      const res = await fetch(`/api/scans/result/${encodeURIComponent(scanId)}`, {
+      const res = await fetch(`/api/scans/result/${encodeURIComponent(strategyScanId)}`, {
         credentials: "include",
       });
       if (res.ok) {
@@ -680,7 +816,7 @@
     }
     if (!propertyUrl) {
       try {
-        const fb = await fetch(`/api/scans/${encodeURIComponent(scanId)}`, { credentials: "include" });
+        const fb = await fetch(`/api/scans/${encodeURIComponent(strategyScanId)}`, { credentials: "include" });
         if (fb.ok) {
           const fbData = await fb.json();
           propertyUrl = fbData.scan?.gsc_property_url || null;
@@ -701,7 +837,7 @@
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ propertyUrl, scanId }),
+        body: JSON.stringify({ propertyUrl, scanId: strategyScanId }),
       });
       if (res.status === 403) {
         const err = await res.json().catch(() => ({}));
@@ -737,7 +873,8 @@
   document.getElementById("btnSaveArticle")?.addEventListener("click", saveArticle);
   document.getElementById("btnCancelEdit")?.addEventListener("click", exitEditMode);
 
-  document.addEventListener("DOMContentLoaded", () => {
+  document.addEventListener("DOMContentLoaded", async () => {
+    await ensureStrategySiteSelected();
     fetchStrategy();
     fetchWatchlist();
 

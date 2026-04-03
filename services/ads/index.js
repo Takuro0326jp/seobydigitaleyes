@@ -20,23 +20,32 @@ function getDateRangeForMonth(ym) {
   };
 }
 
-function mergeDailyRows(yahoo, meta) {
+function dateKeyForDaily(d) {
+  const raw = String(d ?? "").replace(/\D/g, "").slice(0, 8);
+  return /^\d{8}$/.test(raw) ? raw : "";
+}
+
+function mergeDailyRows(yahoo, meta, google = []) {
   const byDate = new Map();
   yahoo.forEach((r) => {
-    const d = r.date || r.day;
-    if (d) byDate.set(String(d).slice(0, 8), { ...r });
+    const key = dateKeyForDaily(r.date || r.day);
+    if (!key) return;
+    byDate.set(key, { ...r, date: key });
   });
-  meta.forEach((r) => {
-    const d = r.date || r.day;
-    if (!d) return;
-    const key = String(d).slice(0, 8);
-    if (!byDate.has(key)) byDate.set(key, { date: key, impressions: 0, clicks: 0, cost: 0, conversions: 0 });
-    const acc = byDate.get(key);
-    acc.impressions += Number(r.impressions) || 0;
-    acc.clicks += Number(r.clicks) || 0;
-    acc.cost += Number(r.cost) || 0;
-    acc.conversions += Number(r.conversions) || 0;
-  });
+  const mergeIn = (arr) => {
+    arr.forEach((r) => {
+      const key = dateKeyForDaily(r.date || r.day);
+      if (!key) return;
+      if (!byDate.has(key)) byDate.set(key, { date: key, impressions: 0, clicks: 0, cost: 0, conversions: 0 });
+      const acc = byDate.get(key);
+      acc.impressions += Number(r.impressions) || 0;
+      acc.clicks += Number(r.clicks) || 0;
+      acc.cost += Number(r.cost) || 0;
+      acc.conversions += Number(r.conversions) || 0;
+    });
+  };
+  mergeIn(meta);
+  mergeIn(google);
   return [...byDate.values()].sort((a, b) => (a.date || a.day || "").localeCompare(b.date || b.day || ""));
 }
 
@@ -77,9 +86,33 @@ async function fetchAllReports(monthOrRange, userId = null, options = {}) {
 
   const promises = [];
   if (fetchGoogle) promises.push(fetchGoogleAdsReportWithMeta(startDate, endDate, userId, options));
-  else promises.push(Promise.resolve({ rows: [], areaRows: [], hourRows: [], keywordRows: [], adRows: [], assetRows: [], customerId: null }));
+  else
+    promises.push(
+      Promise.resolve({
+        rows: [],
+        areaRows: [],
+        hourRows: [],
+        dailyRows: [],
+        keywordRows: [],
+        adRows: [],
+        assetRows: [],
+        customerId: null,
+      })
+    );
   if (fetchYahoo) promises.push(fetchYahooAdsReportWithMeta(startDate, endDate, userId, options));
-  else promises.push(Promise.resolve({ rows: [], areaRows: [], hourRows: [], keywordRows: [], adRows: [], assetRows: [], customerId: null }));
+  else
+    promises.push(
+      Promise.resolve({
+        rows: [],
+        areaRows: [],
+        hourRows: [],
+        dailyRows: [],
+        keywordRows: [],
+        adRows: [],
+        assetRows: [],
+        customerId: null,
+      })
+    );
   if (fetchMicrosoft) promises.push(fetchMicrosoftAdsReport(startDate, endDate));
   else promises.push(Promise.resolve([]));
   if (fetchMeta) promises.push(fetchMetaInsightsReport(adAccountId, startDate, endDate));
@@ -132,23 +165,28 @@ async function fetchAllReports(monthOrRange, userId = null, options = {}) {
       console.log("[Ads] AD空のためキャンペーンデータで代替: " + adRows.length + " 件");
     }
   }
+  const googleAdRowsWithMedia = (googleResult.adRows || []).map((r) => ({ ...r, media: r.media || "Google Ads" }));
   const metaAdRows = (metaResult.adRows || []).map((r) => ({ ...r, media: r.media || "Meta" }));
   const yahooAdRowsWithMedia = adRows.map((r) => ({ ...r, media: "Yahoo広告" }));
-  adRows = [...yahooAdRowsWithMedia, ...metaAdRows];
+  adRows = [...googleAdRowsWithMedia, ...yahooAdRowsWithMedia, ...metaAdRows];
   const yahooDailyRows = yahooResult.dailyRows || [];
   const metaDailyRows = metaResult.dailyRows || [];
-  const dailyRowsMerged = mergeDailyRows(yahooDailyRows, metaDailyRows);
+  const googleDailyRows = googleResult.dailyRows || [];
+  const dailyRowsMerged = mergeDailyRows(yahooDailyRows, metaDailyRows, googleDailyRows);
   const yahooAreaWithMedia = (yahooResult.areaRows || []).map((r) => ({ ...r, media: "Yahoo広告" }));
+  const googleAreaRows = (googleResult.areaRows || []).map((r) => ({ ...r, media: r.media || "Google Ads" }));
   const yahooHourWithMedia = (yahooResult.hourRows || []).map((r) => ({ ...r, media: "Yahoo広告" }));
+  const googleHourWithMedia = (googleResult.hourRows || []).map((r) => ({ ...r, media: r.media || "Google Ads" }));
   const yahooKeywordWithMedia = (yahooResult.keywordRows || []).map((r) => ({ ...r, media: "Yahoo広告" }));
+  const googleKeywordWithMedia = (googleResult.keywordRows || []).map((r) => ({ ...r, media: r.media || "Google Ads" }));
   const metaKeywordWithMedia = (metaResult.keywordRows || []).map((r) => ({ ...r, media: "Meta" }));
   const metaError = (metaResult.meta && metaResult.meta.error) || (adAccountId && !hasMetaToken ? "META_ACCESS_TOKEN が .env に設定されていません" : null);
   const res = {
     rows: [...googleRows, ...yahooRows, ...microsoftRows, ...metaRows],
-    areaRows: [...yahooAreaWithMedia, ...(metaResult.areaRows || [])],
-    hourRows: [...yahooHourWithMedia, ...(metaResult.hourRows || []).map((r) => ({ ...r, media: "Meta" }))],
+    areaRows: [...yahooAreaWithMedia, ...googleAreaRows, ...(metaResult.areaRows || [])],
+    hourRows: [...yahooHourWithMedia, ...googleHourWithMedia, ...(metaResult.hourRows || []).map((r) => ({ ...r, media: "Meta" }))],
     dailyRows: dailyRowsMerged,
-    keywordRows: [...yahooKeywordWithMedia, ...metaKeywordWithMedia],
+    keywordRows: [...yahooKeywordWithMedia, ...googleKeywordWithMedia, ...metaKeywordWithMedia],
     adRows,
     assetRows,
     meta: {
@@ -156,6 +194,7 @@ async function fetchAllReports(monthOrRange, userId = null, options = {}) {
       yahoo_account_id: yahooResult.customerId || null,
       meta_account_id: adAccountId || null,
       meta_error: metaError,
+      google_api_error: googleResult.google_api_error || null,
       requested_startDate: startDate,
       requested_endDate: endDate,
       google_row_count: googleRows.length,

@@ -3,7 +3,10 @@
  * ジョブがハングしてもスロットを解放（6分で強制タイムアウト）
  */
 const MAX_CONCURRENT = Number(process.env.CRAWL_MAX_CONCURRENT || 1); // 同時実行数（DB負荷軽減のため1推奨）
-const JOB_TIMEOUT_MS = Number(process.env.CRAWL_JOB_TIMEOUT_MS || 900000); // 15分（scanCrawl の RUN_TIMEOUT_MS と揃える）
+const { CRAWL_RUN_TIMEOUT_MS } = require("./crawlLimits");
+const JOB_TIMEOUT_MS = Number(
+  process.env.CRAWL_JOB_TIMEOUT_MS || CRAWL_RUN_TIMEOUT_MS + 120000
+); // キューは本体クロールより2分長め（runWithTimeout との整合）
 
 let activeCount = 0;
 const pending = [];

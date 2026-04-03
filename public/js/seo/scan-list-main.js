@@ -25,7 +25,7 @@ function hasScanningScans() {
 
 const POLL_INTERVAL_MS = 3000;
 const POLL_INTERVAL_SLOW_MS = 15000; // 5分以上詰まっている場合は15秒に間引き（リクエスト削減）
-const POLL_MAX_COUNT = 400; // 約20分で打ち切り
+const POLL_MAX_COUNT = 4000; // 3秒×4000 ≒ 3.3時間（長時間クロール用）
 
 function startScanPolling() {
   const params = new URLSearchParams(window.location.search);
@@ -510,7 +510,7 @@ function updateView() {
       progHeader.textContent = "";
       scanPollingStopped = false;
     } else if (scanPollingStopped) {
-      progHeader.textContent = `診断中: ${scanning.map((r) => r.domain).join(" / ")} — 20分経過のため更新を停止しました。強制リセットをお試しください`;
+      progHeader.textContent = `診断中: ${scanning.map((r) => r.domain).join(" / ")} — ポーリング上限に達しました。再読み込みするか、強制リセットをお試しください`;
     } else {
       const details = scanning.map((r) => {
         const m = r.elapsed_minutes ?? 0;

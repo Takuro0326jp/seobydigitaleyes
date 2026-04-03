@@ -6,15 +6,11 @@ const cheerio = require("cheerio");
 const pool = require("../db");
 const { clearScanStartTime } = require("./crawlQueue");
 const { calculateScore } = require("./scoreCalculator");
+const { MAX_CRAWL_PAGES: MAX_PAGES, CRAWL_RUN_TIMEOUT_MS: RUN_TIMEOUT_MS } = require("./crawlLimits");
 
-const MAX_PAGES = Number(
-  process.env.MAX_CRAWL_PAGES ||
-  (process.env.NODE_ENV === "production" ? 5000 : 1000)
-);
 const CONCURRENCY = 5; // 並列取得数
 const INCREMENTAL_SAVE_INTERVAL = 50; // 増分保存の間隔（この件数ごとに scan_pages へ INSERT）
 const FETCH_TIMEOUT_MS = Number(process.env.CRAWL_FETCH_TIMEOUT_MS || 30000); // 1URLあたりのタイムアウト（デフォルト30秒）
-const RUN_TIMEOUT_MS = Number(process.env.CRAWL_RUN_TIMEOUT_MS || 900000); // 全体タイムアウト（デフォルト15分・500ページ規模まで対応）
 
 // ボットブロック対策: ブラウザ風UA（SEOScanBotだと403を返すサイトあり）
 const CRAWL_USER_AGENT =
@@ -131,7 +127,7 @@ async function fetchSitemapUrls(baseUrl) {
     /* ignore */
   }
 
-  const maxSitemaps = 100;
+  const maxSitemaps = Number(process.env.CRAWL_MAX_SITEMAP_FILES || 800);
   try {
     while (toFetch.length > 0 && seen.size < maxSitemaps) {
       const sitemapUrl = toFetch.shift();
@@ -158,10 +154,8 @@ async function fetchSitemapUrls(baseUrl) {
         if (!u || !sameHost(baseUrl, u)) continue;
         const norm = normalizeUrl(u);
         if (isIndex) {
-          if (!seen.has(norm)) {
-            seen.add(norm);
-            toFetch.push(u);
-          }
+          // 子サイトマップは取得時点で seen に入れる（先に seen に入れると未取得スキップになる）
+          if (!seen.has(norm)) toFetch.push(u);
         } else {
           pageUrls.push(norm);
         }
@@ -170,7 +164,7 @@ async function fetchSitemapUrls(baseUrl) {
   } catch {
     /* ignore */
   }
-  return pageUrls;
+  return [...new Set(pageUrls)];
 }
 
 function detectNoindex($) {
@@ -606,13 +600,18 @@ async function runScanCrawl(scanId, startUrl) {
         }
       }
 
-      // 増分保存: INCREMENTAL_SAVE_INTERVAL 件ごとに scan_pages へ INSERT（3秒ポーリングで取得数表示）
+      // 増分保存（await してから index を進める。非同期放置だと一覧の COUNT が遅れて 0 のままに見える）
       if (buffer.length - lastInsertedIndex >= INCREMENTAL_SAVE_INTERVAL) {
         const slice = buffer.slice(lastInsertedIndex, lastInsertedIndex + INCREMENTAL_SAVE_INTERVAL);
         lastInsertedIndex += slice.length;
-        insertPagesIncremental(scanId, slice).catch((e) =>
-          console.warn("[scanCrawl] incremental save:", e?.message)
-        );
+        try {
+          await insertPagesIncremental(scanId, slice);
+          await pool
+            .query(`UPDATE scans SET updated_at = NOW() WHERE id = ?`, [scanId])
+            .catch(() => {});
+        } catch (e) {
+          console.warn("[scanCrawl] incremental save:", e?.message);
+        }
       }
     }
 

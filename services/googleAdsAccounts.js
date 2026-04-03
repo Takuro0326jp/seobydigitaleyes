@@ -106,14 +106,28 @@ async function createAccount(userId, { name, customerId, loginCustomerId, apiAut
   const hasAuthCol = authCols && authCols.length > 0;
 
   if (hasAuthCol && authId) {
+    // login_customer_id が未指定の場合、api_auth_sources から自動取得
+    let effectiveLid = lid;
+    if (!effectiveLid) {
+      try {
+        const [authRows] = await pool.query(
+          "SELECT login_customer_id FROM api_auth_sources WHERE id = ? AND user_id = ?",
+          [authId, userId]
+        );
+        if (authRows?.length) {
+          effectiveLid = (authRows[0].login_customer_id || "").trim().replace(/-/g, "") || null;
+        }
+      } catch (_) {}
+    }
+
     await pool.query(
       "UPDATE google_ads_accounts SET is_selected = 0 WHERE user_id = ?",
       [userId]
     );
     const [r] = await pool.query(
-      `INSERT INTO google_ads_accounts (user_id, api_auth_source_id, name, customer_id, is_selected)
-       VALUES (?, ?, ?, ?, 1)`,
-      [userId, authId, displayName.slice(0, 100), cid]
+      `INSERT INTO google_ads_accounts (user_id, api_auth_source_id, name, customer_id, login_customer_id, is_selected)
+       VALUES (?, ?, ?, ?, ?, 1)`,
+      [userId, authId, displayName.slice(0, 100), cid, effectiveLid]
     );
     return r.insertId;
   }

@@ -40,6 +40,87 @@ const {
 const { getAuthUrl, exchangeCodeForTokens, getRedirectUri: getYahooRedirectUri } = require("../services/yahooAdsOAuth");
 const apiAuthSources = require("../services/apiAuthSources");
 
+/** レポート API のメモリキャッシュ（Meta 等の外部 API 負荷軽減）。TTL 3 時間。 */
+const REPORT_CACHE_TTL_MS = 3 * 60 * 60 * 1000;
+const reportResponseCache = new Map();
+
+/** Yahoo クリエイティブ AD/Asset レポートのエラーが付いた応答はキャッシュしない（タイムアウトが3時間固定表示されるのを防ぐ） */
+function reportHasCreativeFetchError(json) {
+  if (!json || typeof json !== "object") return false;
+  const d = json._creativeDiagnostic;
+  if (d) {
+    const ad = d.adError && String(d.adError).trim();
+    const ast = d.assetError && String(d.assetError).trim();
+    if (ad || ast) return true;
+  }
+  const h = json._hint != null ? String(json._hint) : "";
+  if (h.includes("クリエイティブ (") && /AD:|Asset:/.test(h)) return true;
+  if (/顧客集計データ取得|クリエイティブ.*タイムアウト|timeout/i.test(h)) return true;
+  return false;
+}
+
+/**
+ * キャッシュキーは GET /report の param 解決と同じ優先度にする（日付範囲が有効なら month より優先）。
+ * @param {string|number} userId
+ * @param {string} adAccountId
+ * @param {string} month YYYY-MM
+ * @param {string} [startDate]
+ * @param {string} [endDate]
+ */
+function buildReportCacheKey(userId, adAccountId, month, startDate, endDate) {
+  const acct = String(adAccountId || "_none").replace(/[^a-zA-Z0-9_-]/g, "") || "_none";
+  if (startDate && endDate) {
+    const dr = getDateRangeFromDates(startDate, endDate);
+    if (dr) {
+      return `${userId}_${acct}_${dr.startDate}_${dr.endDate}`;
+    }
+  }
+  if (month && /^\d{4}-\d{2}$/.test(month)) {
+    return `${userId}_${acct}_${month}`;
+  }
+  const d = new Date();
+  const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+  return `${userId}_${acct}_${ym}`;
+}
+
+function getReportFromCache(cacheKey) {
+  const entry = reportResponseCache.get(cacheKey);
+  if (!entry) return null;
+  if (Date.now() - entry.ts > REPORT_CACHE_TTL_MS) {
+    reportResponseCache.delete(cacheKey);
+    return null;
+  }
+  try {
+    const data = JSON.parse(JSON.stringify(entry.data));
+    if (reportHasCreativeFetchError(data)) {
+      reportResponseCache.delete(cacheKey);
+      return null;
+    }
+    return data;
+  } catch {
+    const raw = entry.data;
+    if (raw && typeof raw === "object" && reportHasCreativeFetchError(raw)) {
+      reportResponseCache.delete(cacheKey);
+      return null;
+    }
+    return raw;
+  }
+}
+
+function setReportCache(cacheKey, data) {
+  if (reportHasCreativeFetchError(data)) {
+    return;
+  }
+  reportResponseCache.set(cacheKey, { ts: Date.now(), data });
+}
+
+/** 連携・アカウント変更後に古いレポートが TTL まで残らないようメモリキャッシュを捨てる */
+function clearReportResponseCache(reason) {
+  const n = reportResponseCache.size;
+  reportResponseCache.clear();
+  console.log("[Ads] reportResponseCache cleared:", reason, "(had", n, "entries)");
+}
+
 /** GET /api/ads/test-api - report-debug と同じ認証でAPIを直接叩いてテスト
  * 例: /api/ads/test-api
  * report-debug と完全に同じ credential を使用（getSelectedAccount 経由）
@@ -269,6 +350,7 @@ router.get("/yahoo/account-test", async (req, res) => {
 /** GET /api/ads/report - 媒体別レポート取得（company_id 不要・1アカウント連携前提）
  * Google / Yahoo / Microsoft / Meta を services/ads/index.js の fetchAllReports で一括取得しマージする。
  * Meta: META_ACCESS_TOKEN は .env、広告アカウント ID はクエリ ad_account_id（フロントの API 設定で選択・localStorage から送信）。
+ * メモリキャッシュ: キーは userId + ad_account_id + 月(YYYY-MM) または startDate_endDate、TTL 3 時間。force=1 または debug=1 で読み書きとも無視。
  * 個別取得は GET /api/ads/meta/report-debug または GET /api/meta/insights を参照。
  */
 router.get("/report", async (req, res) => {
@@ -298,6 +380,16 @@ router.get("/report", async (req, res) => {
     if (!param) {
       param = month || undefined;
     }
+    const cacheKey = buildReportCacheKey(userId, adAccountId, month, startDate, endDate);
+    const skipCache = force || debug;
+    if (!skipCache) {
+      const cached = getReportFromCache(cacheKey);
+      if (cached) {
+        res.setHeader("X-Ad-Rows-Count", String((cached.adRows || []).length));
+        return res.json(cached);
+      }
+    }
+
     const result = await fetchAllReports(param, userId, { debug, force, ad_account_id: adAccountId || undefined });
     const adRows = result.adRows ?? [];
     const json = {
@@ -315,6 +407,7 @@ router.get("/report", async (req, res) => {
     if (result._yahooRawSample) json._yahooRawSample = result._yahooRawSample;
     if (result._creativeDiagnostic) json._creativeDiagnostic = result._creativeDiagnostic;
     if (result._fallbackCreative) json._fallbackCreative = result._fallbackCreative;
+    if (!skipCache) setReportCache(cacheKey, json);
     res.setHeader("X-Ad-Rows-Count", String((result.adRows || []).length));
     res.json(json);
   } catch (e) {
@@ -376,11 +469,13 @@ router.get("/yahoo/campaign-raw", async (req, res) => {
   }
 });
 
-/** POST /api/ads/cache/clear - キャッシュクリア（現状サーバー側キャッシュなし・将来用） */
+/** POST /api/ads/cache/clear - レポートのメモリキャッシュを全削除 */
 router.post("/cache/clear", async (req, res) => {
   const user = await getUserWithContext(req);
   if (!user) return res.status(401).json({ error: "ログインが必要です" });
-  res.json({ ok: true, message: "キャッシュをクリアしました（サーバー側キャッシュなし）" });
+  const n = reportResponseCache.size;
+  reportResponseCache.clear();
+  res.json({ ok: true, message: "キャッシュをクリアしました", cleared: n });
 });
 
 /** GET /api/ads/meta/report-debug - Meta Insights の直接取得テスト（診断用） */
@@ -647,6 +742,7 @@ router.get("/google/callback", async (req, res) => {
 
   try {
     const { tokens } = await client.getToken(code);
+    clearReportResponseCache("google_oauth_callback");
     let googleEmail = null;
     if (tokens.access_token) {
       try {
@@ -718,6 +814,7 @@ router.post("/google/auth-sources/:id/mcc", async (req, res) => {
   }
   try {
     const ok = await apiAuthSources.updateLoginCustomerId(id, userId, loginCustomerId);
+    if (ok) clearReportResponseCache("google_auth_source_mcc");
     res.json({ success: ok });
   } catch (e) {
     console.error("[ads] auth-sources patch error:", e.message);
@@ -733,6 +830,7 @@ router.delete("/google/auth-sources/:id", async (req, res) => {
   if (!id) return res.status(400).json({ error: "無効なIDです" });
   try {
     const ok = await apiAuthSources.remove(userId, id);
+    if (ok) clearReportResponseCache("google_auth_source_deleted");
     res.json({ success: ok });
   } catch (e) {
     console.error("[ads] auth-sources delete error:", e.message);
@@ -740,11 +838,115 @@ router.delete("/google/auth-sources/:id", async (req, res) => {
   }
 });
 
+/** GET /api/ads/google/auth-sources/:id/clients - MCC配下のクライアントアカウント一覧を取得 */
+router.get("/google/auth-sources/:id/clients", async (req, res) => {
+  const userId = await getUserIdFromRequest(req);
+  if (!userId) return res.status(401).json({ error: "ログインが必要です" });
+  const id = parseInt(req.params.id, 10);
+  if (!id) return res.status(400).json({ error: "無効なIDです" });
+  try {
+    const authSource = await apiAuthSources.getById(id, userId);
+    if (!authSource) {
+      return res.status(400).json({ error: "指定したAPI認証元が見つかりません" });
+    }
+    const loginCustomerId = (authSource.login_customer_id || "").trim().replace(/-/g, "");
+    if (!loginCustomerId) {
+      return res.status(400).json({ error: "この認証元にはMCC ID（login_customer_id）が設定されていません。先にMCC設定を行ってください。" });
+    }
+    const refreshToken = authSource.refresh_token;
+    if (!refreshToken) {
+      return res.status(400).json({ error: "認証トークンが見つかりません。再連携してください。" });
+    }
+
+    const developerToken = (process.env.GOOGLE_ADS_DEVELOPER_TOKEN || "").trim();
+    const clientId = (process.env.GOOGLE_ADS_CLIENT_ID || process.env.GOOGLE_CLIENT_ID || "").trim();
+    const clientSecret = (process.env.GOOGLE_ADS_CLIENT_SECRET || process.env.GOOGLE_CLIENT_SECRET || "").trim();
+    if (!developerToken || !clientId || !clientSecret) {
+      return res.status(503).json({ error: "Google Ads API の設定が不完全です" });
+    }
+
+    // OAuth2 でアクセストークンを取得
+    const { OAuth2Client } = require("google-auth-library");
+    const oauth2 = new OAuth2Client(clientId, clientSecret);
+    oauth2.setCredentials({
+      refresh_token: refreshToken,
+      access_token: authSource.access_token || null,
+      expiry_date: authSource.expiry_date ? Number(authSource.expiry_date) : null,
+    });
+    const { token: accessToken } = await oauth2.getAccessToken();
+    if (!accessToken) {
+      return res.status(500).json({ error: "アクセストークンの取得に失敗しました。再連携してください。" });
+    }
+
+    // Google Ads REST API で customer_client を直接クエリ
+    // login-customer-id ヘッダー付きなので開発者トークンの検証が通る
+    const gaql = [
+      "SELECT customer_client.id, customer_client.descriptive_name,",
+      "customer_client.manager, customer_client.status",
+      "FROM customer_client",
+      "WHERE customer_client.manager = false",
+    ].join(" ");
+
+    const apiVersion = "v23";
+    const searchUrl = `https://googleads.googleapis.com/${apiVersion}/customers/${loginCustomerId}/googleAds:search`;
+    const searchResp = await fetch(searchUrl, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${accessToken}`,
+        "developer-token": developerToken,
+        "login-customer-id": loginCustomerId,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ query: gaql, pageSize: 1000 }),
+    });
+
+    if (!searchResp.ok) {
+      const errBody = await searchResp.text();
+      console.error("[ads] REST customer_client error:", searchResp.status, errBody);
+      // DEVELOPER_TOKEN_PROHIBITED: 開発者トークンとGCPプロジェクトが未リンク
+      if (errBody.includes("DEVELOPER_TOKEN_PROHIBITED")) {
+        return res.status(200).json({
+          clients: [],
+          login_customer_id: loginCustomerId,
+          unavailable: true,
+          reason: "developer_token_prohibited",
+          message: "アカウント自動取得は現在利用できません。Google Ads MCC の API Center で開発者トークンと Google Cloud プロジェクトをリンクすると有効になります。Customer ID を手入力してください。",
+        });
+      }
+      return res.status(500).json({
+        error: "Google Ads API エラー (HTTP " + searchResp.status + ")",
+        detail: errBody.slice(0, 500),
+      });
+    }
+
+    const searchData = await searchResp.json();
+    const rows = searchData.results || [];
+    const clients = rows.map((r) => {
+      const cc = r.customerClient || {};
+      return {
+        customer_id: String(cc.id || "").replace(/-/g, ""),
+        name: cc.descriptiveName || "",
+        manager: !!(cc.manager),
+        status: cc.status || "UNKNOWN",
+      };
+    }).filter((c) => c.customer_id && !c.manager);
+
+    // 名前順でソート
+    clients.sort((a, b) => (a.name || a.customer_id).localeCompare(b.name || b.customer_id, "ja"));
+
+    res.json({ clients, login_customer_id: loginCustomerId });
+  } catch (e) {
+    const gaDetail = e?.errors?.map?.((x) => x.message || x).join("; ") || "";
+    console.error("[ads] auth-sources clients error:", e.message, gaDetail);
+    res.status(500).json({ error: "アカウント一覧の取得に失敗しました: " + (e.message || ""), detail: gaDetail || undefined });
+  }
+});
+
 /** POST /api/ads/google/accounts - アカウント追加（API認証元選択式） */
 router.post("/google/accounts", async (req, res) => {
   const userId = await getUserIdFromRequest(req);
   if (!userId) return res.status(401).json({ error: "ログインが必要です" });
-  const { name, customer_id, api_auth_source_id } = req.body || {};
+  const { name, customer_id, login_customer_id, api_auth_source_id } = req.body || {};
   const cid = (customer_id || "").trim().replace(/-/g, "");
   const authId = api_auth_source_id ? parseInt(api_auth_source_id, 10) : null;
   if (!cid) {
@@ -758,14 +960,21 @@ router.post("/google/accounts", async (req, res) => {
     if (!authSource) {
       return res.status(400).json({ error: "指定したAPI認証元が見つかりません" });
     }
+    // login_customer_id がリクエストに無い場合、API認証元から取得
+    const lid = (login_customer_id || "").trim().replace(/-/g, "") || null;
+    if (!lid && !authSource.login_customer_id) {
+      console.warn("[ads] accounts create: login_customer_id が未設定です (authSource=%d, customer=%s)", authId, cid);
+    }
     const accountId = await createAccount(userId, {
       name: (name || "").trim(),
       customerId: cid,
+      loginCustomerId: lid,
       apiAuthSourceId: authId,
     });
     if (!accountId) {
       return res.status(500).json({ error: "アカウントの登録に失敗しました" });
     }
+    clearReportResponseCache("google_account_created");
     res.json({ success: true, account_id: accountId });
   } catch (e) {
     console.error("[ads] accounts create error:", e.message);
@@ -793,6 +1002,7 @@ router.post("/google/accounts/select", async (req, res) => {
   const accountId = req.body?.account_id ? parseInt(req.body.account_id, 10) : null;
   try {
     await setSelectedAccount(userId, accountId);
+    clearReportResponseCache("google_account_selected");
     res.json({ success: true });
   } catch (e) {
     console.error("[ads] accounts select error:", e.message);
@@ -808,6 +1018,7 @@ router.delete("/google/accounts/:id", async (req, res) => {
   if (!accountId) return res.status(400).json({ error: "無効なIDです" });
   try {
     const ok = await deleteAccount(userId, accountId);
+    if (ok) clearReportResponseCache("google_account_deleted");
     res.json({ success: ok });
   } catch (e) {
     console.error("[ads] accounts delete error:", e.message);
@@ -861,6 +1072,7 @@ router.post("/google/login-customer", async (req, res) => {
 
   try {
     await updateGoogleAdsIds(userId, customerId || null, loginCustomerId || null);
+    clearReportResponseCache("google_login_customer_updated");
     if (process.env.NODE_ENV !== "production") {
       console.log("[ads] login-customer: saved", { userId, customerId: customerId || null, loginCustomerId: loginCustomerId || null });
     }
@@ -880,6 +1092,7 @@ router.post("/google/disconnect", async (req, res) => {
 
   try {
     await deleteTokensForUser(userId);
+    clearReportResponseCache("google_disconnect");
     return res.json({ success: true });
   } catch (e) {
     console.error("[ads] disconnect error:", e.message);
@@ -975,6 +1188,7 @@ router.get("/yahoo/callback", async (req, res) => {
       },
     });
     if (authSourceId) {
+      clearReportResponseCache("yahoo_oauth_callback");
       return res.redirect("/ads.html?yahoo_ads=auth_linked&auth_source=" + authSourceId);
     }
     return res.redirect("/ads.html?yahoo_ads_error=save_failed");
@@ -996,6 +1210,7 @@ router.delete("/yahoo/auth-sources/:id", async (req, res) => {
       return res.status(404).json({ error: "指定したYahoo API認証元が見つかりません" });
     }
     const ok = await apiAuthSources.remove(userId, id);
+    if (ok) clearReportResponseCache("yahoo_auth_source_deleted");
     res.json({ success: ok });
   } catch (e) {
     console.error("[ads] yahoo auth-sources delete error:", e.message);
@@ -1037,6 +1252,7 @@ router.post("/yahoo/accounts", async (req, res) => {
       apiAuthSourceId: authId,
     });
     if (!accountId) return res.status(500).json({ error: "アカウントの登録に失敗しました" });
+    clearReportResponseCache("yahoo_account_created");
     res.json({ success: true, account_id: accountId });
   } catch (e) {
     console.error("[ads] yahoo accounts create error:", e.message);
@@ -1064,6 +1280,7 @@ router.post("/yahoo/accounts/select", async (req, res) => {
   const accountId = req.body?.account_id ? parseInt(req.body.account_id, 10) : null;
   try {
     await setSelectedYahooAccount(userId, accountId);
+    clearReportResponseCache("yahoo_account_selected");
     res.json({ success: true });
   } catch (e) {
     console.error("[ads] yahoo accounts select error:", e.message);
@@ -1079,6 +1296,7 @@ router.delete("/yahoo/accounts/:id", async (req, res) => {
   if (!accountId) return res.status(400).json({ error: "無効なIDです" });
   try {
     const ok = await deleteYahooAccount(userId, accountId);
+    if (ok) clearReportResponseCache("yahoo_account_deleted");
     res.json({ success: ok });
   } catch (e) {
     console.error("[ads] yahoo accounts delete error:", e.message);

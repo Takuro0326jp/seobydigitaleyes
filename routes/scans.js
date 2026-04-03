@@ -22,14 +22,29 @@ const { getAccessibleUrls } = require("../services/userUrlAccess");
 const pool = require("../db");
 const { enqueueCrawl, setScanStartTime, getScanStartTime } = require("../services/crawlQueue");
 const { runScanCrawl } = require("../services/scanCrawl");
+const {
+  MAX_CRAWL_PAGES: MAX_PAGES,
+  CRAWL_RUN_TIMEOUT_MS,
+} = require("../services/crawlLimits");
+
+/** 一覧用: 同一ドメインに複数 scans があるとき、進行中を優先して1件にまとめる */
+function pickBetterScanForDomain(prev, next) {
+  if (!prev) return next;
+  const prevRun = prev.status === "running" || prev.status === "queued";
+  const nextRun = next.status === "running" || next.status === "queued";
+  if (nextRun && !prevRun) return next;
+  if (prevRun && !nextRun) return prev;
+  const ta = new Date(prev.updated_at || prev.created_at || 0).getTime();
+  const tb = new Date(next.updated_at || next.created_at || 0).getTime();
+  return tb >= ta ? next : prev;
+}
+
+/** 長時間クロール後も誤って completed にしない（CRAWL_RUN_TIMEOUT より十分後のみリカバリ） */
+const STUCK_RECOVERY_AFTER_MINUTES =
+  Math.ceil(CRAWL_RUN_TIMEOUT_MS / 60000) + 15;
 const { handleTrends } = require("./scan");
 
 const router = express.Router();
-
-const MAX_PAGES = Number(
-  process.env.MAX_CRAWL_PAGES ||
-  (process.env.NODE_ENV === "production" ? 5000 : 1000)
-);
 
 const scanCreateLimiter = rateLimit({
   windowMs: 5 * 60 * 1000,
@@ -556,7 +571,8 @@ router.get("/", async (req, res) => {
             `SELECT s.id, s.target_url, s.status, s.created_at, s.started_at, s.avg_score, s.updated_at, s.company_id, s.gsc_property_url, s.error_message, c.name AS company_name
              FROM scans s
              LEFT JOIN companies c ON s.company_id = c.id
-             WHERE s.company_id = ?`,
+             WHERE s.company_id = ?
+             ORDER BY COALESCE(s.updated_at, s.created_at) DESC`,
             [user.company_id]
           );
           scansRows = r || [];
@@ -565,7 +581,8 @@ router.get("/", async (req, res) => {
             `SELECT s.id, s.target_url, s.status, s.created_at, s.avg_score, s.updated_at, s.company_id, s.gsc_property_url, s.error_message, c.name AS company_name
              FROM scans s
              LEFT JOIN companies c ON s.company_id = c.id
-             WHERE s.company_id = ?`,
+             WHERE s.company_id = ?
+             ORDER BY COALESCE(s.updated_at, s.created_at) DESC`,
             [user.company_id]
           );
           scansRows = (r || []).map((row) => ({ ...row, started_at: null }));
@@ -573,7 +590,9 @@ router.get("/", async (req, res) => {
         const scanByCanon = new Map();
         for (const s of scansRows) {
           const k = canonicalDomainKey(s.target_url);
-          if (k) scanByCanon.set(k, s);
+          if (!k) continue;
+          const cur = scanByCanon.get(k);
+          scanByCanon.set(k, pickBetterScanForDomain(cur, s));
         }
         rows = [];
         const seenCanon = new Set();
@@ -633,25 +652,30 @@ router.get("/", async (req, res) => {
 
     let pageCountByScanId = {};
     if (scanningIds.length > 0) {
+      const ph = scanningIds.map(() => "?").join(",");
       const [countRows] = await pool.query(
-        `SELECT scan_id, COUNT(*) AS cnt FROM scan_pages WHERE scan_id IN (?) GROUP BY scan_id`,
-        [scanningIds]
+        `SELECT scan_id, COUNT(*) AS cnt FROM scan_pages WHERE scan_id IN (${ph}) GROUP BY scan_id`,
+        scanningIds
       );
       for (const r of countRows || []) {
-        pageCountByScanId[r.scan_id] = r.cnt || 0;
+        pageCountByScanId[String(r.scan_id)] = Number(r.cnt) || 0;
       }
     }
 
     const now = Date.now();
     for (const item of body) {
       if (item.status === "running" || item.status === "queued") {
-        item.processed_pages = pageCountByScanId[item.id] ?? 0;
+        item.processed_pages = pageCountByScanId[String(item.id)] ?? 0;
         const startMs = getScanStartTime(item.id)
           ?? (item.started_at ? new Date(item.started_at).getTime() : null)
           ?? (item.updated_at ? new Date(item.updated_at).getTime() : null);
         item.elapsed_minutes = startMs > 0 ? Math.max(0, Math.floor((now - startMs) / 60000)) : 0;
 
-        if (item.status === "running" && item.processed_pages > 0 && item.elapsed_minutes >= 20) {
+        if (
+          item.status === "running" &&
+          item.processed_pages > 0 &&
+          item.elapsed_minutes >= STUCK_RECOVERY_AFTER_MINUTES
+        ) {
           setImmediate(() => recoverStuckScanWithPages(item.id).catch(() => {}));
         }
         if (item.status === "queued" && item.elapsed_minutes >= 2 && item.target_url) {
@@ -695,39 +719,30 @@ router.get("/:scanId/progress", async (req, res) => {
     let status = scan?.status || "unknown";
     const processedPages = count?.cnt ?? 0;
 
-    // リカバリ: status が running のままの場合の修復（別 try で失敗してもレスポンスは返す）
+    // リカバリ: タイムアウト超過で running のまま固まった場合のみ（scan_history の有無は再スキャンで誤判定になるため使わない）
     if (status === "running" && processedPages > 0) {
       try {
-        const [[hist]] = await pool.query(
-          `SELECT 1 FROM scan_history WHERE scan_id = ? LIMIT 1`,
-          [scanId]
-        );
-        if (hist) {
-          await pool.query(
-            `UPDATE scans SET status = 'completed', updated_at = NOW() WHERE id = ?`,
+        const [[scanExtra]] = await pool
+          .query(
+            `SELECT started_at, updated_at, created_at FROM scans WHERE id = ? LIMIT 1`,
             [scanId]
-          );
-          status = "completed";
-        } else {
-          const [[scanExtra]] = await pool.query(
-            `SELECT updated_at, created_at FROM scans WHERE id = ? LIMIT 1`,
-            [scanId]
-          ).catch(() => [[null]]);
-          const refTime = scanExtra?.updated_at || scanExtra?.created_at;
-          if (refTime) {
-            const ref = new Date(refTime).getTime();
-            if (Date.now() - ref > 20 * 60 * 1000) {
-              const [[avgRow]] = await pool.query(
-                `SELECT ROUND(AVG(score)) AS avg_score FROM scan_pages WHERE scan_id = ?`,
-                [scanId]
-              );
-              const avg = avgRow?.avg_score ?? null;
-              await pool.query(
-                `UPDATE scans SET status = 'completed', avg_score = ?, updated_at = NOW() WHERE id = ?`,
-                [avg, scanId]
-              );
-              status = "completed";
-            }
+          )
+          .catch(() => [[null]]);
+        const refTime =
+          scanExtra?.started_at || scanExtra?.updated_at || scanExtra?.created_at;
+        if (refTime) {
+          const ref = new Date(refTime).getTime();
+          if (Date.now() - ref > CRAWL_RUN_TIMEOUT_MS + 10 * 60 * 1000) {
+            const [[avgRow]] = await pool.query(
+              `SELECT ROUND(AVG(score)) AS avg_score FROM scan_pages WHERE scan_id = ?`,
+              [scanId]
+            );
+            const avg = avgRow?.avg_score ?? null;
+            await pool.query(
+              `UPDATE scans SET status = 'completed', avg_score = ?, updated_at = NOW() WHERE id = ?`,
+              [avg, scanId]
+            );
+            status = "completed";
           }
         }
       } catch (recErr) {
