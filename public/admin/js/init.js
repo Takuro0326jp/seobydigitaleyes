@@ -3,7 +3,7 @@
  */
 import { checkAdminAuth } from "./auth.js";
 import { render as renderDashboard } from "./pages/dashboard.js";
-import { render as renderUsers } from "./pages/users.js";
+import { render as renderUsers } from "./pages/users.js?v=6";
 import { render as renderCompanies } from "./pages/companies.js";
 import { render as renderScans } from "./pages/scans.js";
 import { render as renderLinkAnalysis } from "./pages/link-analysis.js";

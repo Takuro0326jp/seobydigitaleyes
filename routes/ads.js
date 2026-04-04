@@ -865,7 +865,7 @@ router.get("/google/auth-sources/:id/clients", async (req, res) => {
       return res.status(503).json({ error: "Google Ads API の設定が不完全です" });
     }
 
-    // OAuth2 でアクセストークンを取得
+    // OAuth2 でアクセストークンを取得（失敗時は例外になりがちなので分離して detail を返す）
     const { OAuth2Client } = require("google-auth-library");
     const oauth2 = new OAuth2Client(clientId, clientSecret);
     oauth2.setCredentials({
@@ -873,9 +873,27 @@ router.get("/google/auth-sources/:id/clients", async (req, res) => {
       access_token: authSource.access_token || null,
       expiry_date: authSource.expiry_date ? Number(authSource.expiry_date) : null,
     });
-    const { token: accessToken } = await oauth2.getAccessToken();
+    let accessToken;
+    try {
+      const tok = await oauth2.getAccessToken();
+      accessToken = tok?.token || null;
+    } catch (te) {
+      const raw =
+        te?.response?.data !== undefined
+          ? JSON.stringify(te.response.data)
+          : te?.message || String(te);
+      console.error("[ads] oauth getAccessToken (clients list):", raw);
+      return res.status(401).json({
+        error:
+          "Google のアクセストークンが取得できません（refresh_token の失効や Client ID/Secret の不一致が多いです）。「Google で連携」から再認証してください。",
+        detail: raw.slice(0, 1200),
+      });
+    }
     if (!accessToken) {
-      return res.status(500).json({ error: "アクセストークンの取得に失敗しました。再連携してください。" });
+      return res.status(401).json({
+        error: "アクセストークンが空です。「Google で連携」から再認証してください。",
+        detail: "",
+      });
     }
 
     // Google Ads REST API で customer_client を直接クエリ
@@ -903,14 +921,15 @@ router.get("/google/auth-sources/:id/clients", async (req, res) => {
     if (!searchResp.ok) {
       const errBody = await searchResp.text();
       console.error("[ads] REST customer_client error:", searchResp.status, errBody);
-      // DEVELOPER_TOKEN_PROHIBITED: 開発者トークンとGCPプロジェクトが未リンク
-      if (errBody.includes("DEVELOPER_TOKEN_PROHIBITED")) {
+      // 開発者トークンの権限不足系エラー → 手入力へフォールバック
+      if (errBody.includes("DEVELOPER_TOKEN_PROHIBITED") || errBody.includes("DEVELOPER_TOKEN_NOT_APPROVED")) {
+        const reason = errBody.includes("DEVELOPER_TOKEN_NOT_APPROVED") ? "developer_token_not_approved" : "developer_token_prohibited";
         return res.status(200).json({
           clients: [],
           login_customer_id: loginCustomerId,
           unavailable: true,
-          reason: "developer_token_prohibited",
-          message: "アカウント自動取得は現在利用できません。Google Ads MCC の API Center で開発者トークンと Google Cloud プロジェクトをリンクすると有効になります。Customer ID を手入力してください。",
+          reason,
+          message: "アカウント自動取得は現在利用できません。Customer ID を手入力してください。",
         });
       }
       return res.status(500).json({
@@ -936,9 +955,14 @@ router.get("/google/auth-sources/:id/clients", async (req, res) => {
 
     res.json({ clients, login_customer_id: loginCustomerId });
   } catch (e) {
+    const fromGaxios = e?.response?.data !== undefined ? JSON.stringify(e.response.data).slice(0, 1200) : "";
     const gaDetail = e?.errors?.map?.((x) => x.message || x).join("; ") || "";
-    console.error("[ads] auth-sources clients error:", e.message, gaDetail);
-    res.status(500).json({ error: "アカウント一覧の取得に失敗しました: " + (e.message || ""), detail: gaDetail || undefined });
+    const detail = fromGaxios || gaDetail || (e?.stack && process.env.NODE_ENV !== "production" ? e.stack.slice(0, 500) : "");
+    console.error("[ads] auth-sources clients error:", e.message, detail || gaDetail);
+    res.status(500).json({
+      error: "アカウント一覧の取得に失敗しました: " + (e.message || ""),
+      detail: detail || undefined,
+    });
   }
 });
 

@@ -22,50 +22,57 @@ export async function render(container) {
       </div>
       <button id="btn-add-user" class="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-xl text-sm font-bold shadow-lg shadow-indigo-100 transition-all active:scale-95">新規ユーザー追加</button>
     </div>
-    <div class="bg-white rounded-2xl border border-slate-200/60 shadow-sm overflow-hidden">
-      <table class="w-full text-left">
+    <div class="bg-white rounded-2xl border border-slate-200/60 shadow-sm overflow-x-auto">
+      <table class="w-full min-w-[56rem] text-left border-collapse" style="writing-mode: horizontal-tb;">
         <thead class="bg-slate-50/50 border-b border-slate-200/60">
           <tr>
-            <th class="px-6 py-4 text-[11px] font-bold text-slate-500 uppercase tracking-widest">Email / Name</th>
-            <th class="px-6 py-4 text-[11px] font-bold text-slate-500 uppercase tracking-widest">所属企業</th>
-            <th class="px-6 py-4 text-[11px] font-bold text-slate-500 uppercase tracking-widest">ロール</th>
-            <th class="px-6 py-4 text-[11px] font-bold text-slate-500 uppercase tracking-widest">閲覧可能URL</th>
-            <th class="px-6 py-4 text-[11px] font-bold text-slate-500 uppercase tracking-widest">登録日</th>
-            <th class="px-6 py-4 text-[11px] font-bold text-slate-500 uppercase tracking-widest">初回アクセス日</th>
-            <th class="px-6 py-4 text-[11px] font-bold text-slate-500 uppercase tracking-widest">最終アクセス日</th>
-            <th class="px-6 py-4 text-[11px] font-bold text-slate-500 uppercase tracking-widest text-right">操作</th>
+            <th class="px-4 py-3 text-left text-[11px] font-bold text-slate-500 uppercase tracking-wide whitespace-nowrap min-w-[14rem]">Email / Name</th>
+            <th class="px-4 py-3 text-left text-[11px] font-bold text-slate-500 uppercase tracking-wide whitespace-nowrap min-w-[9rem] max-w-[16rem]">所属企業</th>
+            <th class="px-4 py-3 text-left text-[11px] font-bold text-slate-500 uppercase tracking-wide whitespace-nowrap w-[6.5rem]">ロール</th>
+            <th class="px-4 py-3 text-left text-[11px] font-bold text-slate-500 uppercase tracking-wide whitespace-nowrap min-w-[11rem]">閲覧可能URL</th>
+            <th class="px-4 py-3 text-left text-[11px] font-bold text-slate-500 uppercase tracking-wide whitespace-nowrap min-w-[9rem]">登録日</th>
+            <th class="px-4 py-3 text-left text-[11px] font-bold text-slate-500 uppercase tracking-wide whitespace-nowrap min-w-[7rem]">初回アクセス</th>
+            <th class="px-4 py-3 text-left text-[11px] font-bold text-slate-500 uppercase tracking-wide whitespace-nowrap min-w-[7rem]">最終アクセス</th>
+            <th class="px-4 py-3 text-right text-[11px] font-bold text-slate-500 uppercase tracking-wide whitespace-nowrap min-w-[9.5rem] sticky right-0 bg-slate-50/95 backdrop-blur-sm border-l border-slate-200/60 z-[1]">操作</th>
           </tr>
         </thead>
         <tbody class="divide-y divide-slate-100">
-          ${users.map((u) => `
-            <tr class="hover:bg-slate-50/80 transition-colors group">
-              <td class="px-6 py-4">
-                <div class="flex items-center gap-3">
-                  <div class="w-10 h-10 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold text-xs">${escapeHtml(initials(u))}</div>
-                  <div>
-                    <p class="text-sm font-bold text-slate-800">${escapeHtml(u.email || "")}</p>
-                    <p class="text-xs text-slate-400">${escapeHtml(u.username || "—")}</p>
+          ${users.map((u) => {
+            const role = (u.role || "user").toLowerCase();
+            const isElevated = role === "admin" || role === "master";
+            const roleBadgeClass = isElevated
+              ? "bg-indigo-50 text-indigo-700 ring-1 ring-inset ring-indigo-200/80"
+              : "bg-slate-100 text-slate-700 ring-1 ring-inset ring-slate-200/90";
+            return `
+            <tr class="hover:bg-slate-50/80 transition-colors group align-middle">
+              <td class="px-4 py-3 align-middle">
+                <div class="flex items-center gap-3 min-w-0">
+                  <div class="w-10 h-10 shrink-0 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold text-xs">${escapeHtml(initials(u))}</div>
+                  <div class="min-w-0">
+                    <p class="text-sm font-bold text-slate-800 truncate">${escapeHtml(u.email || "")}</p>
+                    <p class="text-xs text-slate-400 truncate">${escapeHtml(u.username || "—")}</p>
                   </div>
                 </div>
               </td>
-              <td class="px-6 py-4 text-sm font-medium text-slate-600">${escapeHtml(companyMap[u.company_id] || "—")}</td>
-              <td class="px-6 py-4">
-                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold ${u.role === "admin" || u.role === "master" ? "bg-indigo-50 text-indigo-700 border border-indigo-100" : "bg-slate-100 text-slate-600 border border-slate-200"}">${escapeHtml(u.role || "user")}</span>
+              <td class="px-4 py-3 text-sm font-medium text-slate-600 align-middle min-w-[9rem] max-w-[16rem] whitespace-normal break-words [word-break:normal]" style="writing-mode: horizontal-tb;">${escapeHtml(companyMap[u.company_id] || "—")}</td>
+              <td class="px-4 py-3 align-middle w-[6.5rem]">
+                <span class="inline-flex items-center justify-center min-w-[4.25rem] px-3 py-1 rounded-full text-[11px] font-semibold leading-none ${roleBadgeClass}">${escapeHtml(u.role || "user")}</span>
               </td>
-              <td class="px-6 py-4 text-sm text-slate-600 max-w-[12rem]">
+              <td class="px-4 py-3 text-sm text-slate-600 align-middle min-w-[11rem] max-w-[14rem]">
                 ${u.url_list ? u.url_list.split("\n").map((url) => `<span class="block truncate" title="${escapeHtml(url)}">${escapeHtml(url)}</span>`).join("") : "—"}
               </td>
-              <td class="px-6 py-4 text-sm text-slate-500">${formatDate(u.created_at)}</td>
-              <td class="px-6 py-4 text-sm text-slate-500">${formatDate(u.first_access_at)}</td>
-              <td class="px-6 py-4 text-sm text-slate-500">${formatDate(u.last_access_at)}</td>
-              <td class="px-6 py-4 text-right">
-                <div class="flex items-center justify-end gap-1">
-                  <button class="btn-edit text-slate-400 hover:text-indigo-600 font-bold text-xs uppercase tracking-widest px-3 py-2 rounded-lg hover:bg-white transition-all" data-id="${u.id}">Edit</button>
-                  <button class="btn-delete text-slate-400 hover:text-red-600 font-bold text-xs uppercase tracking-widest px-3 py-2 rounded-lg hover:bg-red-50 transition-all" data-id="${u.id}" data-email="${escapeHtml(u.email || "")}">削除</button>
+              <td class="px-4 py-3 text-sm text-slate-500 align-middle whitespace-nowrap">${formatDate(u.created_at)}</td>
+              <td class="px-4 py-3 text-sm text-slate-500 align-middle whitespace-nowrap">${formatDate(u.first_access_at)}</td>
+              <td class="px-4 py-3 text-sm text-slate-500 align-middle whitespace-nowrap">${formatDate(u.last_access_at)}</td>
+              <td class="px-4 py-3 text-right align-middle min-w-[9.5rem] sticky right-0 bg-white group-hover:bg-slate-50/95 border-l border-slate-100 z-[1] shadow-[-4px_0_8px_-4px_rgba(15,23,42,0.08)]">
+                <div class="flex flex-wrap items-center justify-end gap-1">
+                  <button type="button" class="btn-edit shrink-0 text-slate-500 hover:text-indigo-600 font-bold text-[11px] uppercase tracking-wide px-2.5 py-1.5 rounded-lg hover:bg-indigo-50/80 transition-all" data-id="${u.id}">Edit</button>
+                  <button type="button" class="btn-delete shrink-0 text-slate-500 hover:text-red-600 font-bold text-[11px] px-2.5 py-1.5 rounded-lg hover:bg-red-50 transition-all" data-id="${u.id}" data-email="${escapeHtml(u.email || "")}">削除</button>
                 </div>
               </td>
             </tr>
-          `).join("")}
+          `;
+          }).join("")}
         </tbody>
       </table>
     </div>
@@ -155,9 +162,18 @@ async function openUserModal(user = null, companiesCache = null) {
   const urlSection = document.getElementById("user-url-access-section");
   const urlList = document.getElementById("user-url-access-list");
   const companySelect = form.querySelector('[name="company_id"]');
+  const submitBtn = form.querySelector('button[type="submit"]');
+  /** none=企業なし / loading=一覧取得中 / ok=送信してよい / error=送信時は url_ids を付けない（既存権限を維持） */
+  let urlListLoadState = companySelect.value ? "loading" : "none";
 
   document.getElementById("user-modal-cancel").onclick = () => modal.remove();
   modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
+
+  function setSubmitBlocked(blocked, loadingLabel) {
+    if (!submitBtn) return;
+    submitBtn.disabled = blocked;
+    submitBtn.textContent = blocked && loadingLabel ? loadingLabel : "保存";
+  }
 
   async function loadUrlAccessOptions() {
     const cid = companySelect.value;
@@ -165,8 +181,12 @@ async function openUserModal(user = null, companiesCache = null) {
     if (searchInputEl) searchInputEl.value = "";
     if (!cid) {
       urlSection.classList.add("hidden");
+      urlListLoadState = "none";
+      setSubmitBlocked(false);
       return;
     }
+    urlListLoadState = "loading";
+    setSubmitBlocked(true, "URL一覧を読み込み中…");
     urlSection.classList.remove("hidden");
     try {
       const companyUrls = await adminApi.companies.urls(cid, { scannedOnly: true });
@@ -184,8 +204,12 @@ async function openUserModal(user = null, companiesCache = null) {
             </label>
           `).join("")
         : "<p class='text-sm text-slate-500'>この企業でスキャン実行済みのURLがありません。診断を実行するとここに表示されます。</p>";
+      urlListLoadState = "ok";
     } catch {
       urlList.innerHTML = "<p class='text-sm text-slate-500'>読み込みエラー</p>";
+      urlListLoadState = "error";
+    } finally {
+      setSubmitBlocked(false);
     }
   }
 
@@ -227,9 +251,13 @@ async function openUserModal(user = null, companiesCache = null) {
     if (invite) body.invite = true;
     const pw = fd.get("password");
     if (pw) body.password = pw;
-    // 企業が選択されている場合は必ず url_ids を送信（空配列でアクセス解除も可能）
     const companyId = fd.get("company_id");
-    if (companyId) {
+    if (companyId && urlListLoadState === "loading") {
+      alert("閲覧可能URLの一覧を読み込み中です。完了してから保存してください。");
+      return;
+    }
+    // 一覧の読み込みが成功したときだけ url_ids を送る（送らない＝サーバー側で既存の閲覧権限を維持）
+    if (companyId && urlListLoadState === "ok") {
       const urlIds = fd.getAll("url_ids").filter(Boolean).map(Number);
       body.url_ids = urlIds;
     }

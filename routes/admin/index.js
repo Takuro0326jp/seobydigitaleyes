@@ -171,11 +171,19 @@ router.patch("/users/:id", async (req, res) => {
       );
     }
 
-    if (Array.isArray(url_ids)) {
+    // 閲覧URL: url_ids を明示したときだけ更新（未送信なら既存を維持）。企業を外したときは必ずクリア。
+    const urlIdsProvided =
+      req.body &&
+      Object.prototype.hasOwnProperty.call(req.body, "url_ids") &&
+      Array.isArray(req.body.url_ids);
+    const clearedCompany = company_id !== undefined && !company_id;
+    if (clearedCompany) {
+      await saveUserUrlAccess(id, []);
+    } else if (urlIdsProvided) {
       await saveUserUrlAccess(id, url_ids);
     }
 
-    if (updates.length === 0 && !Array.isArray(url_ids)) {
+    if (updates.length === 0 && !urlIdsProvided && !clearedCompany) {
       return res.status(400).json({ error: "更新する項目がありません" });
     }
 

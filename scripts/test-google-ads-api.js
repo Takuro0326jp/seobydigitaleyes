@@ -123,6 +123,51 @@ async function main() {
     if (e.errors?.length) console.error("  errors:", JSON.stringify(e.errors));
   }
 
+  // routes/ads.js GET .../auth-sources/:id/clients と同一（REST googleAds:search + customer_client）
+  const loginForRest = MCC_ID;
+  console.log("\n[test] 4. REST customer_client（アプリと同じ URL / ヘッダー / GAQL）");
+  const gaqlClients = [
+    "SELECT customer_client.id, customer_client.descriptive_name,",
+    "customer_client.manager, customer_client.status",
+    "FROM customer_client",
+    "WHERE customer_client.manager = false",
+  ].join(" ");
+  const apiVersion = "v23";
+  const searchUrl = `https://googleads.googleapis.com/${apiVersion}/customers/${loginForRest}/googleAds:search`;
+  try {
+    const { OAuth2Client } = require("google-auth-library");
+    const oauth2 = new OAuth2Client(clientId, clientSecret);
+    oauth2.setCredentials({ refresh_token: refreshToken });
+    const tok = await oauth2.getAccessToken();
+    const accessToken = tok?.token || null;
+    if (!accessToken) {
+      console.error("  ✗ アクセストークンが取得できませんでした");
+    } else {
+      const searchResp = await fetch(searchUrl, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "developer-token": developerToken,
+          "login-customer-id": loginForRest,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ query: gaqlClients, pageSize: 1000 }),
+      });
+      const text = await searchResp.text();
+      console.log("  → HTTP", searchResp.status);
+      if (!searchResp.ok) {
+        console.log("  ✗ 本文（先頭800文字）:", text.slice(0, 800));
+      } else {
+        const data = JSON.parse(text);
+        const n = (data.results || []).length;
+        console.log("  → results 件数:", n);
+        if (n > 0) console.log("  → 先頭1件:", JSON.stringify(data.results[0], null, 2).slice(0, 600));
+      }
+    }
+  } catch (e) {
+    console.error("  ✗ エラー:", e.message || e);
+  }
+
   console.log("\n[test] 完了");
   process.exit(0);
 }

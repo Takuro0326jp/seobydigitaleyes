@@ -833,6 +833,7 @@
                 <option value="">先に「API認証元」を選択してください</option>
               </select>
               <div id="google-ads-customer-loading" style="font-size:11px;color:var(--text-muted);margin-top:4px;display:none">MCC配下のアカウントを読み込み中…</div>
+              <div id="google-ads-client-error-hint" style="display:none;font-size:11px;color:var(--bad);margin-top:6px;max-width:100%;white-space:pre-wrap;line-height:1.45;word-break:break-word"></div>
             </div>
             <div id="google-ads-customer-manual-wrap" style="margin-bottom:8px;display:none">
               <label style="display:block;font-size:11px;font-weight:600;color:var(--text-muted);margin-bottom:4px">Customer ID（手入力・ハイフン可）</label>
@@ -1330,6 +1331,7 @@
     // --- Customer ID: MCC配下一覧をセレクトで選択（不可時は手入力） ---
     const customerSelect = document.getElementById("google-ads-customer-select");
     const customerLoading = document.getElementById("google-ads-customer-loading");
+    const clientErrorHint = document.getElementById("google-ads-client-error-hint");
     const customerManualWrap = document.getElementById("google-ads-customer-manual-wrap");
     const googleCustomerManualInput = document.getElementById("google-ads-customer-id-manual");
     const googleAccountNameInput = document.getElementById("google-ads-account-name");
@@ -1358,9 +1360,21 @@
           : '<option value="">先に「API認証元」を選択してください</option>';
         if (!authId) return;
         if (customerLoading) customerLoading.style.display = "block";
+        if (clientErrorHint) {
+          clientErrorHint.style.display = "none";
+          clientErrorHint.textContent = "";
+        }
         try {
           const r = await fetch("/api/ads/google/auth-sources/" + authId + "/clients", { credentials: "include" });
           const d = await parseJsonResponse(r, { clients: [] });
+          if (!r.ok || d.error) {
+            const detail = d.detail ? String(d.detail).slice(0, 800) : "";
+            console.warn("[Ads] MCC クライアント一覧 API", { httpStatus: r.status, error: d.error, detail: detail || "(なし)" });
+            if (clientErrorHint && d.error) {
+              clientErrorHint.textContent = (d.error + (detail ? "\n" + detail : "")).trim();
+              clientErrorHint.style.display = "block";
+            }
+          }
           if (d.unavailable) {
             customerSelect.innerHTML =
               '<option value="' +
@@ -1368,6 +1382,10 @@
               '">一覧は利用できません（Google API Center のリンクが必要な場合があります）</option>';
             customerSelect.value = GOOGLE_CID_MANUAL;
             setGoogleCustomerManualVisible(true);
+            if (clientErrorHint) {
+              clientErrorHint.style.display = "none";
+              clientErrorHint.textContent = "";
+            }
           } else if (d.clients && d.clients.length > 0) {
             customerSelect.innerHTML =
               '<option value="">-- Customer ID を選択 (' + d.clients.length + "件) --</option>" +
@@ -1389,9 +1407,13 @@
               GOOGLE_CID_MANUAL +
               '">リストにない・手入力する</option>';
             setGoogleCustomerManualVisible(false);
+            if (clientErrorHint) {
+              clientErrorHint.style.display = "none";
+              clientErrorHint.textContent = "";
+            }
           } else if (d.error) {
             customerSelect.innerHTML =
-              '<option value="">取得失敗</option><option value="' +
+              '<option value="">取得失敗（下に理由を表示）</option><option value="' +
               GOOGLE_CID_MANUAL +
               '">手入力で Customer ID を指定</option>';
             setGoogleCustomerManualVisible(false);
@@ -1401,8 +1423,17 @@
               GOOGLE_CID_MANUAL +
               '">手入力で Customer ID を指定</option>';
             setGoogleCustomerManualVisible(false);
+            if (clientErrorHint) {
+              clientErrorHint.style.display = "none";
+              clientErrorHint.textContent = "";
+            }
           }
         } catch (e) {
+          console.warn("[Ads] MCC クライアント一覧 fetch 失敗", e.message || e);
+          if (clientErrorHint) {
+            clientErrorHint.textContent = e.message || String(e);
+            clientErrorHint.style.display = "block";
+          }
           customerSelect.innerHTML =
             '<option value="">通信エラー</option><option value="' + GOOGLE_CID_MANUAL + '">手入力で Customer ID を指定</option>';
           setGoogleCustomerManualVisible(false);
