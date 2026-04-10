@@ -8,8 +8,16 @@ const express = require("express");
 const router = express.Router();
 const crypto = require("crypto");
 const pool = require("../db");
-const { getUserWithContext } = require("../services/accessControl");
+const { getUserWithContext, isAdmin } = require("../services/accessControl");
 const { getUserIdFromRequest } = require("../services/session");
+
+/** API設定変更はmaster/adminのみ許可 */
+async function requireAdmin(req, res) {
+  const user = await getUserWithContext(req);
+  if (!user) { res.status(401).json({ error: "ログインが必要です" }); return null; }
+  if (!isAdmin(user)) { res.status(403).json({ error: "この操作にはマスター権限が必要です" }); return null; }
+  return user;
+}
 const { fetchAllReports, getConnectionStatus, getDateRangeForMonth, getDateRangeFromDates } = require("../services/ads");
 const { fetchMetaInsightsReport } = require("../services/ads/metaAds");
 const { fetchGoogleAdsReportWithMeta, validateCustomerAccess } = require("../services/ads/googleAds");
@@ -624,10 +632,9 @@ router.get("/status", async (req, res) => {
  * mode=account: 従来（name, customer_id, login_customer_id でアカウント追加＋OAuth）※レガシー
  */
 router.get("/google/connect", async (req, res) => {
-  const userId = await getUserIdFromRequest(req);
-  if (!userId) {
-    return res.redirect("/?error=login_required");
-  }
+  const admin = await requireAdmin(req, res);
+  if (!admin) return;
+  const userId = admin.id;
 
   const redirectUri = getRedirectUri(req);
   const client = getOAuth2Client(redirectUri);
@@ -805,8 +812,9 @@ router.get("/google/auth-sources", async (req, res) => {
 
 /** POST /api/ads/google/auth-sources/:id/mcc - API認証元のMCC IDを更新（OAuth不要） */
 router.post("/google/auth-sources/:id/mcc", async (req, res) => {
-  const userId = await getUserIdFromRequest(req);
-  if (!userId) return res.status(401).json({ error: "ログインが必要です" });
+  const admin = await requireAdmin(req, res);
+  if (!admin) return;
+  const userId = admin.id;
   const id = parseInt(req.params.id, 10);
   const loginCustomerId = (req.body?.login_customer_id ?? req.body?.loginCustomerId ?? "").trim().replace(/-/g, "");
   if (!id || !loginCustomerId) {
@@ -824,8 +832,9 @@ router.post("/google/auth-sources/:id/mcc", async (req, res) => {
 
 /** DELETE /api/ads/google/auth-sources/:id - API認証元削除 */
 router.delete("/google/auth-sources/:id", async (req, res) => {
-  const userId = await getUserIdFromRequest(req);
-  if (!userId) return res.status(401).json({ error: "ログインが必要です" });
+  const admin = await requireAdmin(req, res);
+  if (!admin) return;
+  const userId = admin.id;
   const id = parseInt(req.params.id, 10);
   if (!id) return res.status(400).json({ error: "無効なIDです" });
   try {
@@ -915,7 +924,7 @@ router.get("/google/auth-sources/:id/clients", async (req, res) => {
         "login-customer-id": loginCustomerId,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ query: gaql, pageSize: 1000 }),
+      body: JSON.stringify({ query: gaql }),
     });
 
     if (!searchResp.ok) {
@@ -968,7 +977,9 @@ router.get("/google/auth-sources/:id/clients", async (req, res) => {
 
 /** POST /api/ads/google/accounts - アカウント追加（API認証元選択式） */
 router.post("/google/accounts", async (req, res) => {
-  const userId = await getUserIdFromRequest(req);
+  const admin = await requireAdmin(req, res);
+  if (!admin) return;
+  const userId = admin.id;
   if (!userId) return res.status(401).json({ error: "ログインが必要です" });
   const { name, customer_id, login_customer_id, api_auth_source_id } = req.body || {};
   const cid = (customer_id || "").trim().replace(/-/g, "");
@@ -1021,8 +1032,9 @@ router.get("/google/accounts", async (req, res) => {
 
 /** POST /api/ads/google/accounts/select - 使用するアカウントを選択 */
 router.post("/google/accounts/select", async (req, res) => {
-  const userId = await getUserIdFromRequest(req);
-  if (!userId) return res.status(401).json({ error: "ログインが必要です" });
+  const admin = await requireAdmin(req, res);
+  if (!admin) return;
+  const userId = admin.id;
   const accountId = req.body?.account_id ? parseInt(req.body.account_id, 10) : null;
   try {
     await setSelectedAccount(userId, accountId);
@@ -1036,8 +1048,9 @@ router.post("/google/accounts/select", async (req, res) => {
 
 /** DELETE /api/ads/google/accounts/:id - アカウント削除 */
 router.delete("/google/accounts/:id", async (req, res) => {
-  const userId = await getUserIdFromRequest(req);
-  if (!userId) return res.status(401).json({ error: "ログインが必要です" });
+  const admin = await requireAdmin(req, res);
+  if (!admin) return;
+  const userId = admin.id;
   const accountId = parseInt(req.params.id, 10);
   if (!accountId) return res.status(400).json({ error: "無効なIDです" });
   try {
@@ -1109,10 +1122,9 @@ router.post("/google/login-customer", async (req, res) => {
 
 /** POST /api/ads/google/disconnect - Google Ads 連携解除 */
 router.post("/google/disconnect", async (req, res) => {
-  const userId = await getUserIdFromRequest(req);
-  if (!userId) {
-    return res.status(401).json({ error: "ログインが必要です" });
-  }
+  const admin = await requireAdmin(req, res);
+  if (!admin) return;
+  const userId = admin.id;
 
   try {
     await deleteTokensForUser(userId);
@@ -1128,8 +1140,9 @@ router.post("/google/disconnect", async (req, res) => {
 
 /** GET /api/ads/yahoo/connect - Yahoo Ads OAuth 開始 */
 router.get("/yahoo/connect", async (req, res) => {
-  const userId = await getUserIdFromRequest(req);
-  if (!userId) return res.redirect("/?error=login_required");
+  const admin = await requireAdmin(req, res);
+  if (!admin) return;
+  const userId = admin.id;
 
   const { clientId } = require("../services/yahooAdsOAuth").getClientConfig();
   if (!clientId) {
@@ -1224,8 +1237,9 @@ router.get("/yahoo/callback", async (req, res) => {
 
 /** DELETE /api/ads/yahoo/auth-sources/:id - Yahoo API認証元削除 */
 router.delete("/yahoo/auth-sources/:id", async (req, res) => {
-  const userId = await getUserIdFromRequest(req);
-  if (!userId) return res.status(401).json({ error: "ログインが必要です" });
+  const admin = await requireAdmin(req, res);
+  if (!admin) return;
+  const userId = admin.id;
   const id = parseInt(req.params.id, 10);
   if (!id) return res.status(400).json({ error: "無効なIDです" });
   try {
@@ -1257,7 +1271,9 @@ router.get("/yahoo/auth-sources", async (req, res) => {
 
 /** POST /api/ads/yahoo/accounts - アカウント追加 */
 router.post("/yahoo/accounts", async (req, res) => {
-  const userId = await getUserIdFromRequest(req);
+  const admin = await requireAdmin(req, res);
+  if (!admin) return;
+  const userId = admin.id;
   if (!userId) return res.status(401).json({ error: "ログインが必要です" });
   const { name, account_id, agency_account_id, api_auth_source_id } = req.body || {};
   const aid = (account_id || "").trim();
@@ -1299,8 +1315,9 @@ router.get("/yahoo/accounts", async (req, res) => {
 
 /** POST /api/ads/yahoo/accounts/select - 使用するアカウントを選択 */
 router.post("/yahoo/accounts/select", async (req, res) => {
-  const userId = await getUserIdFromRequest(req);
-  if (!userId) return res.status(401).json({ error: "ログインが必要です" });
+  const admin = await requireAdmin(req, res);
+  if (!admin) return;
+  const userId = admin.id;
   const accountId = req.body?.account_id ? parseInt(req.body.account_id, 10) : null;
   try {
     await setSelectedYahooAccount(userId, accountId);
@@ -1314,8 +1331,9 @@ router.post("/yahoo/accounts/select", async (req, res) => {
 
 /** DELETE /api/ads/yahoo/accounts/:id - アカウント削除 */
 router.delete("/yahoo/accounts/:id", async (req, res) => {
-  const userId = await getUserIdFromRequest(req);
-  if (!userId) return res.status(401).json({ error: "ログインが必要です" });
+  const admin = await requireAdmin(req, res);
+  if (!admin) return;
+  const userId = admin.id;
   const accountId = parseInt(req.params.id, 10);
   if (!accountId) return res.status(400).json({ error: "無効なIDです" });
   try {

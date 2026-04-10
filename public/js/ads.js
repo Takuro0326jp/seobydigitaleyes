@@ -65,11 +65,59 @@
     return "データがありません。API連携して更新してください。";
   }
 
+  /** Google Ads チャネルタイプ別の媒体名一覧 */
+  const GOOGLE_CHANNEL_MEDIAS = ["Google検索広告", "Googleディスプレイ広告", "Google動画広告", "Googleショッピング広告", "Google P-MAX", "Google Demand Gen"];
+  function isGoogleChannelMedia(m) { return GOOGLE_CHANNEL_MEDIAS.includes(m) || m === "Google Ads" || m === "Google Ads（その他）"; }
+
+  /** Yahoo広告のサブタイプ */
+  const YAHOO_CHANNEL_MEDIAS = ["Yahoo検索広告", "Yahooディスプレイ広告"];
+  function isYahooChannelMedia(m) { return YAHOO_CHANNEL_MEDIAS.includes(m) || m === "Yahoo広告" || m === "Yahoo広告（その他）"; }
+
+  /** Meta広告のサブタイプ */
+  const META_CHANNEL_MEDIAS = ["Facebook広告", "Instagram広告", "Audience Network", "Messenger広告"];
+  function isMetaChannelMedia(m) { return META_CHANNEL_MEDIAS.includes(m) || m === "Meta" || m === "Meta（その他）"; }
+
+  /** 媒体名 → タグスタイル（背景色・文字色・ドット色） */
+  const MEDIA_TAG_STYLES = {
+    "Google Ads": { bg: "#eef3fe", color: "#2a5cdb", dot: "#4285f4" },
+    "Google Ads（合計）": { bg: "#eef3fe", color: "#2a5cdb", dot: "#4285f4" },
+    "Google検索広告": { bg: "#eef3fe", color: "#2a5cdb", dot: "#4285f4" },
+    "Googleディスプレイ広告": { bg: "#e8f5e9", color: "#2e7d32", dot: "#34a853" },
+    "Google動画広告": { bg: "#fce4ec", color: "#c62828", dot: "#ea4335" },
+    "Googleショッピング広告": { bg: "#fff8e1", color: "#f9a825", dot: "#fbbc04" },
+    "Google P-MAX": { bg: "#f3e5f5", color: "#6a1b9a", dot: "#7b1fa2" },
+    "Google Demand Gen": { bg: "#e0f2f1", color: "#00695c", dot: "#00897b" },
+    "Google Ads（その他）": { bg: "#f5f5f5", color: "#616161", dot: "#9e9e9e" },
+    "Yahoo広告": { bg: "#fff0f0", color: "#cc2c2c", dot: "#ff0033" },
+    "Yahoo広告（合計）": { bg: "#fff0f0", color: "#cc2c2c", dot: "#ff0033" },
+    "Yahoo検索広告": { bg: "#fff0f0", color: "#cc2c2c", dot: "#ff0033" },
+    "Yahooディスプレイ広告": { bg: "#fff3e0", color: "#e65100", dot: "#ff6633" },
+    "Yahoo広告（その他）": { bg: "#f5f5f5", color: "#616161", dot: "#9e9e9e" },
+    "Meta": { bg: "#eef3fe", color: "#1877f2", dot: "#1877f2" },
+    "Meta（合計）": { bg: "#eef3fe", color: "#1877f2", dot: "#1877f2" },
+    "Facebook広告": { bg: "#eef3fe", color: "#1877f2", dot: "#1877f2" },
+    "Instagram広告": { bg: "#fce4ec", color: "#c2185b", dot: "#e1306c" },
+    "Audience Network": { bg: "#e8eaf6", color: "#283593", dot: "#4267b2" },
+    "Messenger広告": { bg: "#e1f5fe", color: "#0277bd", dot: "#0084ff" },
+    "Meta（その他）": { bg: "#f5f5f5", color: "#616161", dot: "#9e9e9e" },
+    "Microsoft Advertising": { bg: "#e8f5e9", color: "#107c10", dot: "#107c10" },
+  };
+  function getMediaTagStyle(name) { return MEDIA_TAG_STYLES[name] || { bg: "#f0ede6", color: "#666", dot: "#666" }; }
+  function mediaTagHtml(name) {
+    const s = getMediaTagStyle(name);
+    return `<span class="tag-media" style="background:${s.bg};color:${s.color};font-size:11px;padding:2px 8px;white-space:nowrap"><span style="width:7px;height:7px;border-radius:50%;background:${s.dot};display:inline-block;margin-right:4px"></span>${escapeHtml(name)}</span>`;
+  }
+
   /** キャンペーン行の media を媒体別集計キーに正規化（Google / Yahoo / Meta を混同しない） */
   function normalizeRowMediaForAggregate(r) {
     const med = String((r && r.media) || "").trim();
+    // Yahoo チャネルタイプ別の名前はそのまま通す
+    if (YAHOO_CHANNEL_MEDIAS.includes(med)) return med;
     if (/Yahoo/i.test(med)) return "Yahoo広告";
+    if (META_CHANNEL_MEDIAS.includes(med)) return med;
     if (/Meta|Facebook|Instagram/i.test(med)) return "Meta";
+    // Google チャネルタイプ別の名前はそのまま通す
+    if (GOOGLE_CHANNEL_MEDIAS.includes(med)) return med;
     if (/Google/i.test(med) || med === "Google Ads") return "Google Ads";
     if (/Microsoft|Bing/i.test(med) || med === "Microsoft Advertising") return "Microsoft Advertising";
     return med || "その他";
@@ -92,7 +140,12 @@
       byMedia[name].imp += Number(r.impressions) || 0;
       byMedia[name].clicks += Number(r.clicks) || 0;
     });
-    const mediaColors = { "Google Ads": "#4285f4", "Yahoo広告": "#ff0033", "Microsoft Advertising": "#107c10", "Meta": "#1877f2" };
+    const mediaColors = {
+      "Google Ads": "#4285f4", "Google検索広告": "#4285f4", "Googleディスプレイ広告": "#34a853",
+      "Google動画広告": "#ea4335", "Googleショッピング広告": "#fbbc04", "Google P-MAX": "#7b1fa2", "Google Demand Gen": "#00897b",
+      "Yahoo広告": "#ff0033", "Yahoo検索広告": "#ff0033", "Yahooディスプレイ広告": "#ff6633",
+      "Microsoft Advertising": "#107c10", "Meta": "#1877f2", "Facebook広告": "#1877f2", "Instagram広告": "#e1306c", "Audience Network": "#4267b2", "Messenger広告": "#0084ff",
+    };
     const baseSpecs = [
       { name: "Google Ads", api: "google", rowKey: "google_row_count" },
       { name: "Yahoo広告", api: "yahoo", rowKey: "yahoo_row_count" },
@@ -102,54 +155,112 @@
     if (called.has("microsoft")) {
       specs.push({ name: "Microsoft Advertising", api: "microsoft", rowKey: "microsoft_row_count" });
     }
+
+    function buildMediaEntry(name, v, mediaNote) {
+      const cpa = v.cv > 0 ? Math.round(v.cost / v.cv) : 0;
+      const revenue = v.cv * 35000;
+      const roasNum = v.cost > 0 ? parseFloat((revenue / v.cost).toFixed(1)) : 0;
+      const ctr = v.imp > 0 ? ((v.clicks / v.imp) * 100).toFixed(1) + "%" : "0%";
+      return { name, color: mediaColors[name] || "#666", cost: v.cost, cv: v.cv, cpa, roas: roasNum, ctr, imp: v.imp, roasMax: 5, mediaNote: mediaNote || "" };
+    }
+
     const out = [];
     specs.forEach(({ name, api, rowKey }) => {
       const wasCalled = called.has(api);
       const apiRows = Number(metaObj[rowKey]) || 0;
-      let v = { cost: 0, cv: 0, imp: 0, clicks: 0 };
-      if (wasCalled && apiRows > 0 && byMedia[name]) {
-        v = { ...byMedia[name] };
-      }
       let mediaNote = "";
       if (!wasCalled) mediaNote = "未連携";
       else if (apiRows === 0) mediaNote = "実施なし";
-      const cpa = v.cv > 0 ? Math.round(v.cost / v.cv) : 0;
-      const revenue = v.cv * 35000;
-      const roasNum = v.cost > 0 ? parseFloat((revenue / v.cost).toFixed(1)) : 0;
-      const ctr = v.imp > 0 ? ((v.clicks / v.imp) * 100).toFixed(1) + "%" : "0%";
-      out.push({
-        name,
-        color: mediaColors[name] || "#666",
-        cost: v.cost,
-        cv: v.cv,
-        cpa,
-        roas: roasNum,
-        ctr,
-        imp: v.imp,
-        roasMax: 5,
-        mediaNote,
-      });
+
+      if (name === "Google Ads") {
+        // Google Ads 合計（全チャネル）
+        const googleTotal = { cost: 0, cv: 0, imp: 0, clicks: 0 };
+        const googleChannels = [];
+        Object.keys(byMedia).forEach((k) => {
+          if (isGoogleChannelMedia(k)) {
+            const d = byMedia[k];
+            googleTotal.cost += d.cost; googleTotal.cv += d.cv; googleTotal.imp += d.imp; googleTotal.clicks += d.clicks;
+            if (k !== "Google Ads") googleChannels.push(k);
+          }
+        });
+        if (wasCalled && apiRows > 0 && googleTotal.cost > 0) {
+          out.push(buildMediaEntry("Google Ads（合計）", googleTotal, ""));
+          // チャネル別内訳
+          googleChannels.sort((a, b) => (byMedia[b]?.cost || 0) - (byMedia[a]?.cost || 0));
+          googleChannels.forEach((ch) => {
+            const d = byMedia[ch];
+            if (d && (d.cost > 0 || d.imp > 0)) {
+              out.push(buildMediaEntry(ch, d, ""));
+            }
+          });
+          // チャネル不明の "Google Ads" があれば
+          if (byMedia["Google Ads"] && (byMedia["Google Ads"].cost > 0 || byMedia["Google Ads"].imp > 0)) {
+            out.push(buildMediaEntry("Google Ads（その他）", byMedia["Google Ads"], ""));
+          }
+        } else {
+          out.push(buildMediaEntry(name, { cost: 0, cv: 0, imp: 0, clicks: 0 }, mediaNote));
+        }
+      } else if (name === "Yahoo広告") {
+        // Yahoo広告 合計（YSA + YDA）
+        const yahooTotal = { cost: 0, cv: 0, imp: 0, clicks: 0 };
+        const yahooChannels = [];
+        Object.keys(byMedia).forEach((k) => {
+          if (isYahooChannelMedia(k)) {
+            const d = byMedia[k];
+            yahooTotal.cost += d.cost; yahooTotal.cv += d.cv; yahooTotal.imp += d.imp; yahooTotal.clicks += d.clicks;
+            if (k !== "Yahoo広告") yahooChannels.push(k);
+          }
+        });
+        if (wasCalled && apiRows > 0 && yahooTotal.cost > 0) {
+          out.push(buildMediaEntry("Yahoo広告（合計）", yahooTotal, ""));
+          yahooChannels.sort((a, b) => (byMedia[b]?.cost || 0) - (byMedia[a]?.cost || 0));
+          yahooChannels.forEach((ch) => {
+            const d = byMedia[ch];
+            if (d && (d.cost > 0 || d.imp > 0)) out.push(buildMediaEntry(ch, d, ""));
+          });
+          if (byMedia["Yahoo広告"] && (byMedia["Yahoo広告"].cost > 0 || byMedia["Yahoo広告"].imp > 0)) {
+            out.push(buildMediaEntry("Yahoo広告（その他）", byMedia["Yahoo広告"], ""));
+          }
+        } else {
+          let v = { cost: 0, cv: 0, imp: 0, clicks: 0 };
+          if (wasCalled && apiRows > 0 && byMedia[name]) v = { ...byMedia[name] };
+          out.push(buildMediaEntry(name, v, mediaNote));
+        }
+      } else if (name === "Meta") {
+        const metaTotal = { cost: 0, cv: 0, imp: 0, clicks: 0 };
+        const metaChannels = [];
+        Object.keys(byMedia).forEach((k) => {
+          if (isMetaChannelMedia(k)) {
+            const d = byMedia[k];
+            metaTotal.cost += d.cost; metaTotal.cv += d.cv; metaTotal.imp += d.imp; metaTotal.clicks += d.clicks;
+            if (k !== "Meta") metaChannels.push(k);
+          }
+        });
+        if (wasCalled && apiRows > 0 && metaTotal.cost > 0) {
+          out.push(buildMediaEntry("Meta（合計）", metaTotal, ""));
+          metaChannels.sort((a, b) => (byMedia[b]?.cost || 0) - (byMedia[a]?.cost || 0));
+          metaChannels.forEach((ch) => {
+            const d = byMedia[ch];
+            if (d && (d.cost > 0 || d.imp > 0)) out.push(buildMediaEntry(ch, d, ""));
+          });
+          if (byMedia["Meta"] && (byMedia["Meta"].cost > 0 || byMedia["Meta"].imp > 0)) {
+            out.push(buildMediaEntry("Meta（その他）", byMedia["Meta"], ""));
+          }
+        } else {
+          let v = { cost: 0, cv: 0, imp: 0, clicks: 0 };
+          if (wasCalled && apiRows > 0 && byMedia[name]) v = { ...byMedia[name] };
+          out.push(buildMediaEntry(name, v, mediaNote));
+        }
+      } else {
+        let v = { cost: 0, cv: 0, imp: 0, clicks: 0 };
+        if (wasCalled && apiRows > 0 && byMedia[name]) v = { ...byMedia[name] };
+        out.push(buildMediaEntry(name, v, mediaNote));
+      }
     });
     const known = new Set(out.map((x) => x.name));
     Object.keys(byMedia).forEach((name) => {
-      if (known.has(name)) return;
-      const v = byMedia[name];
-      const cpa = v.cv > 0 ? Math.round(v.cost / v.cv) : 0;
-      const revenue = v.cv * 35000;
-      const roasNum = v.cost > 0 ? parseFloat((revenue / v.cost).toFixed(1)) : 0;
-      const ctr = v.imp > 0 ? ((v.clicks / v.imp) * 100).toFixed(1) + "%" : "0%";
-      out.push({
-        name,
-        color: mediaColors[name] || "#666",
-        cost: v.cost,
-        cv: v.cv,
-        cpa,
-        roas: roasNum,
-        ctr,
-        imp: v.imp,
-        roasMax: 5,
-        mediaNote: "",
-      });
+      if (known.has(name) || isGoogleChannelMedia(name) || isYahooChannelMedia(name) || isMetaChannelMedia(name)) return;
+      out.push(buildMediaEntry(name, byMedia[name], ""));
     });
     return out;
   }
@@ -278,12 +389,18 @@
   }
 
   let _creativeAutoFetchDone = false;
-  function switchTab(id, btn) {
+  function switchTab(id, btn, skipHash) {
     document.querySelectorAll(".tab-panel").forEach((p) => p.classList.remove("active"));
     document.querySelectorAll(".tabs-bar:not(.creative-sub-tabs) .tab-btn").forEach((b) => b.classList.remove("active"));
     const panel = document.getElementById("tab-" + id);
     if (panel) panel.classList.add("active");
     if (btn) btn.classList.add("active");
+    // URLハッシュを更新（ブラウザ履歴に追加）
+    if (!skipHash) {
+      const url = new URL(location.href);
+      url.hash = id === "overview" ? "" : id === "creative" ? "creative-text" : id;
+      history.pushState(null, "", url.toString());
+    }
     /** 媒体別タブは display:none 内で初期化すると canvas 幅 0 のまま固定されがち。表示後に毎回再生成して確実に描画する */
     if (id === "media") {
       requestAnimationFrame(() => {
@@ -297,19 +414,61 @@
     }
     if (id === "creative") {
       const textSubBtn = document.querySelector("#tab-creative .creative-subtab-btn[data-creative-sub=\"text\"]");
-      switchCreativeSubTab("text", textSubBtn);
+      switchCreativeSubTab("text", textSubBtn, true);
       refreshCreativeTab();
-      if (!_creativeAutoFetchDone && adsAdRows.length === 0 && adsAssetRows.length === 0 && panel) {
-        _creativeAutoFetchDone = true;
-        setTimeout(() => runCreativeDiagnostic(), 100);
-      }
-    } else {
-      _creativeAutoFetchDone = false;
     }
   }
   window.switchTab = switchTab;
 
-  function switchCreativeSubTab(sub, btn) {
+  // 画像プレビューモーダル
+  window.openImagePreview = function(src, caption) {
+    const modal = document.getElementById("image-preview-modal");
+    const img = document.getElementById("image-preview-img");
+    const cap = document.getElementById("image-preview-caption");
+    if (!modal || !img) return;
+    img.src = src;
+    img.onload = function() {
+      const w = img.naturalWidth;
+      const h = img.naturalHeight;
+      const sizeNote = (w && h) ? ` (${w}×${h})` : "";
+      const small = w > 0 && w < 300;
+      if (cap) cap.textContent = (caption || "") + sizeNote + (small ? " ※サムネイルのみ" : "");
+    };
+    if (cap) cap.textContent = caption || "";
+    modal.style.display = "flex";
+  };
+  // ESCキーで閉じる
+  document.addEventListener("keydown", function(e) {
+    if (e.key === "Escape") {
+      const modal = document.getElementById("image-preview-modal");
+      if (modal && modal.style.display === "flex") modal.style.display = "none";
+    }
+  });
+
+  // URLハッシュからタブを復元
+  function restoreTabFromHash() {
+    const hash = (location.hash || "").replace(/^#/, "").trim();
+    if (!hash) return;
+    // creative-text / creative-banner のサブタブ対応
+    const creativeSub = hash.match(/^creative-(text|banner)$/);
+    if (creativeSub) {
+      const btn = document.querySelector(`.tabs-bar:not(.creative-sub-tabs) .tab-btn[onclick*="'creative'"]`);
+      switchTab("creative", btn, true);
+      const subBtn = document.querySelector(`#tab-creative .creative-subtab-btn[data-creative-sub="${creativeSub[1]}"]`);
+      switchCreativeSubTab(creativeSub[1], subBtn, false, true);
+      return;
+    }
+    const validTabs = ["overview", "media", "keyword", "area", "time", "campaign", "creative"];
+    if (!validTabs.includes(hash)) return;
+    const btn = document.querySelector(`.tabs-bar:not(.creative-sub-tabs) .tab-btn[onclick*="'${hash}'"]`);
+    switchTab(hash, btn, true);
+  }
+  // ページ読み込み時に復元
+  restoreTabFromHash();
+  // ブラウザの戻る/進むボタン対応
+  window.addEventListener("popstate", () => restoreTabFromHash());
+
+  function switchCreativeSubTab(sub, btn, skipRefresh, skipHash) {
     const textP = document.getElementById("creative-sub-panel-text");
     const banP = document.getElementById("creative-sub-panel-banner");
     document.querySelectorAll("#tab-creative .creative-subtab-btn").forEach((b) => b.classList.remove("active"));
@@ -320,6 +479,13 @@
     }
     if (textP) textP.style.display = sub === "text" ? "block" : "none";
     if (banP) banP.style.display = sub === "banner" ? "block" : "none";
+    // URLハッシュ更新: #creative-text / #creative-banner
+    if (!skipHash) {
+      const url = new URL(location.href);
+      url.hash = "creative-" + sub;
+      history.pushState(null, "", url.toString());
+    }
+    if (!skipRefresh && typeof refreshCreativeTab === "function") refreshCreativeTab();
   }
   window.switchCreativeSubTab = switchCreativeSubTab;
 
@@ -344,11 +510,16 @@
       const gotAssetRows = Array.isArray(data.assetRows) && data.assetRows.length > 0;
       if (gotAdRows || gotAssetRows) {
         if (gotAdRows) {
-          adsAdRows = data.adRows;
-          lastReportAdRows = [...data.adRows];
-          _lastParseAdCount = data.adRows.length;
+          // Yahoo診断結果はマージ（既存のGoogle等を消さない）
+          const existingNonYahoo = adsAdRows.filter((r) => !/yahoo/i.test(r.media || ""));
+          adsAdRows = [...existingNonYahoo, ...data.adRows];
+          lastReportAdRows = [...adsAdRows];
+          _lastParseAdCount = adsAdRows.length;
         }
-        if (gotAssetRows) adsAssetRows = data.assetRows;
+        if (gotAssetRows) {
+          const existingNonYahoo = adsAssetRows.filter((r) => !/yahoo/i.test(r.media || ""));
+          adsAssetRows = [...existingNonYahoo, ...data.assetRows];
+        }
       }
       /* Always refresh: main report may have adRows even when diagnostic returns empty */
       refreshCreativeTab();
@@ -496,14 +667,88 @@
       mc.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:32px;color:var(--text-muted);white-space:pre-wrap">' + escapeHtml(getEmptyMessage()) + '</div>';
       return;
     }
-    md.forEach((m, i) => {
+
+    const summaryNames = ["Google Ads（合計）", "Yahoo広告（合計）", "Meta（合計）"];
+    const channelCheckers = {
+      "Google Ads（合計）": isGoogleChannelMedia,
+      "Yahoo広告（合計）": isYahooChannelMedia,
+      "Meta（合計）": isMetaChannelMedia,
+    };
+
+    function getBreakdownsFor(summaryName) {
+      const checker = channelCheckers[summaryName];
+      if (!checker) return [];
+      return md.filter((x) => x.name !== summaryName && !summaryNames.includes(x.name) && checker(x.name) && (x.cost > 0 || x.imp > 0))
+        .sort((a, b) => b.cost - a.cost);
+    }
+
+    function buildBreakdownDetailHtml(breakdowns, totalCost, uid) {
+      if (!breakdowns.length) return "";
+      let html = `<div class="media-breakdown-toggle" onclick="(function(e){var d=document.getElementById('${uid}');if(d){d.style.display=d.style.display==='none'?'block':'none';e.target.closest('.media-breakdown-toggle').classList.toggle('open')}})(event)" style="margin-top:10px;border-top:1px solid var(--border);padding-top:8px;cursor:pointer;user-select:none">
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <span style="font-size:12px;font-weight:600;color:var(--text-secondary)">媒体別内訳を見る</span>
+          <span class="breakdown-arrow" style="font-size:10px;color:var(--text-muted);transition:transform .2s">&#9660;</span>
+        </div>
+      </div>
+      <div id="${uid}" style="display:none;margin-top:8px">`;
+
+      breakdowns.forEach((b) => {
+        const pct = totalCost > 0 ? ((b.cost / totalCost) * 100).toFixed(1) : "0.0";
+        const barW = totalCost > 0 ? Math.round((b.cost / totalCost) * 100) : 0;
+        const bCpa = b.cv > 0 ? Math.round(b.cost / b.cv) : 0;
+        html += `<div style="background:var(--surface2);border-radius:8px;padding:10px 12px;margin-bottom:8px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+            <span style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600">
+              <span style="width:10px;height:10px;border-radius:50%;background:${b.color};display:inline-block"></span>
+              ${escapeHtml(b.name)}
+            </span>
+            <span style="font-size:11px;color:var(--text-muted)">${pct}%</span>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:4px;font-size:11px;margin-bottom:6px">
+            <div><span style="color:var(--text-muted)">Cost</span><div style="font-weight:600">¥${b.cost.toLocaleString()}</div></div>
+            <div><span style="color:var(--text-muted)">CV</span><div style="font-weight:600">${b.cv}</div></div>
+            <div><span style="color:var(--text-muted)">CPA</span><div style="font-weight:600">¥${bCpa.toLocaleString()}</div></div>
+            <div><span style="color:var(--text-muted)">IMP</span><div style="font-weight:600">${b.imp.toLocaleString()}</div></div>
+          </div>
+          <div style="height:4px;background:var(--border);border-radius:2px;overflow:hidden">
+            <div style="height:100%;width:${barW}%;background:${b.color};border-radius:2px"></div>
+          </div>
+        </div>`;
+      });
+      html += '</div>';
+      return html;
+    }
+
+    // 内訳として表示するもの
+    const shownAsBreakdown = new Set();
+    summaryNames.forEach((sn) => {
+      if (md.some((x) => x.name === sn)) {
+        getBreakdownsFor(sn).forEach((b) => shownAsBreakdown.add(b.name));
+      }
+    });
+
+    let cardIdx = 0;
+    md.forEach((m) => {
+        if (shownAsBreakdown.has(m.name)) return;
+
         const costStr = "¥" + m.cost.toLocaleString();
         const cpaStr = "¥" + m.cpa.toLocaleString();
         const note = m.mediaNote ? `<div style="font-size:11px;color:var(--text-muted);margin-top:2px">${escapeHtml(m.mediaNote)}</div>` : "";
         const roasW = m.roasMax > 0 ? ((Number(m.roas) || 0) / m.roasMax) * 100 : 0;
+
+        // 合計カードの場合は開閉式の内訳を追加
+        let breakdownHtml = "";
+        if (summaryNames.includes(m.name)) {
+          const breakdowns = getBreakdownsFor(m.name);
+          const uid = "bd-" + m.name.replace(/[^a-zA-Z0-9]/g, "") + "-" + Date.now();
+          breakdownHtml = buildBreakdownDetailHtml(breakdowns, m.cost, uid);
+        }
+
         const div = document.createElement("div");
-        div.className = "media-card" + (i === 0 ? " active" : "");
-        div.onclick = function () {
+        div.className = "media-card" + (cardIdx === 0 ? " active" : "");
+        div.onclick = function (e) {
+          // 内訳トグル部分のクリックはカード選択にしない
+          if (e.target.closest(".media-breakdown-toggle") || e.target.closest("[id^='bd-']")) return;
           mc.querySelectorAll(".media-card").forEach((c) => c.classList.remove("active"));
           this.classList.add("active");
         };
@@ -519,8 +764,10 @@
             <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text-muted);margin-bottom:4px"><span>ROAS</span><span style="font-weight:600;color:var(--text-primary)">${m.roas}</span></div>
             <div class="roas-bar-bg"><div class="roas-bar-fill" style="width:${roasW.toFixed(0)}%;background:${m.color}"></div></div>
           </div>
+          ${breakdownHtml}
         `;
         mc.appendChild(div);
+        cardIdx++;
       });
   }
 
@@ -1779,6 +2026,39 @@
   }
 
   let reportAbortController = null;
+  /** フロントエンドキャッシュ: SessionStorage に保存、TTL 30分 */
+  const FE_CACHE_TTL_MS = 30 * 60 * 1000;
+  const FE_CACHE_VERSION = "v5"; // バージョン変更でキャッシュ無効化
+  function getFeCacheKey(params) {
+    return "ads_report_" + FE_CACHE_VERSION + "_" + new URLSearchParams(params).toString();
+  }
+  // 旧バージョンのキャッシュを削除
+  try { Object.keys(sessionStorage).filter((k) => k.startsWith("ads_report_") && !k.startsWith("ads_report_" + FE_CACHE_VERSION)).forEach((k) => sessionStorage.removeItem(k)); } catch {}
+  function getFeCachedReport(key) {
+    try {
+      const raw = sessionStorage.getItem(key);
+      if (!raw) return null;
+      const entry = JSON.parse(raw);
+      if (!entry || !entry.ts || Date.now() - entry.ts > FE_CACHE_TTL_MS) {
+        sessionStorage.removeItem(key);
+        return null;
+      }
+      console.log("[Ads] フロントキャッシュヒット（API呼び出しスキップ）", key);
+      return entry.data;
+    } catch { return null; }
+  }
+  function setFeCacheReport(key, data) {
+    try {
+      sessionStorage.setItem(key, JSON.stringify({ ts: Date.now(), data }));
+    } catch (e) {
+      // SessionStorage容量超過時は古いキャッシュを消す
+      try {
+        Object.keys(sessionStorage).filter((k) => k.startsWith("ads_report_")).forEach((k) => sessionStorage.removeItem(k));
+        sessionStorage.setItem(key, JSON.stringify({ ts: Date.now(), data }));
+      } catch {}
+    }
+  }
+
   async function loadAdsData(options = {}) {
     const params = getReportParams();
     if (!params) {
@@ -1798,11 +2078,23 @@
     if (debugOn) qp.debug = "1";
     const query = new URLSearchParams(qp).toString();
     const timeoutMs = options.timeoutMs ?? 200000;
+    const skipFeCache = options.force || debugOn;
+    const feKey = getFeCacheKey(qp);
+
+    // フロントエンドキャッシュチェック
+    if (!skipFeCache) {
+      const cached = getFeCachedReport(feKey);
+      if (cached) {
+        applyReportData(cached);
+        return;
+      }
+    }
+
     const cacheBust = "_t=" + Date.now();
     const timeoutId = timeoutMs > 0 ? setTimeout(() => reportAbortController?.abort(), timeoutMs) : null;
 
     try {
-      const res = await fetch(`/api/ads/report?${query}&${cacheBust}`, { credentials: "include", signal, cache: "no-store" });
+      const res = await fetch(`/api/ads/report?${query}&${cacheBust}`, { credentials: "include", signal });
       if (timeoutId) clearTimeout(timeoutId);
       if (!res.ok) {
         const err = await parseJsonResponse(res, {}).catch(() => ({}));
@@ -1810,6 +2102,20 @@
         throw new Error("Report fetch failed: " + (res.status || "unknown"));
       }
       const data = await parseJsonResponse(res, { rows: [], areaRows: [], hourRows: [], dailyRows: [], keywordRows: [], adRows: [], assetRows: [], meta: {} });
+      // キャッシュに保存
+      if (!skipFeCache) setFeCacheReport(feKey, data);
+      return applyReportData(data);
+    } catch (e) {
+      if (timeoutId) clearTimeout(timeoutId);
+      if (e.name === "AbortError") throw e;
+      _lastParseAdCount = -1;
+      console.warn("ads load failed", e);
+      throw e;
+    }
+  }
+
+  /** APIレスポンスまたはキャッシュデータを画面に適用 */
+  function applyReportData(data) {
       const rawAdRows = data.adRows ?? data.ad_rows ?? data.creative?.adRows ?? [];
       const safeAdRows = Array.isArray(rawAdRows) ? rawAdRows : (rawAdRows?.rows ? Array.from(rawAdRows.rows) : []);
       const rawAssetRows = data.assetRows ?? data.asset_rows ?? data.creative?.assetRows ?? [];
@@ -1826,7 +2132,7 @@
       adsKeywordRows = data.keywordRows || [];
       const adLen = safeAdRows.length;
       if (adLen > 0 || typeof data.adRows !== "undefined") {
-        console.log("[Ads] API応答 adRows=" + adLen + "件" + (adLen > 0 ? " 先頭=" + JSON.stringify(safeAdRows[0]).slice(0, 80) : ""));
+        console.log("[Ads] データ適用 adRows=" + adLen + "件" + (adLen > 0 ? " 先頭=" + JSON.stringify(safeAdRows[0]).slice(0, 80) : ""));
       }
       const meta = data.meta || {};
       lastReportMeta = meta || {};
@@ -1837,9 +2143,6 @@
       lastReportHint = data._hint || null;
       lastCreativeDiagnostic = data._creativeDiagnostic || null;
       lastFallbackCreative = data._fallbackCreative || null;
-      if (data._yahooRawSample) {
-        console.log("[Ads] _yahooRawSample (Yahoo parse debug):", data._yahooRawSample);
-      }
 
       mediaData = buildMediaDataFromReport(adsData, meta);
       const badgeEl = document.getElementById("badge-integrated");
@@ -1880,7 +2183,6 @@
             "</span></div>"
         );
       }
-      /* meta_row_count===0 かつ meta_error なし → API は成功。期間内に実績がないだけなのでアラートは出さない（媒体別は「実施なし」で 0 表示） */
       if (ar) {
         if (alertParts.length > 0) {
           ar.innerHTML = alertParts.join("");
@@ -1891,13 +2193,6 @@
       }
       updateTrendChart(adsDailyRows);
       return { adRows: safeAdRows, assetRows: safeAssetRows, dailyRows: adsDailyRows };
-    } catch (e) {
-      if (timeoutId) clearTimeout(timeoutId);
-      if (e.name === "AbortError") throw e;
-      _lastParseAdCount = -1;
-      console.warn("ads load failed", e);
-      throw e;
-    }
   }
 
   function updateOverviewFromData() {
@@ -1967,32 +2262,115 @@
     if (tbody && mediaDataFiltered.length > 0) {
         const mediaStyles = {
         "Google Ads": { bg: "#eef3fe", color: "#2a5cdb", dot: "#4285f4" },
+        "Google Ads（合計）": { bg: "#eef3fe", color: "#2a5cdb", dot: "#4285f4" },
+        "Google検索広告": { bg: "#eef3fe", color: "#2a5cdb", dot: "#4285f4" },
+        "Googleディスプレイ広告": { bg: "#e8f5e9", color: "#2e7d32", dot: "#34a853" },
+        "Google動画広告": { bg: "#fce4ec", color: "#c62828", dot: "#ea4335" },
+        "Googleショッピング広告": { bg: "#fff8e1", color: "#f9a825", dot: "#fbbc04" },
+        "Google P-MAX": { bg: "#f3e5f5", color: "#6a1b9a", dot: "#7b1fa2" },
+        "Google Demand Gen": { bg: "#e0f2f1", color: "#00695c", dot: "#00897b" },
         "Yahoo広告": { bg: "#fff0f0", color: "#cc2c2c", dot: "#ff0033" },
+        "Yahoo広告（合計）": { bg: "#fff0f0", color: "#cc2c2c", dot: "#ff0033" },
+        "Yahoo検索広告": { bg: "#fff0f0", color: "#cc2c2c", dot: "#ff0033" },
+        "Yahooディスプレイ広告": { bg: "#fff3e0", color: "#e65100", dot: "#ff6633" },
         "Microsoft Advertising": { bg: "#e8f5e9", color: "#107c10", dot: "#107c10" },
         "Meta": { bg: "#eef3fe", color: "#1877f2", dot: "#1877f2" },
+        "Meta（合計）": { bg: "#eef3fe", color: "#1877f2", dot: "#1877f2" },
+        "Facebook広告": { bg: "#eef3fe", color: "#1877f2", dot: "#1877f2" },
+        "Instagram広告": { bg: "#fce4ec", color: "#c2185b", dot: "#e1306c" },
+        "Audience Network": { bg: "#e8eaf6", color: "#283593", dot: "#4267b2" },
+        "Messenger広告": { bg: "#e1f5fe", color: "#0277bd", dot: "#0084ff" },
       };
-      tbody.innerHTML = mediaDataFiltered
-        .map((m) => {
+
+      const summaryNames = ["Google Ads（合計）", "Yahoo広告（合計）", "Meta（合計）"];
+      const channelCheckers = {
+        "Google Ads（合計）": isGoogleChannelMedia,
+        "Yahoo広告（合計）": isYahooChannelMedia,
+        "Meta（合計）": isMetaChannelMedia,
+      };
+      function getOverviewBreakdowns(summaryName) {
+        const checker = channelCheckers[summaryName];
+        if (!checker) return [];
+        return mediaDataFiltered.filter((x) => x.name !== summaryName && !summaryNames.includes(x.name) && checker(x.name) && (x.cost > 0 || x.imp > 0))
+          .sort((a, b) => b.cost - a.cost);
+      }
+      const shownAsBreakdown = new Set();
+      summaryNames.forEach((sn) => {
+        if (mediaDataFiltered.some((x) => x.name === sn)) {
+          getOverviewBreakdowns(sn).forEach((b) => shownAsBreakdown.add(b.name));
+        }
+      });
+
+      function buildMediaRow(m, isChild) {
+        const s = mediaStyles[m.name] || { bg: "#f0ede6", color: "#666", dot: "#666" };
+        const inactive = !!m.mediaNote;
+        const cpaBadge = inactive
+          ? ""
+          : m.cpa <= 8000
+            ? '<span class="goal-badge goal-ok">目標内</span>'
+            : '<span class="goal-badge goal-over">+' + Math.round(((m.cpa - 8000) / 8000) * 100) + "%</span>";
+        const cpaCls = inactive ? "" : m.cpa <= 8000 ? "perf-good" : m.cpa <= 12000 ? "perf-warn" : "perf-bad";
+        const roasCls = inactive ? "" : m.roas >= 3.5 ? "perf-good" : m.roas >= 2.5 ? "" : "perf-bad";
+        const noteCol = m.mediaNote
+          ? `<span style="font-size:11px;font-weight:500;color:var(--text-muted);margin-left:6px">(${escapeHtml(m.mediaNote)})</span>`
+          : "";
+        const indent = isChild ? 'style="padding-left:28px"' : "";
+        const fontW = isChild ? 'style="font-size:12px"' : "";
+        return `<tr ${isChild ? 'class="overview-breakdown-row" style="display:none"' : ""}>
+          <td ${indent}><span class="tag-media" style="background:${s.bg};color:${s.color};${isChild ? "font-size:11px;padding:2px 8px" : ""}""><span style="width:7px;height:7px;border-radius:50%;background:${s.dot};display:inline-block"></span>${escapeHtml(m.name)}</span>${noteCol}</td>
+          <td ${fontW}>¥${m.cost.toLocaleString()}</td><td ${fontW}>${m.cv}</td>
+          <td class="${cpaCls}" ${fontW}>¥${m.cpa.toLocaleString()}${cpaBadge ? " " + cpaBadge : ""}</td>
+          <td class="${roasCls}" ${fontW}>${m.roas}</td><td ${fontW}>${m.ctr}</td><td ${fontW}>${m.imp.toLocaleString()}</td>
+        </tr>`;
+      }
+
+      let html = "";
+      let toggleId = 0;
+      mediaDataFiltered.forEach((m) => {
+        if (shownAsBreakdown.has(m.name)) return;
+
+        if (summaryNames.includes(m.name)) {
+          const breakdowns = getOverviewBreakdowns(m.name);
+          const gid = "ovbd-" + (toggleId++);
+          const hasBreakdowns = breakdowns.length > 0;
+          // 合計行にトグルボタン追加
           const s = mediaStyles[m.name] || { bg: "#f0ede6", color: "#666", dot: "#666" };
           const inactive = !!m.mediaNote;
-          const cpaBadge = inactive
-            ? ""
-            : m.cpa <= 8000
-              ? '<span class="goal-badge goal-ok">目標内</span>'
-              : '<span class="goal-badge goal-over">+' + Math.round(((m.cpa - 8000) / 8000) * 100) + "%</span>";
+          const cpaBadge = inactive ? "" : m.cpa <= 8000
+            ? '<span class="goal-badge goal-ok">目標内</span>'
+            : '<span class="goal-badge goal-over">+' + Math.round(((m.cpa - 8000) / 8000) * 100) + "%</span>";
           const cpaCls = inactive ? "" : m.cpa <= 8000 ? "perf-good" : m.cpa <= 12000 ? "perf-warn" : "perf-bad";
           const roasCls = inactive ? "" : m.roas >= 3.5 ? "perf-good" : m.roas >= 2.5 ? "" : "perf-bad";
-          const noteCol = m.mediaNote
-            ? `<span style="font-size:11px;font-weight:500;color:var(--text-muted);margin-left:6px">(${escapeHtml(m.mediaNote)})</span>`
+          const toggleBtn = hasBreakdowns
+            ? `<span class="overview-toggle-btn" data-target="${gid}" onclick="(function(el){var rows=document.querySelectorAll('.${gid}');var open=el.classList.toggle('open');rows.forEach(function(r){r.style.display=open?'table-row':'none'})})(this)" style="cursor:pointer;margin-left:6px;font-size:10px;color:var(--text-muted);display:inline-flex;align-items:center;gap:2px;padding:2px 6px;border-radius:4px;background:var(--surface2)"><span class="breakdown-arrow" style="display:inline-block;transition:transform .2s">&#9660;</span> 内訳</span>`
             : "";
-          return `<tr>
-            <td><span class="tag-media" style="background:${s.bg};color:${s.color}"><span style="width:7px;height:7px;border-radius:50%;background:${s.dot};display:inline-block"></span>${escapeHtml(m.name)}</span>${noteCol}</td>
+          html += `<tr style="font-weight:600">
+            <td><span class="tag-media" style="background:${s.bg};color:${s.color}"><span style="width:7px;height:7px;border-radius:50%;background:${s.dot};display:inline-block"></span>${escapeHtml(m.name)}</span>${toggleBtn}</td>
             <td>¥${m.cost.toLocaleString()}</td><td>${m.cv}</td>
             <td class="${cpaCls}">¥${m.cpa.toLocaleString()}${cpaBadge ? " " + cpaBadge : ""}</td>
             <td class="${roasCls}">${m.roas}</td><td>${m.ctr}</td><td>${m.imp.toLocaleString()}</td>
           </tr>`;
-        })
-        .join("");
+          // 内訳行（非表示）
+          breakdowns.forEach((b) => {
+            const bs = mediaStyles[b.name] || { bg: "#f0ede6", color: "#666", dot: "#666" };
+            const bInactive = !!b.mediaNote;
+            const bCpa = b.cv > 0 ? Math.round(b.cost / b.cv) : 0;
+            const bCpaCls = bInactive ? "" : bCpa <= 8000 ? "perf-good" : bCpa <= 12000 ? "perf-warn" : "perf-bad";
+            const bRoas = b.cost > 0 ? (b.cv * 35000 / b.cost).toFixed(1) : "0";
+            const bRoasCls = bInactive ? "" : Number(bRoas) >= 3.5 ? "perf-good" : Number(bRoas) >= 2.5 ? "" : "perf-bad";
+            const bCtr = b.imp > 0 ? ((b.clicks / b.imp) * 100).toFixed(1) + "%" : "0%";
+            html += `<tr class="${gid}" style="display:none;background:var(--surface2)">
+              <td style="padding-left:32px"><span class="tag-media" style="background:${bs.bg};color:${bs.color};font-size:11px;padding:2px 8px"><span style="width:6px;height:6px;border-radius:50%;background:${bs.dot};display:inline-block"></span>${escapeHtml(b.name)}</span></td>
+              <td style="font-size:12px">¥${b.cost.toLocaleString()}</td><td style="font-size:12px">${b.cv}</td>
+              <td class="${bCpaCls}" style="font-size:12px">¥${bCpa.toLocaleString()}</td>
+              <td class="${bRoasCls}" style="font-size:12px">${bRoas}</td><td style="font-size:12px">${bCtr}</td><td style="font-size:12px">${b.imp.toLocaleString()}</td>
+            </tr>`;
+          });
+        } else {
+          html += buildMediaRow(m, false);
+        }
+      });
+      tbody.innerHTML = html;
     } else if (tbody) {
       tbody.innerHTML = '<tr class="empty-row"><td colspan="7" style="text-align:center;color:var(--text-muted);padding:24px;white-space:pre-wrap">' + escapeHtml(getEmptyMessage()) + '</td></tr>';
     }
@@ -2010,23 +2388,53 @@
   let keywordSortKey = "cost";
   let keywordSortDir = -1; // -1 = desc, 1 = asc (default: cost desc)
 
+  function refreshKeywordMediaFilter(rows) {
+    const select = document.getElementById("keyword-media-filter");
+    if (!select) return;
+    const prev = select.value;
+    const medias = [...new Set(rows.map((r) => r.media || "").filter(Boolean))].sort((a, b) => a.localeCompare(b, "ja"));
+    select.innerHTML = '<option value="">すべての媒体</option>' + medias.map((m) => `<option value="${escapeAttr(m)}">${escapeHtml(m)}</option>`).join("");
+    if (prev && medias.includes(prev)) select.value = prev;
+  }
+
+  function refreshKeywordCampaignFilter(rows) {
+    const select = document.getElementById("keyword-campaign-filter");
+    if (!select) return;
+    const prev = select.value;
+    const campaigns = [...new Set(rows.map((r) => r.campaign || "").filter(Boolean))].sort((a, b) => a.localeCompare(b, "ja"));
+    select.innerHTML = '<option value="">すべてのキャンペーン</option>' + campaigns.map((c) => `<option value="${escapeAttr(c)}">${escapeHtml(c)}</option>`).join("");
+    if (prev && campaigns.includes(prev)) select.value = prev;
+  }
+
   function refreshKeywordTab() {
     const selMedia = getSelectedMedia();
-    const hasKeywordData = (m) => isYahooMedia(m) || isMetaMedia(m) || /^Google Ads$/i.test(m || "");
+    const hasKeywordData = (m) => isYahooMedia(m) || isMetaMedia(m) || /Google/i.test(m || "");
     if (selMedia && !hasKeywordData(selMedia)) {
       const tbody = document.getElementById("keyword-tbody");
       const countEl = document.getElementById("keyword-count");
-      if (tbody) tbody.innerHTML = '<tr class="empty-row"><td colspan="8" style="text-align:center;color:var(--text-muted);padding:24px">この媒体ではデータがありません（キーワードはYahoo広告・Meta・Google Ads対応）</td></tr>';
+      if (tbody) tbody.innerHTML = '<tr class="empty-row"><td colspan="9" style="text-align:center;color:var(--text-muted);padding:24px">この媒体ではデータがありません（キーワードはYahoo広告・Meta・Google Ads対応）</td></tr>';
       if (countEl) countEl.textContent = "—";
       return;
     }
     const tbody = document.getElementById("keyword-tbody");
     const countEl = document.getElementById("keyword-count");
     const searchInput = document.getElementById("keyword-search");
+    const campaignFilter = document.getElementById("keyword-campaign-filter");
+    const mediaFilter = document.getElementById("keyword-media-filter");
     const searchQ = (searchInput && searchInput.value || "").trim().toLowerCase();
+    const selCampaign = (campaignFilter && campaignFilter.value) || "";
+    const selKwMedia = (mediaFilter && mediaFilter.value) || "";
     let rows = Array.isArray(adsKeywordRows) ? adsKeywordRows : [];
     if (selMedia) {
       rows = rows.filter((r) => rowMediaMatchesFilter(r, selMedia));
+    }
+    refreshKeywordMediaFilter(rows);
+    if (selKwMedia) {
+      rows = rows.filter((r) => (r.media || "") === selKwMedia);
+    }
+    refreshKeywordCampaignFilter(rows);
+    if (selCampaign) {
+      rows = rows.filter((r) => (r.campaign || "") === selCampaign);
     }
     const filtered = searchQ
       ? rows.filter((r) => String(r.keyword || "").toLowerCase().includes(searchQ))
@@ -2052,7 +2460,7 @@
     if (countEl) countEl.textContent = total > 0 ? `全 ${total.toLocaleString()} 件中 ${Math.min(displayCount, total).toLocaleString()} 件表示` : "—";
     if (!tbody) return;
     if (displayed.length === 0) {
-      tbody.innerHTML = '<tr class="empty-row"><td colspan="8" style="text-align:center;color:var(--text-muted);padding:24px">データがありません</td></tr>';
+      tbody.innerHTML = '<tr class="empty-row"><td colspan="9" style="text-align:center;color:var(--text-muted);padding:24px">データがありません</td></tr>';
       return;
     }
     tbody.innerHTML = displayed
@@ -2065,6 +2473,7 @@
         const cpa = cv > 0 ? Math.round(cost / cv) : 0;
         const avgCpc = Number(r.avgCpc) || 0;
         return `<tr>
+          <td>${mediaTagHtml(r.media || "—")}</td>
           <td>${escapeHtml(r.keyword || "—")}</td>
           <td>${escapeHtml(r.campaign || "—")}</td>
           <td>¥${cost.toLocaleString()}</td>
@@ -2085,25 +2494,45 @@
     return String(t || "—");
   }
 
+  /** Google Ads ad.type 数値enum → 文字列 */
+  const AD_TYPE_NUM_MAP = {
+    2: "TEXT_AD", 3: "EXPANDED_TEXT_AD", 6: "IMAGE_AD", 7: "PRODUCT_AD",
+    12: "CALL_ONLY_AD", 13: "EXPANDED_DYNAMIC_SEARCH_AD", 14: "HOTEL_AD",
+    15: "RESPONSIVE_SEARCH_AD", 16: "RESPONSIVE_DISPLAY_AD",
+    19: "VIDEO_AD", 22: "VIDEO_RESPONSIVE_AD",
+    25: "SMART_CAMPAIGN_AD", 33: "APP_AD", 34: "APP_ENGAGEMENT_AD",
+    35: "SHOPPING_COMPARISON_LISTING_AD", 36: "SHOPPING_PRODUCT_AD",
+    38: "LOCAL_AD", 39: "DISCOVERY_MULTI_ASSET_AD", 40: "DISCOVERY_MULTI_ASSET_AD",
+    41: "TRAVEL_AD", 42: "DEMAND_GEN_PRODUCT_AD",
+  };
+  function normalizeAdFormat(fmt) {
+    if (typeof fmt === "number" || /^\d+$/.test(String(fmt))) return (AD_TYPE_NUM_MAP[Number(fmt)] || String(fmt)).toLowerCase();
+    return String(fmt || "").toLowerCase();
+  }
+
   function classifyCreativeAdRow(r) {
     const m = String(r.media || "").trim();
     const adName = String(r.adName || "");
-    const fmt = String(r.format || r.adType || r.campaignType || "").toLowerCase();
+    const fmt = normalizeAdFormat(r.format || r.adType || r.campaignType || "");
     if (/display|ディスプレイ|demand gen|pmax|performance max|レスポンシブ|画像|動画|banner|video|image/i.test(fmt)) return "banner";
-    if (m === "Meta") {
+    // Meta系 → 基本バナー
+    if (isMetaChannelMedia(m) || m === "Meta") {
       if (/テキスト|\bTEXT\b|\btext\b/i.test(adName)) return "text";
       return "banner";
     }
-    if (/^Google Ads$/i.test(m) || m === "Google") {
-      if (
-        /image|video|display|demand|discovery|shopping|performance_max|responsive_display|multi_asset|app_engagement|app_install|local|smart_campaign|html5|in_feed|carousel/i.test(
-          fmt
-        )
-      )
+    // Google系
+    if (isGoogleChannelMedia(m)) {
+      if (/image|video|display|demand|discovery|shopping|performance_max|responsive_display|multi_asset|app_engagement|app_install|local|smart_campaign|html5|in_feed|carousel/i.test(fmt))
         return "banner";
+      // ディスプレイ・動画媒体 → バナー
+      if (/ディスプレイ|動画|P-MAX|Demand Gen/i.test(m)) return "banner";
       return "text";
     }
-    if (/yahoo/i.test(m)) return "text";
+    // Yahoo系
+    if (isYahooChannelMedia(m)) {
+      if (/ディスプレイ/i.test(m)) return "banner";
+      return "text";
+    }
     return "text";
   }
 
@@ -2127,6 +2556,7 @@
       const cv = Number(r.conversions) || 0;
       const cpa = cv > 0 ? Math.round(cost / cv) : 0;
       rows.push({
+        media: r.media || "—",
         campaign: r.campaign || "—",
         adGroup: r.adGroup || "—",
         nameLabel: r.adName || "—",
@@ -2147,6 +2577,7 @@
       const cpa = cv > 0 ? Math.round(cost / cv) : 0;
       const at = String(r.assetText || "—");
       rows.push({
+        media: r.media || "—",
         campaign: r.campaign || "—",
         adGroup: r.adGroup || "—",
         nameLabel: at.length > 200 ? at.slice(0, 200) + "…" : at,
@@ -2172,9 +2603,11 @@
       const cpa = cv > 0 ? Math.round(cost / cv) : 0;
       const roas = cost > 0 ? ((cv * 35000) / cost).toFixed(1) : "0";
       rows.push({
+        media: r.media || "—",
         campaign: r.campaign || "—",
         adGroup: r.adGroup || "—",
         adName: r.adName || "—",
+        imageUrl: r.imageUrl || "",
         impressions: imp,
         clicks,
         cost,
@@ -2196,6 +2629,7 @@
         ? (at.length > 80 ? at.slice(0, 80) + "…" : at)
         : assetTypeLabelForCreative(r.assetType || r.種別 || r.type);
       rows.push({
+        media: r.media || "—",
         campaign: r.campaign || "—",
         adGroup: r.adGroup || "—",
         adName: label || "—",
@@ -2229,9 +2663,19 @@
     });
   }
 
+  function refreshCreativeFilterSelect(selectId, rows, field) {
+    const select = document.getElementById(selectId);
+    if (!select) return;
+    const prev = select.value;
+    const vals = [...new Set(rows.map((r) => r[field] || "").filter(Boolean))].sort((a, b) => a.localeCompare(b, "ja"));
+    const label = field === "media" ? "すべての媒体" : "すべてのキャンペーン";
+    select.innerHTML = `<option value="">${label}</option>` + vals.map((v) => `<option value="${escapeAttr(v)}">${escapeHtml(v)}</option>`).join("");
+    if (prev && vals.includes(prev)) select.value = prev;
+  }
+
   function refreshCreativeTab(overrideAdRows, overrideAssetRows) {
     const selMedia = getSelectedMedia();
-    const emptyMediaMsg = '<tr class="empty-row"><td colspan="9" style="text-align:center;color:var(--text-muted);padding:24px">この媒体ではデータがありません（クリエイティブはYahoo広告・Meta・Google Ads対応）</td></tr>';
+    const emptyMediaMsg = '<tr class="empty-row"><td colspan="10" style="text-align:center;color:var(--text-muted);padding:24px">この媒体ではデータがありません（クリエイティブはYahoo広告・Meta・Google Ads対応）</td></tr>';
     const textTbody = document.getElementById("creative-text-tbody");
     const bannerTbody = document.getElementById("creative-banner-tbody");
     if (selMedia && !hasCreativeData(selMedia)) {
@@ -2254,6 +2698,22 @@
     const adForBuild = adRowsSource.length > 0 ? adRowsSource : (lastReportAdRows.length > 0 ? lastReportAdRows : []);
     let textRows = buildCreativeTextRows(adForBuild, assetRowsSource);
     let bannerRows = buildCreativeBannerRows(adForBuild, assetRowsSource);
+
+    // テキスト: フィルター更新 → 適用
+    refreshCreativeFilterSelect("creative-text-media-filter", textRows, "media");
+    refreshCreativeFilterSelect("creative-text-campaign-filter", textRows, "campaign");
+    const selTextMedia = (document.getElementById("creative-text-media-filter")?.value) || "";
+    const selTextCampaign = (document.getElementById("creative-text-campaign-filter")?.value) || "";
+    if (selTextMedia) textRows = textRows.filter((r) => (r.media || "") === selTextMedia);
+    if (selTextCampaign) textRows = textRows.filter((r) => (r.campaign || "") === selTextCampaign);
+
+    // バナー: フィルター更新 → 適用
+    refreshCreativeFilterSelect("creative-banner-media-filter", bannerRows, "media");
+    refreshCreativeFilterSelect("creative-banner-campaign-filter", bannerRows, "campaign");
+    const selBannerMedia = (document.getElementById("creative-banner-media-filter")?.value) || "";
+    const selBannerCampaign = (document.getElementById("creative-banner-campaign-filter")?.value) || "";
+    if (selBannerMedia) bannerRows = bannerRows.filter((r) => (r.media || "") === selBannerMedia);
+    if (selBannerCampaign) bannerRows = bannerRows.filter((r) => (r.campaign || "") === selBannerCampaign);
 
     const countTextEl = document.getElementById("creative-count-text");
     const countBannerEl = document.getElementById("creative-count-banner");
@@ -2318,11 +2778,12 @@
 
     if (textTbody) {
       if (textRows.length === 0) {
-        textTbody.innerHTML = '<tr class="empty-row"><td colspan="9" style="text-align:center;color:var(--text-muted);padding:24px">データがありません</td></tr>';
+        textTbody.innerHTML = '<tr class="empty-row"><td colspan="10" style="text-align:center;color:var(--text-muted);padding:24px">データがありません</td></tr>';
       } else {
         try {
           const sorted = sortCreativeUnified(textRows, creativeTextSortKey, creativeTextSortDir, false);
           textTbody.innerHTML = sorted.map((r) => `<tr>
+              <td>${mediaTagHtml(r.media || "—")}</td>
               <td>${escapeHtml(String(r.campaign ?? "—"))}</td>
               <td>${escapeHtml(String(r.adGroup ?? "—"))}</td>
               <td>${escapeHtml(String(r.nameLabel ?? "—"))}</td>
@@ -2335,17 +2796,23 @@
             </tr>`).join("");
         } catch (err) {
           console.error("[Ads] クリエイティブ（テキスト）描画エラー:", err);
-          textTbody.innerHTML = '<tr class="empty-row"><td colspan="9" style="text-align:center;color:var(--bad);padding:24px">描画エラー: ' + escapeHtml(String(err.message || err)) + '</td></tr>';
+          textTbody.innerHTML = '<tr class="empty-row"><td colspan="10" style="text-align:center;color:var(--bad);padding:24px">描画エラー: ' + escapeHtml(String(err.message || err)) + '</td></tr>';
         }
       }
     }
     if (bannerTbody) {
       if (bannerRows.length === 0) {
-        bannerTbody.innerHTML = '<tr class="empty-row"><td colspan="9" style="text-align:center;color:var(--text-muted);padding:24px">データがありません</td></tr>';
+        bannerTbody.innerHTML = '<tr class="empty-row"><td colspan="11" style="text-align:center;color:var(--text-muted);padding:24px">データがありません</td></tr>';
       } else {
         try {
           const sorted = sortCreativeUnified(bannerRows, creativeBannerSortKey, creativeBannerSortDir, true);
-          bannerTbody.innerHTML = sorted.map((r) => `<tr>
+          bannerTbody.innerHTML = sorted.map((r) => {
+            const imgHtml = r.imageUrl
+              ? `<img src="${escapeAttr(r.imageUrl)}" alt="" style="max-width:80px;max-height:60px;border-radius:4px;object-fit:cover;border:1px solid var(--border);cursor:zoom-in" loading="lazy" onerror="this.style.display='none'" onclick="window.openImagePreview(this.src,'${escapeAttr(r.adName || "")}')">`
+              : '<span style="color:var(--text-muted);font-size:11px">—</span>';
+            return `<tr>
+              <td style="text-align:center;padding:4px 8px">${imgHtml}</td>
+              <td>${mediaTagHtml(r.media || "—")}</td>
               <td>${escapeHtml(String(r.campaign ?? "—"))}</td>
               <td>${escapeHtml(String(r.adGroup ?? "—"))}</td>
               <td>${escapeHtml(String(r.adName ?? "—"))}</td>
@@ -2355,10 +2822,11 @@
               <td>${Number(r.conversions) || 0}</td>
               <td>¥${(Number(r.cpa) || 0).toLocaleString()}</td>
               <td>${escapeHtml(String(r.roas ?? "0"))}</td>
-            </tr>`).join("");
+            </tr>`;
+          }).join("");
         } catch (err) {
           console.error("[Ads] クリエイティブ（バナー）描画エラー:", err);
-          bannerTbody.innerHTML = '<tr class="empty-row"><td colspan="9" style="text-align:center;color:var(--bad);padding:24px">描画エラー: ' + escapeHtml(String(err.message || err)) + '</td></tr>';
+          bannerTbody.innerHTML = '<tr class="empty-row"><td colspan="11" style="text-align:center;color:var(--bad);padding:24px">描画エラー: ' + escapeHtml(String(err.message || err)) + '</td></tr>';
         }
       }
     }
@@ -2375,25 +2843,42 @@
   let hourSortKey = "cost";
   let hourSortDir = -1;
 
+  function refreshAreaMediaFilter(rows) {
+    const select = document.getElementById("area-media-filter");
+    if (!select) return;
+    const prev = select.value;
+    const medias = [...new Set(rows.map((r) => r.media || "").filter(Boolean))].sort((a, b) => a.localeCompare(b, "ja"));
+    select.innerHTML = '<option value="">すべての媒体</option>' + medias.map((m) => `<option value="${escapeAttr(m)}">${escapeHtml(m)}</option>`).join("");
+    if (prev && medias.includes(prev)) select.value = prev;
+  }
+
   function refreshAreaTable() {
     const tbody = document.getElementById("area-tbody");
     if (!tbody) return;
     const selMedia = getSelectedMedia();
+    const areaMediaFilter = document.getElementById("area-media-filter");
+    const selAreaMedia = (areaMediaFilter && areaMediaFilter.value) || "";
     if (selMedia && !hasAreaOrHourData(selMedia)) {
-      tbody.innerHTML = '<tr class="empty-row"><td colspan="7" style="text-align:center;color:var(--text-muted);padding:24px">この媒体ではデータがありません（エリア別はYahoo広告・Meta・Google Ads対応）</td></tr>';
+      tbody.innerHTML = '<tr class="empty-row"><td colspan="8" style="text-align:center;color:var(--text-muted);padding:24px">この媒体ではデータがありません（エリア別はYahoo広告・Meta・Google Ads対応）</td></tr>';
       return;
     }
-    const areaRowsFiltered = selMedia
+    let areaRowsFiltered = selMedia
       ? adsAreaRows.filter((r) => rowMediaMatchesFilter(r, selMedia))
       : adsAreaRows;
+    refreshAreaMediaFilter(areaRowsFiltered);
+    if (selAreaMedia) {
+      areaRowsFiltered = areaRowsFiltered.filter((r) => (r.media || "") === selAreaMedia);
+    }
     if (areaRowsFiltered.length === 0) {
-      tbody.innerHTML = '<tr class="empty-row"><td colspan="7" style="text-align:center;color:var(--text-muted);padding:24px">データがありません</td></tr>';
+      tbody.innerHTML = '<tr class="empty-row"><td colspan="8" style="text-align:center;color:var(--text-muted);padding:24px">データがありません</td></tr>';
       return;
     }
     const totalCost = areaRowsFiltered.reduce((a, r) => a + (Number(r.cost) || 0), 0);
     const sorted = [...areaRowsFiltered].sort((a, b) => {
       let va, vb;
-      if (areaSortKey === "cpa") {
+      if (areaSortKey === "media") {
+        va = a.media || ""; vb = b.media || "";
+      } else if (areaSortKey === "cpa") {
         const cvA = Number(a.conversions) || 0;
         const cvB = Number(b.conversions) || 0;
         va = cvA > 0 ? (Number(a.cost) || 0) / cvA : 0;
@@ -2422,6 +2907,7 @@
         const roas = c > 0 ? (revenue / c).toFixed(1) : "0";
         const pct = totalCost > 0 ? ((c / totalCost) * 100).toFixed(1) + "%" : "0%";
         return `<tr>
+          <td>${mediaTagHtml(r.media || "—")}</td>
           <td>${escapeHtml(r.pref || r.campaign || "—")}</td>
           <td>¥${c.toLocaleString()}</td>
           <td>${cv}</td>
@@ -2434,24 +2920,43 @@
       .join("");
   }
 
+  function refreshTimeMediaFilter(rows) {
+    const select = document.getElementById("time-media-filter");
+    if (!select) return;
+    const prev = select.value;
+    const medias = [...new Set(rows.map((r) => r.media || "").filter(Boolean))].sort((a, b) => a.localeCompare(b, "ja"));
+    select.innerHTML = '<option value="">すべての媒体</option>' + medias.map((m) => `<option value="${escapeAttr(m)}">${escapeHtml(m)}</option>`).join("");
+    if (prev && medias.includes(prev)) select.value = prev;
+  }
+
   function refreshHourTable() {
     const tbody = document.getElementById("time-tbody");
     if (!tbody) return;
     const selMedia = getSelectedMedia();
+    const timeMediaFilter = document.getElementById("time-media-filter");
+    const selTimeMedia = (timeMediaFilter && timeMediaFilter.value) || "";
     if (selMedia && !hasAreaOrHourData(selMedia)) {
-      tbody.innerHTML = '<tr class="empty-row"><td colspan="5" style="text-align:center;color:var(--text-muted);padding:24px">この媒体ではデータがありません（時間帯別はYahoo広告・Meta・Google Ads対応）</td></tr>';
+      tbody.innerHTML = '<tr class="empty-row"><td colspan="6" style="text-align:center;color:var(--text-muted);padding:24px">この媒体ではデータがありません（時間帯別はYahoo広告・Meta・Google Ads対応）</td></tr>';
       return;
     }
-    const hourRowsFiltered = selMedia
+    let hourRowsFiltered = selMedia
       ? adsHourRows.filter((r) => rowMediaMatchesFilter(r, selMedia))
       : adsHourRows;
+    refreshTimeMediaFilter(hourRowsFiltered);
+    if (selTimeMedia) {
+      hourRowsFiltered = hourRowsFiltered.filter((r) => (r.media || "") === selTimeMedia);
+    }
     if (hourRowsFiltered.length === 0) {
-      tbody.innerHTML = '<tr class="empty-row"><td colspan="5" style="text-align:center;color:var(--text-muted);padding:24px">データがありません</td></tr>';
+      tbody.innerHTML = '<tr class="empty-row"><td colspan="6" style="text-align:center;color:var(--text-muted);padding:24px">データがありません</td></tr>';
       return;
     }
     const sorted = [...hourRowsFiltered].sort((a, b) => {
       let va;
       let vb;
+      if (hourSortKey === "media") {
+        va = a.media || ""; vb = b.media || "";
+        return hourSortDir * va.localeCompare(vb, "ja");
+      }
       if (hourSortKey === "hourSlot") {
         const la = `${String(a.hourOfDay ?? "—")} ${a.dayOfWeek || ""}`.trim();
         const lb = `${String(b.hourOfDay ?? "—")} ${b.dayOfWeek || ""}`.trim();
@@ -2497,6 +3002,7 @@
         const dowDisplay = gDowJa[dowKey] || r.dayOfWeek || "";
         const label = `${r.hourOfDay || "—"}時 ${dowDisplay}`.trim();
         return `<tr>
+          <td>${mediaTagHtml(r.media || "—")}</td>
           <td>${escapeHtml(label)}</td>
           <td>¥${c.toLocaleString()}</td>
           <td>${cv}</td>
@@ -2599,9 +3105,15 @@
     if (!selMedia) return true;
     const m = String(r.media ?? "").trim();
     if (m === selMedia) return true;
-    if (selMedia === "Yahoo広告" && /Yahoo/i.test(m)) return true;
+    if (selMedia === "Yahoo広告" && isYahooChannelMedia(m)) return true;
+    if (isYahooChannelMedia(selMedia) && m === selMedia) return true;
     if (!m && isYahooMedia(selMedia)) return true;
-    if (selMedia === "Google Ads" && (m === "Google" || /^Google Ads$/i.test(m))) return true;
+    // Meta フィルタ: チャネル別サブタイプも含む
+    if (selMedia === "Meta" && isMetaChannelMedia(m)) return true;
+    if (isMetaChannelMedia(selMedia) && m === selMedia) return true;
+    // Google Ads フィルタ: チャネル別サブタイプも含む
+    if (selMedia === "Google Ads" && isGoogleChannelMedia(m)) return true;
+    if (isGoogleChannelMedia(selMedia) && m === selMedia) return true;
     return false;
   }
 
@@ -2610,19 +3122,20 @@
     if (!selMedia) return true;
     const n = String(name ?? "").trim();
     if (n === selMedia) return true;
-    if (selMedia === "Yahoo広告" && /Yahoo/i.test(n)) return true;
-    if (selMedia === "Google Ads" && (n === "Google" || /^Google Ads$/i.test(n))) return true;
+    if (selMedia === "Yahoo広告" && (isYahooChannelMedia(n) || /Yahoo/.test(n))) return true;
+    if (selMedia === "Google Ads" && (isGoogleChannelMedia(n) || /Google Ads/.test(n))) return true;
+    if (selMedia === "Meta" && (isMetaChannelMedia(n) || /Meta/.test(n))) return true;
     return false;
   }
   function isMetaMedia(media) {
-    return media && /^Meta$/i.test(media);
+    return media && (isMetaChannelMedia(media) || /^Meta$/i.test(media));
   }
   function hasAreaOrHourData(media) {
-    return isYahooMedia(media) || isMetaMedia(media) || /^Google Ads$/i.test(media || "");
+    return isYahooMedia(media) || isMetaMedia(media) || /Google/i.test(media || "");
   }
   function hasCreativeData(media) {
     if (!media) return true;
-    return isYahooMedia(media) || isMetaMedia(media) || /^Google Ads$/i.test(media);
+    return isYahooMedia(media) || isMetaMedia(media) || /Google/i.test(media);
   }
 
   function getFilteredMediaData() {
@@ -2732,24 +3245,103 @@
       if (typeof va === "string") return campaignSortDir * String(va).localeCompare(String(vb), "ja");
       return campaignSortDir * (Number(va) - Number(vb));
     });
-    tbody.innerHTML = sorted
-      .map((r) => {
-        const ctr = r.impressions > 0 ? ((r.clicks || 0) / r.impressions * 100).toFixed(1) + "%" : "0%";
-        const cpa = (r.conversions || 0) > 0 ? Math.round((r.cost || 0) / r.conversions) : 0;
-        const roas = (r.cost || 0) > 0 ? ((r.conversions || 0) * 35000 / (r.cost || 1)).toFixed(1) : "0";
-        const s = mediaStyles[r.media] || { bg: "#f0ede6", color: "#666" };
-        return `<tr>
-          <td>${escapeHtml(r.campaign || "—")}</td>
-          <td><span class="tag-media" style="background:${s.bg};color:${s.color}">${escapeHtml(r.media || "—")}</span></td>
-          <td>¥${(r.cost || 0).toLocaleString()}</td>
-          <td>${(r.impressions || 0).toLocaleString()}</td>
-          <td>${ctr}</td>
-          <td>${r.conversions || 0}</td>
-          <td>¥${cpa.toLocaleString()}</td>
-          <td>${roas}</td>
+
+    // 広告グループ・クリエイティブデータをキャンペーン名でグループ化
+    const adRowsForCampaign = selMedia
+      ? (Array.isArray(adsAdRows) ? adsAdRows : []).filter((r) => rowMediaMatchesFilter(r, selMedia))
+      : (Array.isArray(adsAdRows) ? adsAdRows : []);
+
+    // キャンペーン名 → 広告グループ → クリエイティブの階層構造を構築
+    function buildCampaignHierarchy(campaignName) {
+      const ads = adRowsForCampaign.filter((r) => r.campaign === campaignName);
+      const byGroup = new Map();
+      ads.forEach((r) => {
+        const gName = r.adGroup || "（グループなし）";
+        if (!byGroup.has(gName)) byGroup.set(gName, { name: gName, impressions: 0, clicks: 0, cost: 0, conversions: 0, creatives: [] });
+        const g = byGroup.get(gName);
+        g.impressions += Number(r.impressions) || 0;
+        g.clicks += Number(r.clicks) || 0;
+        g.cost += Number(r.cost) || 0;
+        g.conversions += Number(r.conversions) || 0;
+        g.creatives.push(r);
+      });
+      return [...byGroup.values()].sort((a, b) => b.cost - a.cost);
+    }
+
+    let html = "";
+    let campIdx = 0;
+    sorted.forEach((r) => {
+      const ctr = r.impressions > 0 ? ((r.clicks || 0) / r.impressions * 100).toFixed(1) + "%" : "0%";
+      const cpa = (r.conversions || 0) > 0 ? Math.round((r.cost || 0) / r.conversions) : 0;
+      const roas = (r.cost || 0) > 0 ? ((r.conversions || 0) * 35000 / (r.cost || 1)).toFixed(1) : "0";
+      const groups = buildCampaignHierarchy(r.campaign);
+      const hasChildren = groups.length > 0;
+      const gid = "cg-" + (campIdx++);
+
+      const toggleBtn = hasChildren
+        ? `<span class="overview-toggle-btn" data-target="${gid}" onclick="(function(el){var rows=document.querySelectorAll('.${gid}');var open=el.classList.toggle('open');rows.forEach(function(r){r.style.display=open?'table-row':'none'})})(this)" style="cursor:pointer;margin-left:6px;font-size:10px;color:var(--text-muted);display:inline-flex;align-items:center;gap:2px;padding:2px 6px;border-radius:4px;background:var(--surface2)"><span class="breakdown-arrow" style="display:inline-block;transition:transform .2s">&#9660;</span> ${groups.length}グループ</span>`
+        : "";
+
+      html += `<tr style="font-weight:600">
+        <td>${escapeHtml(r.campaign || "—")}${toggleBtn}</td>
+        <td>${mediaTagHtml(r.media || "—")}</td>
+        <td>¥${(r.cost || 0).toLocaleString()}</td>
+        <td>${(r.impressions || 0).toLocaleString()}</td>
+        <td>${ctr}</td>
+        <td>${r.conversions || 0}</td>
+        <td>¥${cpa.toLocaleString()}</td>
+        <td>${roas}</td>
+      </tr>`;
+
+      // 広告グループ行（非表示）
+      groups.forEach((g) => {
+        const gCtr = g.impressions > 0 ? ((g.clicks / g.impressions) * 100).toFixed(1) + "%" : "0%";
+        const gCpa = g.conversions > 0 ? Math.round(g.cost / g.conversions) : 0;
+        const gRoas = g.cost > 0 ? ((g.conversions * 35000) / g.cost).toFixed(1) : "0";
+        const gSubId = gid + "-" + g.name.replace(/[^a-zA-Z0-9]/g, "").slice(0, 20);
+        const hasCreatives = g.creatives.length > 0;
+        const crToggle = hasCreatives
+          ? `<span class="overview-toggle-btn" data-target="${gSubId}" onclick="event.stopPropagation();(function(el){var rows=document.querySelectorAll('.${gSubId}');var open=el.classList.toggle('open');rows.forEach(function(r){r.style.display=open?'table-row':'none'})})(this)" style="cursor:pointer;margin-left:4px;font-size:9px;color:var(--text-muted);display:inline-flex;align-items:center;gap:2px;padding:1px 5px;border-radius:3px;background:var(--surface2)"><span class="breakdown-arrow" style="display:inline-block;transition:transform .2s">&#9660;</span> ${g.creatives.length}広告</span>`
+          : "";
+
+        html += `<tr class="${gid}" style="display:none;background:var(--surface2)">
+          <td style="padding-left:28px;font-weight:500">📁 ${escapeHtml(g.name)}${crToggle}</td>
+          <td></td>
+          <td style="font-size:12px">¥${g.cost.toLocaleString()}</td>
+          <td style="font-size:12px">${g.impressions.toLocaleString()}</td>
+          <td style="font-size:12px">${gCtr}</td>
+          <td style="font-size:12px">${g.conversions}</td>
+          <td style="font-size:12px">¥${gCpa.toLocaleString()}</td>
+          <td style="font-size:12px">${gRoas}</td>
         </tr>`;
-      })
-      .join("");
+
+        // クリエイティブ行（非表示）
+        g.creatives.sort((a, b) => (Number(b.cost) || 0) - (Number(a.cost) || 0));
+        g.creatives.forEach((cr) => {
+          const crImp = Number(cr.impressions) || 0;
+          const crClicks = Number(cr.clicks) || 0;
+          const crCost = Number(cr.cost) || 0;
+          const crCv = Number(cr.conversions) || 0;
+          const crCtr = crImp > 0 ? ((crClicks / crImp) * 100).toFixed(1) + "%" : "0%";
+          const crCpa = crCv > 0 ? Math.round(crCost / crCv) : 0;
+          const crRoas = crCost > 0 ? ((crCv * 35000) / crCost).toFixed(1) : "0";
+          const thumb = cr.imageUrl
+            ? `<img src="${escapeAttr(cr.imageUrl)}" style="width:24px;height:24px;border-radius:3px;object-fit:cover;vertical-align:middle;margin-right:4px;cursor:zoom-in" onclick="window.openImagePreview(this.src,'${escapeAttr(cr.adName || "")}')" onerror="this.style.display='none'">`
+            : "";
+          html += `<tr class="${gid} ${gSubId}" style="display:none">
+            <td style="padding-left:52px;font-size:12px">${thumb}${escapeHtml(cr.adName || "—")}</td>
+            <td></td>
+            <td style="font-size:11px">¥${crCost.toLocaleString()}</td>
+            <td style="font-size:11px">${crImp.toLocaleString()}</td>
+            <td style="font-size:11px">${crCtr}</td>
+            <td style="font-size:11px">${crCv}</td>
+            <td style="font-size:11px">¥${crCpa.toLocaleString()}</td>
+            <td style="font-size:11px">${crRoas}</td>
+          </tr>`;
+        });
+      });
+    });
+    tbody.innerHTML = html;
   }
 
   window.downloadExcel = function () {
@@ -3081,11 +3673,15 @@
           if (areaSortKey === key) areaSortDir *= -1;
           else {
             areaSortKey = key;
-            areaSortDir = key === "pref" ? 1 : -1;
+            areaSortDir = ["pref", "media"].includes(key) ? 1 : -1;
           }
           refreshAreaTable();
         }
       });
+    }
+    const areaMediaFilter = document.getElementById("area-media-filter");
+    if (areaMediaFilter) {
+      areaMediaFilter.addEventListener("change", () => refreshAreaTable());
     }
     const timePanel = document.getElementById("tab-time");
     if (timePanel) {
@@ -3096,11 +3692,15 @@
           if (hourSortKey === key) hourSortDir *= -1;
           else {
             hourSortKey = key;
-            hourSortDir = key === "hourSlot" ? 1 : -1;
+            hourSortDir = ["hourSlot", "media"].includes(key) ? 1 : -1;
           }
           refreshHourTable();
         }
       });
+    }
+    const timeMediaFilter = document.getElementById("time-media-filter");
+    if (timeMediaFilter) {
+      timeMediaFilter.addEventListener("change", () => refreshHourTable());
     }
     const creativePanel = document.getElementById("tab-creative");
     if (creativePanel) {
@@ -3127,6 +3727,10 @@
         }
       });
     }
+    ["creative-text-media-filter", "creative-text-campaign-filter", "creative-banner-media-filter", "creative-banner-campaign-filter"].forEach((id) => {
+      const el = document.getElementById(id);
+      if (el) el.addEventListener("change", () => refreshCreativeTab());
+    });
     const keywordPanel = document.getElementById("tab-keyword");
     if (keywordPanel) {
       keywordPanel.addEventListener("click", (e) => {
@@ -3141,6 +3745,14 @@
           refreshKeywordTab();
         }
       });
+    }
+    const keywordMediaFilter = document.getElementById("keyword-media-filter");
+    if (keywordMediaFilter) {
+      keywordMediaFilter.addEventListener("change", () => refreshKeywordTab());
+    }
+    const keywordCampaignFilter = document.getElementById("keyword-campaign-filter");
+    if (keywordCampaignFilter) {
+      keywordCampaignFilter.addEventListener("change", () => refreshKeywordTab());
     }
     let kwSearchDebounce = null;
     const keywordSearch = document.getElementById("keyword-search");

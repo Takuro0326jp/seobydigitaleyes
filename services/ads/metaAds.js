@@ -95,12 +95,12 @@ const TAB_CONFIG = {
   campaign: {
     fields: "campaign_name,spend,impressions,ctr,actions,cost_per_action_type,purchase_roas,date_start",
     level: "campaign",
-    breakdowns: null,
+    breakdowns: "publisher_platform",
     limit: 500,
     time_increment: 1,
   },
   creative: {
-    fields: "campaign_name,adset_name,ad_name,spend,impressions,ctr,clicks,actions,cost_per_action_type,purchase_roas",
+    fields: "ad_id,campaign_name,adset_name,ad_name,spend,impressions,ctr,clicks,actions,cost_per_action_type,purchase_roas",
     level: "ad",
     breakdowns: null,
     limit: 500,
@@ -156,20 +156,31 @@ async function fetchMetaInsightsReport(adAccountId, startDate, endDate) {
       fetchAllPages(actId, token, { ...TAB_CONFIG.keyword, time_range: timeRange }),
     ]);
 
-    const byCampaign = new Map();
+    function platformToMedia(platform) {
+      const p = String(platform || "").toLowerCase();
+      if (p === "facebook") return "Facebook広告";
+      if (p === "instagram") return "Instagram広告";
+      if (p === "audience_network") return "Audience Network";
+      if (p === "messenger") return "Messenger広告";
+      return "Meta";
+    }
+
+    const byCampaignPlatform = new Map();
     campaignData.forEach((r) => {
       const name = r.campaign_name || "（名前なし）";
-      if (!byCampaign.has(name)) byCampaign.set(name, { impressions: 0, clicks: 0, cost: 0, conversions: 0 });
-      const acc = byCampaign.get(name);
+      const platform = r.publisher_platform || "";
+      const key = `${name}\t${platform}`;
+      if (!byCampaignPlatform.has(key)) byCampaignPlatform.set(key, { name, platform, impressions: 0, clicks: 0, cost: 0, conversions: 0 });
+      const acc = byCampaignPlatform.get(key);
       acc.impressions += num(r.impressions);
       acc.clicks += num(r.clicks);
       acc.cost += num(r.spend);
       acc.conversions += extractCv(r.actions);
     });
-    byCampaign.forEach((acc, name) => {
+    byCampaignPlatform.forEach((acc) => {
       rows.push({
-        media: "Meta",
-        campaign: name,
+        media: platformToMedia(acc.platform),
+        campaign: acc.name,
         impressions: acc.impressions,
         clicks: acc.clicks,
         cost: acc.cost,
@@ -239,6 +250,63 @@ async function fetchMetaInsightsReport(adAccountId, startDate, endDate) {
     });
     dailyRows = [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date));
 
+    // 広告の画像URL取得（ad_id → creative → thumbnail_url/image_url）
+    const adImageMap = new Map();
+    try {
+      const adIds = [...new Set(creativeData.map((r) => r.ad_id).filter(Boolean))];
+      if (adIds.length > 0) {
+        // バッチで広告のcreative情報を取得（最大50件ずつ）
+        // image_url: フルサイズ静止画、thumbnail_url: 動画サムネ（小さい）
+        // object_story_specからimage_hashを取得してフルサイズURL解決
+        for (let i = 0; i < adIds.length; i += 50) {
+          const batch = adIds.slice(i, i + 50);
+          const idsParam = batch.join(",");
+          const url = `https://graph.facebook.com/v25.0/?ids=${idsParam}&fields=creative{image_url,thumbnail_url,object_story_spec}&access_token=${token}`;
+          const resp = await fetch(url);
+          const data = await resp.json().catch(() => ({}));
+          if (!data.error) {
+            const imageHashes = [];
+            for (const [adId, info] of Object.entries(data)) {
+              const cr = info?.creative || {};
+              // image_urlがあればフルサイズなのでそのまま使う
+              if (cr.image_url) {
+                adImageMap.set(adId, cr.image_url);
+              } else {
+                // object_story_specからimage_hashを探す
+                const oss = cr.object_story_spec || {};
+                const hash = oss.link_data?.image_hash || oss.photo_data?.image_hash || oss.video_data?.image_hash || "";
+                if (hash) {
+                  imageHashes.push({ adId, hash });
+                } else if (cr.thumbnail_url) {
+                  adImageMap.set(adId, cr.thumbnail_url);
+                }
+              }
+            }
+            // image_hashからフルサイズURLを解決
+            if (imageHashes.length > 0) {
+              const hashes = [...new Set(imageHashes.map((h) => h.hash))];
+              const hashUrl = `https://graph.facebook.com/v25.0/${actId}/adimages?hashes=${JSON.stringify(hashes)}&access_token=${token}`;
+              const hashResp = await fetch(hashUrl);
+              const hashData = await hashResp.json().catch(() => ({}));
+              const hashToUrl = {};
+              if (hashData.data) {
+                hashData.data.forEach((img) => {
+                  if (img.hash && img.url) hashToUrl[img.hash] = img.url;
+                  if (img.hash && img.url_128) hashToUrl[img.hash] = hashToUrl[img.hash] || img.url_128;
+                });
+              }
+              imageHashes.forEach(({ adId, hash }) => {
+                if (hashToUrl[hash]) adImageMap.set(adId, hashToUrl[hash]);
+              });
+            }
+          }
+        }
+        if (adImageMap.size > 0) console.log(`[Meta Ads] 画像URL取得: ${adImageMap.size}件`);
+      }
+    } catch (e) {
+      console.warn("[Meta Ads] 画像URL取得エラー（スキップ）:", e.message);
+    }
+
     creativeData.forEach((r) => {
       const spend = num(r.spend);
       const imp = num(r.impressions);
@@ -254,6 +322,7 @@ async function fetchMetaInsightsReport(adAccountId, startDate, endDate) {
         cost: spend,
         conversions: cv,
         avgCpc: num(r.cpc),
+        imageUrl: adImageMap.get(r.ad_id) || "",
       });
     });
 

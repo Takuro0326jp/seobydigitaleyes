@@ -5,6 +5,7 @@
  */
 
 const API_BASE = "https://ads-search.yahooapis.jp/api/v19";
+const API_BASE_DISPLAY = "https://ads-display.yahooapis.jp/api/v19";
 
 function num(v) {
   if (v === undefined || v === null || v === "") return 0;
@@ -149,12 +150,13 @@ async function fetchOneReport({
   captureRaw,
   rawOnly,
   timeoutMs = REPORT_TIMEOUT_MS,
+  apiBase = API_BASE,
 }) {
   const addBody = {
     accountId: Number(accountId) || accountId,
     operand: [{ reportName, reportType, reportDateRangeType: "CUSTOM_DATE", dateRange: { startDate: start, endDate: end }, fields }],
   };
-  const addRes = await fetch(`${API_BASE}/ReportDefinitionService/add`, {
+  const addRes = await fetch(`${apiBase}/ReportDefinitionService/add`, {
     method: "POST",
     headers,
     body: JSON.stringify(addBody),
@@ -196,7 +198,7 @@ async function fetchOneReport({
     const getBody = useRid
       ? { accountId: Number(accountId) || accountId, reportTypes: [reportType], numberResults: 500 }
       : { accountId: Number(accountId) || accountId, reportJobIds: reportJobIdNum != null && !Number.isNaN(reportJobIdNum) ? [reportJobIdNum] : [] };
-    const getRes = await fetch(`${API_BASE}/ReportDefinitionService/get`, { method: "POST", headers, body: JSON.stringify(getBody) });
+    const getRes = await fetch(`${apiBase}/ReportDefinitionService/get`, { method: "POST", headers, body: JSON.stringify(getBody) });
     const getText = await getRes.text();
     if (!getRes.ok) return { rows: [], error: `get ${getRes.status}: ${getText?.slice(0, 200)}` };
     if (diagnosticOnly) return { rows: [], _connectionOk: true };
@@ -218,7 +220,7 @@ async function fetchOneReport({
   const downloadBody = useRid
     ? { accountId: Number(accountId) || accountId, rid }
     : { accountId: Number(accountId) || accountId, reportJobId: Number(reportIdStr) };
-  const downloadRes = await fetch(`${API_BASE}/ReportDefinitionService/download`, {
+  const downloadRes = await fetch(`${apiBase}/ReportDefinitionService/download`, {
     method: "POST",
     headers,
     body: JSON.stringify(downloadBody),
@@ -232,7 +234,7 @@ async function fetchOneReport({
       accountId: Number(accountId) || accountId,
       operand: [{ reportJobId: reportJobIdNum }],
     };
-    await fetch(`${API_BASE}/ReportDefinitionService/remove`, {
+    await fetch(`${apiBase}/ReportDefinitionService/remove`, {
       method: "POST",
       headers,
       body: JSON.stringify(removeBody),
@@ -567,7 +569,7 @@ async function fetchYahooAdsReportWithMeta(startDate, endDate, userId = null, op
           }
           const dailyRows = [...byDay.values()].sort((a, b) => a.date.localeCompare(b.date));
           const rows = [...byCampaign.entries()].map(([, v]) => ({
-            media: "Yahoo広告",
+            media: "Yahoo検索広告",
             campaign: v.name,
             impressions: v.impressions,
             clicks: v.clicks,
@@ -592,6 +594,7 @@ async function fetchYahooAdsReportWithMeta(startDate, endDate, userId = null, op
         reportName: `KeywordsReport_${start}_${end}`,
         parseRows: (raw) =>
           raw.map((r) => ({
+            media: "Yahoo検索広告",
             keyword: str(getVal(r, "キーワード", "KEYWORD", "keyword")) || str(getVal(r, "検索クエリ", "SEARCH_QUERY", "search_query")),
             campaign: str(getVal(r, "キャンペーン名", "CAMPAIGN_NAME", "campaign_name")),
             impressions: num(getVal(r, "インプレッション数", "IMPS", "imps", "IMPRESSIONS", "impressions")),
@@ -608,6 +611,7 @@ async function fetchYahooAdsReportWithMeta(startDate, endDate, userId = null, op
         reportName: `GeoReport_${start}_${end}`,
         parseRows: (raw) =>
           raw.map((r) => ({
+            media: "Yahoo検索広告",
             pref: str(getVal(r, "都道府県", "PREFECTURE", "prefecture")),
             campaign: str(getVal(r, "キャンペーン名", "CAMPAIGN_NAME", "campaign_name")),
             impressions: num(getVal(r, "インプレッション数", "IMPS", "imps", "IMPRESSIONS", "impressions")),
@@ -734,7 +738,132 @@ async function fetchYahooAdsReportWithMeta(startDate, endDate, userId = null, op
     } else {
       console.log(`[Yahoo Ads] 取得完了: 0件 (${startDate}〜${endDate})`);
     }
-    const out = { rows, areaRows, hourRows, dailyRows, keywordRows, adRows, assetRows, customerId: accountId };
+    // --- YDA（ディスプレイ広告）取得 ---
+    let ydaRows = [], ydaAreaRows = [], ydaDailyRows = [];
+    try {
+      const ydaCampaignResult = await withReportTimeout(
+        fetchOneReport({
+          headers,
+          accountId,
+          start,
+          end,
+          reportType: "CAMPAIGN",
+          fields: ["CAMPAIGN_ID", "CAMPAIGN_NAME", "DAY", "IMPS", "CLICKS", "COST", "CONVERSIONS"],
+          reportName: `YDA_CampaignReport_${start}_${end}`,
+          parseRows: (raw) => {
+            const byCamp = new Map();
+            const byDay = new Map();
+            for (const r of raw) {
+              const cname = str(getVal(r, "キャンペーン名", "CAMPAIGN_NAME", "campaign_name")) || str(r._vals?.[1]);
+              const imps = num(getVal(r, "インプレッション数", "IMPS", "imps", "IMPRESSIONS")) || num(r._vals?.[3]);
+              const clicks = num(getVal(r, "クリック数", "CLICKS", "clicks")) || num(r._vals?.[4]);
+              const cost = num(getVal(r, "費用", "コスト", "COST", "cost")) || num(r._vals?.[5]);
+              const conv = num(getVal(r, "コンバージョン数", "CONVERSIONS", "conversions")) || num(r._vals?.[6]);
+              if (!byCamp.has(cname)) byCamp.set(cname, { name: cname, impressions: 0, clicks: 0, cost: 0, conversions: 0 });
+              const a = byCamp.get(cname);
+              a.impressions += imps; a.clicks += clicks; a.cost += cost; a.conversions += conv;
+              const dayVal = str(getVal(r, "日", "DAY", "day", "日付")) || str(r._vals?.[2]);
+              if (dayVal) {
+                const day = String(dayVal).replace(/-/g, "").slice(0, 8);
+                if (/^\d{8}$/.test(day)) {
+                  if (!byDay.has(day)) byDay.set(day, { date: day, impressions: 0, clicks: 0, cost: 0, conversions: 0 });
+                  const d = byDay.get(day);
+                  d.impressions += imps; d.clicks += clicks; d.cost += cost; d.conversions += conv;
+                }
+              }
+            }
+            const rows = [...byCamp.values()].map((v) => ({ media: "Yahooディスプレイ広告", campaign: v.name, impressions: v.impressions, clicks: v.clicks, cost: v.cost, conversions: v.conversions }));
+            const dailyRows = [...byDay.values()].sort((a, b) => a.date.localeCompare(b.date));
+            return { rows, dailyRows };
+          },
+          apiBase: API_BASE_DISPLAY,
+        }),
+        REPORT_TIMEOUT_MS + 60000
+      );
+      ydaRows = ydaCampaignResult?.rows ?? [];
+      ydaDailyRows = ydaCampaignResult?.dailyRows ?? [];
+      if (ydaRows.length > 0) console.log(`[Yahoo Ads YDA] 取得完了: campaign=${ydaRows.length}`);
+    } catch (e) {
+      console.warn("[Yahoo Ads YDA] エラー（スキップ）:", e.message);
+    }
+
+    // --- YDA 広告レポート（バナー画像付き）---
+    let ydaAdRows = [];
+    try {
+      const ydaAdResult = await withReportTimeout(
+        fetchOneReport({
+          headers,
+          accountId,
+          start,
+          end,
+          reportType: "AD",
+          fields: ["CAMPAIGN_NAME", "ADGROUP_NAME", "AD_NAME", "MEDIA_ID", "IMPS", "CLICKS", "COST", "CONVERSIONS"],
+          reportName: `YDA_AdReport_${start}_${end}`,
+          parseRows: (raw) =>
+            raw.map((r) => ({
+              media: "Yahooディスプレイ広告",
+              campaign: str(getVal(r, "キャンペーン名", "CAMPAIGN_NAME", "campaign_name")) || str(r._vals?.[0]),
+              adGroup: str(getVal(r, "広告グループ名", "ADGROUP_NAME", "adgroup_name")) || str(r._vals?.[1]),
+              adName: str(getVal(r, "広告名", "AD_NAME", "ad_name")) || str(r._vals?.[2]),
+              mediaId: str(getVal(r, "メディアID", "MEDIA_ID", "media_id")) || str(r._vals?.[3]),
+              impressions: num(getVal(r, "インプレッション数", "IMPS", "imps")) || num(r._vals?.[4]),
+              clicks: num(getVal(r, "クリック数", "CLICKS", "clicks")) || num(r._vals?.[5]),
+              cost: num(getVal(r, "費用", "コスト", "COST", "cost")) || num(r._vals?.[6]),
+              conversions: num(getVal(r, "コンバージョン数", "CONVERSIONS", "conversions")) || num(r._vals?.[7]),
+            })),
+          apiBase: API_BASE_DISPLAY,
+        }),
+        REPORT_TIMEOUT_MS + 60000
+      );
+      ydaAdRows = ydaAdResult?.rows ?? [];
+      if (ydaAdRows.length > 0) console.log(`[Yahoo Ads YDA] 広告取得: ${ydaAdRows.length}件`);
+
+      // MediaService で画像URL取得
+      const mediaIds = [...new Set(ydaAdRows.map((r) => r.mediaId).filter(Boolean))];
+      if (mediaIds.length > 0) {
+        try {
+          const mediaBody = {
+            accountId: Number(accountId) || accountId,
+            mediaIds: mediaIds.slice(0, 500).map((id) => Number(id) || id),
+          };
+          const mediaRes = await fetch(`${API_BASE_DISPLAY}/MediaService/get`, {
+            method: "POST",
+            headers,
+            body: JSON.stringify(mediaBody),
+          });
+          const mediaText = await mediaRes.text();
+          let mediaData;
+          try { mediaData = JSON.parse(mediaText); } catch { mediaData = {}; }
+          const mediaUrlMap = new Map();
+          const values = mediaData?.rval?.values ?? [];
+          for (const v of values) {
+            const m = v?.media ?? v?.mediaRecord ?? v;
+            const mid = String(m?.mediaId ?? m?.media_id ?? "");
+            const url = m?.thumbnailUrl ?? m?.thumbnail_url ?? m?.imageMedia?.url ?? m?.url ?? "";
+            if (mid && url) mediaUrlMap.set(mid, url);
+          }
+          if (mediaUrlMap.size > 0) {
+            console.log(`[Yahoo Ads YDA] 画像URL取得: ${mediaUrlMap.size}件`);
+            ydaAdRows.forEach((r) => {
+              if (r.mediaId && mediaUrlMap.has(r.mediaId)) {
+                r.imageUrl = mediaUrlMap.get(r.mediaId);
+              }
+            });
+          }
+        } catch (me) {
+          console.warn("[Yahoo Ads YDA] MediaService エラー（スキップ）:", me.message);
+        }
+      }
+    } catch (e) {
+      console.warn("[Yahoo Ads YDA] 広告レポートエラー（スキップ）:", e.message);
+    }
+
+    // YSA + YDA を結合
+    const allRows = [...rows, ...ydaRows];
+    const allDailyRows = [...dailyRows, ...ydaDailyRows];
+    const allAdRows = [...adRows, ...ydaAdRows];
+
+    const out = { rows: allRows, areaRows, hourRows, dailyRows: allDailyRows, keywordRows, adRows: allAdRows, assetRows, customerId: accountId };
     if (creativeHint) out._hint = creativeHint;
     if (results[3]?.error || results[4]?.error || (adRows.length === 0 && assetRows.length === 0)) {
       out._creativeDiagnostic = {

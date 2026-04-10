@@ -9,7 +9,7 @@ const pool = require("../../db");
 
 /** 依頼マッピング: cost_micros / average_cpc は円に換算 */
 function microsToYen(v) {
-  return Number(v || 0) / 1_000_000;
+  return Math.round(Number(v || 0) / 1_000_000);
 }
 
 function num(v) {
@@ -45,6 +45,49 @@ function pickDowFromSegment(seg) {
 }
 
 const GOOGLE_MEDIA = "Google Ads";
+
+/** advertising_channel_type → 媒体ラベル（文字列 / 数値enum 両対応） */
+const CHANNEL_NUM_MAP = { 2: "SEARCH", 3: "DISPLAY", 6: "VIDEO", 7: "SHOPPING", 11: "PERFORMANCE_MAX", 13: "DEMAND_GEN" };
+function googleChannelToMedia(channelType) {
+  let ch = channelType;
+  if (typeof ch === "number" || /^\d+$/.test(String(ch))) ch = CHANNEL_NUM_MAP[Number(ch)] || "";
+  ch = String(ch || "").toUpperCase();
+  if (ch === "SEARCH") return "Google検索広告";
+  if (ch === "DISPLAY") return "Googleディスプレイ広告";
+  if (ch === "VIDEO") return "Google動画広告";
+  if (ch === "SHOPPING") return "Googleショッピング広告";
+  if (ch === "PERFORMANCE_MAX") return "Google P-MAX";
+  if (ch === "DEMAND_GEN") return "Google Demand Gen";
+  return "Google Ads";
+}
+
+/** Google Ads Geo Target ID → 表示名（主要国） */
+const GEO_TARGET_NAMES = {
+  2392: "日本",
+  2840: "アメリカ",
+  2826: "イギリス",
+  2124: "カナダ",
+  2036: "オーストラリア",
+  2156: "中国",
+  2410: "韓国",
+  2158: "台湾",
+  2702: "シンガポール",
+  2764: "タイ",
+  2360: "インドネシア",
+  2608: "フィリピン",
+  2704: "ベトナム",
+  2356: "インド",
+  2276: "ドイツ",
+  2250: "フランス",
+  2380: "イタリア",
+  2724: "スペイン",
+  2076: "ブラジル",
+  2484: "メキシコ",
+  2643: "ロシア",
+  2344: "香港",
+  2458: "マレーシア",
+  2554: "ニュージーランド",
+};
 
 /** API 例外を画面・_hint 用の短文に（権限エラー時は MCC の案内を付与） */
 function userMessageFromGoogleAdsException(err) {
@@ -277,6 +320,7 @@ async function fetchGoogleAdsReportWithMeta(startDate, endDate, userId = null, o
       SELECT
         segments.date,
         campaign.name,
+        campaign.advertising_channel_type,
         metrics.cost_micros,
         metrics.impressions,
         metrics.clicks,
@@ -292,6 +336,7 @@ async function fetchGoogleAdsReportWithMeta(startDate, endDate, userId = null, o
       SELECT
         segments.date,
         campaign.name,
+        campaign.advertising_channel_type,
         metrics.cost_micros,
         metrics.impressions,
         metrics.clicks,
@@ -306,6 +351,7 @@ async function fetchGoogleAdsReportWithMeta(startDate, endDate, userId = null, o
       SELECT
         segments.date,
         campaign.name,
+        campaign.advertising_channel_type,
         metrics.cost_micros,
         metrics.impressions,
         metrics.clicks,
@@ -342,6 +388,7 @@ async function fetchGoogleAdsReportWithMeta(startDate, endDate, userId = null, o
       SELECT
         segments.date,
         campaign.name,
+        campaign.advertising_channel_type,
         ad_group.name,
         ad_group_ad.ad.name,
         ad_group_ad.ad.type,
@@ -358,6 +405,7 @@ async function fetchGoogleAdsReportWithMeta(startDate, endDate, userId = null, o
       SELECT
         segments.date,
         campaign.name,
+        campaign.advertising_channel_type,
         ad_group.name,
         ad_group_ad.ad.name,
         ad_group_ad.ad.type,
@@ -374,6 +422,7 @@ async function fetchGoogleAdsReportWithMeta(startDate, endDate, userId = null, o
         segments.date,
         ad_group_criterion.keyword.text,
         campaign.name,
+        campaign.advertising_channel_type,
         metrics.cost_micros,
         metrics.impressions,
         metrics.clicks,
@@ -390,6 +439,7 @@ async function fetchGoogleAdsReportWithMeta(startDate, endDate, userId = null, o
         segments.date,
         ad_group_criterion.keyword.text,
         campaign.name,
+        campaign.advertising_channel_type,
         metrics.cost_micros,
         metrics.impressions,
         metrics.clicks,
@@ -419,21 +469,59 @@ async function fetchGoogleAdsReportWithMeta(startDate, endDate, userId = null, o
       campaignRows = await safeQuery(customer, qCampaignMinimal, "campaign_minimal", toArray);
     }
 
-    const [areaRowsRaw, hourRowsRaw, dailyRowsRaw, adRowsRaw, keywordRowsRaw] = await Promise.all([
+    // 画像アセットクエリ: ad_group_ad_asset_view から画像URLとサイズを取得
+    const qAdAssetImage = `
+      SELECT
+        ad_group_ad_asset_view.ad_group_ad,
+        asset.image_asset.full_size.url,
+        asset.image_asset.full_size.width_pixels,
+        asset.image_asset.full_size.height_pixels,
+        asset.type
+      FROM ad_group_ad_asset_view
+      WHERE asset.type = 'IMAGE'`;
+
+    const [areaRowsRaw, hourRowsRaw, dailyRowsRaw, adRowsRaw, keywordRowsRaw, adImageRaw] = await Promise.all([
       safeQuery(customer, qArea, "user_location_view", toArray),
       safeQuery(customer, qHour, "hour", toArray),
       safeQuery(customer, qDaily, "daily", toArray),
       safeQueryPrimaryFallback(customer, qAd, qAdNoCostPerConv, "ad_group_ad", toArray),
       safeQueryPrimaryFallback(customer, qKeyword, qKeywordNoAvgCpc, "keyword_view", toArray),
+      safeQuery(customer, qAdAssetImage, "ad_image_asset", toArray),
     ]);
+
+    // 広告リソース名 → 画像URLマッピング（横長1200x628を優先、なければ最大サイズ）
+    const adImageMap = new Map();
+    for (const row of adImageRaw) {
+      // asset_viewのresource_nameから広告のresource_nameを抽出
+      // 形式: customers/{id}/adGroupAdAssetViews/{adGroupId}~{adId}~{assetId}~{fieldType}
+      const viewResource = row.ad_group_ad_asset_view?.resource_name
+        || row.adGroupAdAssetView?.resourceName || "";
+      const m = viewResource.match(/customers\/(\d+)\/adGroupAdAssetViews\/(\d+~\d+)/);
+      const adResource = m ? `customers/${m[1]}/adGroupAds/${m[2]}` : "";
+      const imgAsset = row.asset?.image_asset || row.asset?.imageAsset || {};
+      const fs = imgAsset.full_size || imgAsset.fullSize || {};
+      const imageUrl = fs.url || "";
+      const w = Number(fs.width_pixels || fs.widthPixels || 0);
+      const h = Number(fs.height_pixels || fs.heightPixels || 0);
+      if (!adResource || !imageUrl) continue;
+      const existing = adImageMap.get(adResource);
+      // 優先: 横長(w>h)で大きいもの → なければ最大面積
+      const score = (w > h ? 10000000 : 0) + w * h;
+      if (!existing || score > existing.score) {
+        adImageMap.set(adResource, { url: imageUrl, w, h, score });
+      }
+    }
+    if (adImageMap.size > 0) console.log(`[Google Ads] 画像URL取得: ${adImageMap.size}広告`);
 
     const byCampaign = new Map();
     for (const row of campaignRows) {
       const name = row.campaign?.name || "";
+      const channelType = row.campaign?.advertising_channel_type || row.campaign?.advertisingChannelType || "";
       const m = row.metrics || {};
       if (!byCampaign.has(name)) {
         byCampaign.set(name, {
           name,
+          channelType,
           impressions: 0,
           clicks: 0,
           cost: 0,
@@ -453,15 +541,15 @@ async function fetchGoogleAdsReportWithMeta(startDate, endDate, userId = null, o
 
     const rows = [];
     for (const [, v] of byCampaign) {
-      const ctrPct = v.impressions > 0 ? v.ctrNumerator / v.impressions : 0;
+      const ctrPct = v.impressions > 0 ? Math.round((v.ctrNumerator / v.impressions) * 100) / 100 : 0;
       rows.push({
-        media: GOOGLE_MEDIA,
+        media: googleChannelToMedia(v.channelType),
         campaign: v.name,
         impressions: v.impressions,
         clicks: v.clicks,
         cost: v.cost,
-        conversions: v.conversions,
-        conversionsValue: v.conversionsValue,
+        conversions: Math.round(v.conversions * 100) / 100,
+        conversionsValue: Math.round(v.conversionsValue),
         ctr: ctrPct,
       });
     }
@@ -473,7 +561,8 @@ async function fetchGoogleAdsReportWithMeta(startDate, endDate, userId = null, o
       const key = String(id != null ? id : "unknown");
       const m = row.metrics || {};
       if (!byCountry.has(key)) {
-        byCountry.set(key, { pref: `country:${key}`, impressions: 0, cost: 0, conversions: 0 });
+        const name = GEO_TARGET_NAMES[Number(key)] || `その他 (${key})`;
+        byCountry.set(key, { pref: name, impressions: 0, cost: 0, conversions: 0 });
       }
       const a = byCountry.get(key);
       a.impressions += num(m.impressions);
@@ -516,18 +605,25 @@ async function fetchGoogleAdsReportWithMeta(startDate, endDate, userId = null, o
     const byAd = new Map();
     for (const row of adRowsRaw) {
       const camp = row.campaign?.name || "";
+      const channelType = row.campaign?.advertising_channel_type || row.campaign?.advertisingChannelType || "";
       const ag = row.ad_group?.name || row.adGroup?.name || "";
       const ad = row.ad_group_ad?.ad || row.adGroupAd?.ad || {};
       const adName = ad.name || "(広告)";
       const adType = ad.type != null ? String(ad.type).replace(/^AD_TYPE_/, "") : "";
       const key = `${camp}\t${ag}\t${adName}\t${adType}`;
       const m = row.metrics || {};
+      // 画像URL: ad_group_adのresource_nameで紐付け
+      const adGroupAdResource = row.ad_group_ad?.resource_name || row.adGroupAd?.resourceName || "";
+      const imgEntry = adImageMap.get(adGroupAdResource);
+      const imageUrl = imgEntry?.url || "";
       if (!byAd.has(key)) {
         byAd.set(key, {
           campaign: camp,
+          channelType,
           adGroup: ag,
           adName,
           format: adType,
+          imageUrl,
           impressions: 0,
           clicks: 0,
           cost: 0,
@@ -541,7 +637,7 @@ async function fetchGoogleAdsReportWithMeta(startDate, endDate, userId = null, o
       a.conversions += num(m.conversions);
     }
     const adRows = [...byAd.values()].map((v) => ({
-      media: GOOGLE_MEDIA,
+      media: googleChannelToMedia(v.channelType),
       campaign: v.campaign,
       adGroup: v.adGroup,
       adName: v.adName,
@@ -550,6 +646,7 @@ async function fetchGoogleAdsReportWithMeta(startDate, endDate, userId = null, o
       cost: v.cost,
       conversions: v.conversions,
       format: v.format,
+      imageUrl: v.imageUrl || "",
     }));
 
     const byKeyword = new Map();
@@ -558,6 +655,7 @@ async function fetchGoogleAdsReportWithMeta(startDate, endDate, userId = null, o
       const kw = crit.keyword || {};
       const text = kw.text || "";
       const camp = row.campaign?.name || "";
+      const channelType = row.campaign?.advertising_channel_type || row.campaign?.advertisingChannelType || "";
       const key = `${camp}\t${text}`;
       const m = row.metrics || {};
       const imp = num(m.impressions);
@@ -566,6 +664,7 @@ async function fetchGoogleAdsReportWithMeta(startDate, endDate, userId = null, o
         byKeyword.set(key, {
           keyword: text,
           campaign: camp,
+          channelType,
           impressions: 0,
           clicks: 0,
           cost: 0,
@@ -588,20 +687,21 @@ async function fetchGoogleAdsReportWithMeta(startDate, endDate, userId = null, o
       }
     }
     const keywordRows = [...byKeyword.values()].map((v) => ({
-      media: GOOGLE_MEDIA,
+      media: googleChannelToMedia(v.channelType),
       keyword: v.keyword,
       campaign: v.campaign,
       impressions: v.impressions,
       clicks: v.clicks,
       cost: v.cost,
-      ctr: v.impressions > 0 ? v.ctrNumerator / v.impressions : 0,
-      conversions: v.conversions,
-      avgCpc:
+      ctr: v.impressions > 0 ? Math.round((v.ctrNumerator / v.impressions) * 100) / 100 : 0,
+      conversions: Math.round(v.conversions * 100) / 100,
+      avgCpc: Math.round(
         v.avgCpcClkWeight > 0
           ? microsToYen(v.avgCpcMicrosWeighted / v.avgCpcClkWeight)
           : v.clicks > 0
             ? v.cost / v.clicks
-            : 0,
+            : 0
+      ),
     }));
 
     const byDay = new Map();

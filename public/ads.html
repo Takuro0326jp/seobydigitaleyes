@@ -178,6 +178,11 @@
     }
     .media-card:hover { border-color: #c0bdb5; box-shadow: 0 2px 8px rgba(0,0,0,.06); }
     .media-card.active { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-light); }
+    .media-breakdown-toggle .breakdown-arrow { transition: transform .2s; display: inline-block; }
+    .media-breakdown-toggle.open .breakdown-arrow { transform: rotate(180deg); }
+    .overview-toggle-btn .breakdown-arrow { transition: transform .2s; display: inline-block; }
+    .overview-toggle-btn.open .breakdown-arrow { transform: rotate(180deg); }
+    .overview-toggle-btn:hover { background: var(--border) !important; }
     .media-name { font-size: 13px; font-weight: 600; margin-bottom: 10px; display: flex; align-items: center; gap: 6px; }
     .media-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
     .media-metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
@@ -444,10 +449,16 @@
   <div class="panel">
     <div class="panel-header">
       <span class="panel-title">エリア別パフォーマンス</span>
+      <div style="display:flex;align-items:center;gap:12px">
+        <select id="area-media-filter" style="border:1px solid var(--border);padding:6px 12px;border-radius:6px;font-size:13px;min-width:150px;max-width:250px;background:var(--surface2)">
+          <option value="">すべての媒体</option>
+        </select>
+      </div>
     </div>
     <table class="data-table">
       <thead>
         <tr>
+          <th class="sortable" data-sort="media">媒体 <span class="sort-icon">↕</span></th>
           <th class="sortable" data-sort="pref">エリア <span class="sort-icon">↕</span></th>
           <th class="sortable" data-sort="cost">広告費 <span class="sort-icon">↕</span></th>
           <th class="sortable" data-sort="conversions">CV <span class="sort-icon">↕</span></th>
@@ -458,7 +469,7 @@
         </tr>
       </thead>
       <tbody id="area-tbody">
-        <tr class="empty-row"><td colspan="7" style="text-align:center;color:var(--text-muted);padding:24px">データがありません</td></tr>
+        <tr class="empty-row"><td colspan="8" style="text-align:center;color:var(--text-muted);padding:24px">データがありません</td></tr>
       </tbody>
     </table>
   </div>
@@ -481,10 +492,18 @@
     </div>
   </div>
   <div style="margin-top:16px" class="panel">
-    <div class="panel-header"><span class="panel-title">時間帯別サマリー</span></div>
+    <div class="panel-header">
+      <span class="panel-title">時間帯別サマリー</span>
+      <div style="display:flex;align-items:center;gap:12px">
+        <select id="time-media-filter" style="border:1px solid var(--border);padding:6px 12px;border-radius:6px;font-size:13px;min-width:150px;max-width:250px;background:var(--surface2)">
+          <option value="">すべての媒体</option>
+        </select>
+      </div>
+    </div>
     <table class="data-table">
       <thead>
         <tr>
+          <th class="sortable" data-sort="media">媒体 <span class="sort-icon">↕</span></th>
           <th class="sortable" data-sort="hourSlot">時間帯 <span class="sort-icon">↕</span></th>
           <th class="sortable" data-sort="cost">広告費 <span class="sort-icon">↕</span></th>
           <th class="sortable" data-sort="conversions">CV <span class="sort-icon">↕</span></th>
@@ -493,7 +512,7 @@
         </tr>
       </thead>
       <tbody id="time-tbody">
-        <tr class="empty-row"><td colspan="5" style="text-align:center;color:var(--text-muted);padding:24px">データがありません</td></tr>
+        <tr class="empty-row"><td colspan="6" style="text-align:center;color:var(--text-muted);padding:24px">データがありません</td></tr>
       </tbody>
     </table>
   </div>
@@ -548,10 +567,21 @@
   </div>
   <div id="creative-sub-panel-text" class="creative-sub-panel">
     <div class="panel" style="margin-bottom:0">
-      <div class="panel-header"><span class="panel-title">テキスト広告（検索・RSAテキスト系）</span></div>
+      <div class="panel-header">
+        <span class="panel-title">テキスト広告（検索・RSAテキスト系）</span>
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+          <select id="creative-text-media-filter" style="border:1px solid var(--border);padding:6px 12px;border-radius:6px;font-size:13px;min-width:150px;max-width:250px;background:var(--surface2)">
+            <option value="">すべての媒体</option>
+          </select>
+          <select id="creative-text-campaign-filter" style="border:1px solid var(--border);padding:6px 12px;border-radius:6px;font-size:13px;min-width:180px;max-width:300px;background:var(--surface2)">
+            <option value="">すべてのキャンペーン</option>
+          </select>
+        </div>
+      </div>
       <table class="data-table" id="creative-text-table">
         <thead>
           <tr>
+            <th class="sortable" data-sort="media">媒体</th>
             <th class="sortable" data-sort="campaign">キャンペーン名</th>
             <th class="sortable" data-sort="adGroup">広告グループ</th>
             <th class="sortable" data-sort="nameLabel">広告名 / アセット</th>
@@ -564,17 +594,29 @@
           </tr>
         </thead>
         <tbody id="creative-text-tbody">
-          <tr class="empty-row"><td colspan="9" style="text-align:center;color:var(--text-muted);padding:24px">データがありません</td></tr>
+          <tr class="empty-row"><td colspan="10" style="text-align:center;color:var(--text-muted);padding:24px">データがありません</td></tr>
         </tbody>
       </table>
     </div>
   </div>
   <div id="creative-sub-panel-banner" class="creative-sub-panel" style="display:none">
     <div class="panel" style="margin-bottom:0">
-      <div class="panel-header"><span class="panel-title">バナー広告（画像・動画・Meta 等）</span></div>
+      <div class="panel-header">
+        <span class="panel-title">バナー広告（画像・動画・Meta 等）</span>
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+          <select id="creative-banner-media-filter" style="border:1px solid var(--border);padding:6px 12px;border-radius:6px;font-size:13px;min-width:150px;max-width:250px;background:var(--surface2)">
+            <option value="">すべての媒体</option>
+          </select>
+          <select id="creative-banner-campaign-filter" style="border:1px solid var(--border);padding:6px 12px;border-radius:6px;font-size:13px;min-width:180px;max-width:300px;background:var(--surface2)">
+            <option value="">すべてのキャンペーン</option>
+          </select>
+        </div>
+      </div>
       <table class="data-table" id="creative-banner-table">
         <thead>
           <tr>
+            <th>プレビュー</th>
+            <th class="sortable" data-sort="media">媒体</th>
             <th class="sortable" data-sort="campaign">キャンペーン名</th>
             <th class="sortable" data-sort="adGroup">広告グループ</th>
             <th class="sortable" data-sort="adName">広告名</th>
@@ -587,10 +629,19 @@
           </tr>
         </thead>
         <tbody id="creative-banner-tbody">
-          <tr class="empty-row"><td colspan="9" style="text-align:center;color:var(--text-muted);padding:24px">データがありません</td></tr>
+          <tr class="empty-row"><td colspan="11" style="text-align:center;color:var(--text-muted);padding:24px">データがありません</td></tr>
         </tbody>
       </table>
     </div>
+  </div>
+</div>
+
+<!-- 画像プレビューモーダル -->
+<div id="image-preview-modal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.7);align-items:center;justify-content:center;cursor:zoom-out" onclick="this.style.display='none'">
+  <div style="position:relative;max-width:90vw;max-height:90vh;display:flex;flex-direction:column;align-items:center;gap:8px" onclick="event.stopPropagation()">
+    <img id="image-preview-img" src="" alt="" style="max-width:90vw;max-height:80vh;border-radius:8px;box-shadow:0 8px 32px rgba(0,0,0,.4);object-fit:contain;background:#fff">
+    <div id="image-preview-caption" style="color:#fff;font-size:13px;text-align:center;max-width:90vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></div>
+    <button onclick="document.getElementById('image-preview-modal').style.display='none'" style="position:absolute;top:-12px;right:-12px;width:32px;height:32px;border-radius:50%;border:none;background:#fff;color:#333;font-size:18px;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.3);display:flex;align-items:center;justify-content:center">&times;</button>
   </div>
 </div>
 
@@ -599,7 +650,13 @@
   <div class="panel">
     <div class="panel-header">
       <span class="panel-title">キーワード一覧</span>
-      <div style="display:flex;align-items:center;gap:12px">
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+        <select id="keyword-media-filter" style="border:1px solid var(--border);padding:6px 12px;border-radius:6px;font-size:13px;min-width:150px;max-width:250px;background:var(--surface2)">
+          <option value="">すべての媒体</option>
+        </select>
+        <select id="keyword-campaign-filter" style="border:1px solid var(--border);padding:6px 12px;border-radius:6px;font-size:13px;min-width:180px;max-width:300px;background:var(--surface2)">
+          <option value="">すべてのキャンペーン</option>
+        </select>
         <input type="text" id="keyword-search" placeholder="キーワードで検索…" style="border:1px solid var(--border);padding:6px 12px;border-radius:6px;font-size:13px;width:200px;background:var(--surface2)">
         <span id="keyword-count" style="font-size:12px;color:var(--text-muted)">—</span>
       </div>
@@ -607,6 +664,7 @@
     <table class="data-table">
       <thead>
         <tr>
+          <th class="sortable" data-sort="media">媒体 <span class="sort-icon">↕</span></th>
           <th class="sortable" data-sort="keyword">キーワード <span class="sort-icon">↕</span></th>
           <th class="sortable" data-sort="campaign">キャンペーン <span class="sort-icon">↕</span></th>
           <th class="sortable" data-sort="cost">広告費 <span class="sort-icon">↕</span></th>
@@ -618,7 +676,7 @@
         </tr>
       </thead>
       <tbody id="keyword-tbody">
-        <tr class="empty-row"><td colspan="8" style="text-align:center;color:var(--text-muted);padding:24px">データがありません</td></tr>
+        <tr class="empty-row"><td colspan="9" style="text-align:center;color:var(--text-muted);padding:24px">データがありません</td></tr>
       </tbody>
     </table>
   </div>
