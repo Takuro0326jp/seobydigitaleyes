@@ -1056,21 +1056,9 @@
           .join("")}
         ${m.id === "google" ? `
         <div style="margin-top:20px;padding:16px;background:var(--accent-light);border:1px solid rgba(42,92,219,.2);border-radius:10px">
-          <div style="font-size:12px;font-weight:600;color:var(--accent);margin-bottom:10px">1. API認証元（MCCでOAuth・<strong>選択中の Target 専用</strong>）</div>
-          <div id="google-auth-sources-list" style="margin-bottom:12px"></div>
-          <div style="margin-bottom:14px">
-            <div style="margin-bottom:8px">
-              <input id="google-auth-source-name" type="text" placeholder="認証元名（例: クライアントA / Google）" maxlength="100" style="width:100%;border:1px solid var(--border);padding:8px 12px;border-radius:6px;font-size:13px">
-            </div>
-            <div style="margin-bottom:8px">
-              <input id="google-auth-source-mcc-id" type="text" placeholder="MCC ID（例: 9838710115）" maxlength="12" style="width:100%;border:1px solid var(--border);padding:8px 12px;border-radius:6px;font-size:13px;font-family:'DM Mono',monospace" inputmode="numeric">
-            </div>
-            <button id="google-auth-connect-btn" type="button" style="display:inline-flex;align-items:center;gap:6px;background:var(--accent);color:#fff;padding:8px 16px;border-radius:8px;font-size:12px;font-weight:600;border:none;cursor:pointer">
-              Google で連携
-            </button>
-          </div>
-          <div style="font-size:12px;font-weight:600;color:var(--accent);margin-bottom:10px;padding-top:12px;border-top:1px solid rgba(42,92,219,.25)">2. 広告アカウント（1 Target で 1 つのみ選択）</div>
-          <div style="font-size:11px;color:var(--text-muted);margin-bottom:12px">API認証元は<strong>上部で選んでいる Target（ドメイン）ごと</strong>に別々です。認証元の追加は Target 選択後に「Google で連携」から行ってください（管理者画面でも可）。</div>
+          <div id="google-auth-sources-list" style="display:none"></div>
+          <div style="font-size:12px;font-weight:600;color:var(--accent);margin-bottom:10px">広告アカウント（1 Target で 1 つのみ選択）</div>
+          <div style="font-size:11px;color:var(--text-muted);margin-bottom:12px">API認証元は管理者画面で設定されています。下のドロップダウンから認証元を選び、アカウントを追加してください。</div>
           <div id="google-ads-account-list" style="margin-bottom:16px"></div>
           <div id="google-ads-add-section" style="margin-top:12px;padding-top:4px">
             <div style="font-size:11px;font-weight:600;color:var(--text-muted);margin-bottom:8px">アカウントを追加</div>
@@ -1103,16 +1091,9 @@
         ` : ""}
         ${m.id === "yahoo" ? `
         <div style="margin-top:20px;padding:16px;background:rgba(255,0,51,.08);border:1px solid rgba(255,0,51,.2);border-radius:10px">
-          <div style="font-size:12px;font-weight:600;color:#cc0029;margin-bottom:10px">1. Yahoo API認証元（<strong>選択中の Target 専用</strong>）</div>
-          <div id="yahoo-auth-sources-list" style="margin-bottom:12px"></div>
-          <div style="margin-bottom:14px">
-            <input id="yahoo-auth-source-name" type="text" placeholder="認証元名（例: クライアントA / Yahoo）" maxlength="100" style="width:100%;border:1px solid var(--border);padding:8px 12px;border-radius:6px;font-size:13px;margin-bottom:8px">
-            <button id="yahoo-auth-connect-btn" type="button" style="display:inline-flex;align-items:center;gap:6px;background:#cc0029;color:#fff;padding:8px 16px;border-radius:8px;font-size:12px;font-weight:600;border:none;cursor:pointer">
-              Yahoo で連携
-            </button>
-          </div>
-          <div style="font-size:12px;font-weight:600;color:#cc0029;margin-bottom:10px;padding-top:12px;border-top:1px solid rgba(255,0,51,.25)">2. 広告アカウント</div>
-          <div style="font-size:11px;color:var(--text-muted);margin-bottom:12px">API認証元は Target ごとに別々です。上で連携してから、アカウントを追加してください。</div>
+          <div id="yahoo-auth-sources-list" style="display:none"></div>
+          <div style="font-size:12px;font-weight:600;color:#cc0029;margin-bottom:10px">広告アカウント</div>
+          <div style="font-size:11px;color:var(--text-muted);margin-bottom:12px">API認証元は管理者画面で設定されています。下のドロップダウンから認証元を選び、アカウントを追加してください。</div>
           <div id="yahoo-ads-account-list" style="margin-bottom:16px"></div>
           <div id="yahoo-ads-add-section" style="margin-top:8px;padding-top:4px">
             <div style="font-size:11px;font-weight:600;color:var(--text-muted);margin-bottom:8px">アカウントを追加</div>
