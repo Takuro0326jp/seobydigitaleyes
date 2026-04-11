@@ -15,6 +15,8 @@
   let mediaData = [];
   let connectedMediaFromStatus = []; // 連携済み媒体（status API から取得）
   let lastReportMeta = {}; // 直近レポートの meta（google_customer_id があれば Google 連携済み）
+  let adsGoogleAccountId = ""; // 直近レポートの Google Ads Customer ID
+  let adsGoogleAuthSourceId = ""; // 直近レポートの api_auth_source_id
   let lastReportHint = null; // 取得失敗時のヒント（MCC 等）
   let lastCreativeDiagnostic = null; // AD/Asset レポートのエラー（クリエイティブタブが空のとき）
   let lastReportAdRows = []; // API応答の adRows を別途保持（上書き検証用）
@@ -324,6 +326,9 @@
       const metaVals = JSON.parse(localStorage.getItem("api_meta") || "{}");
       const metaId = (metaVals.ad_account_id || "").trim();
       if (metaId) params.ad_account_id = metaId;
+      // 案件 (company_url_id) が選択されている場合は付与
+      const cuId = window._selectedCompanyUrlId || sessionStorage.getItem("ads_company_url_id") || "";
+      if (cuId) params.company_url_id = cuId;
     }
     return params;
   }
@@ -1051,43 +1056,44 @@
           .join("")}
         ${m.id === "google" ? `
         <div style="margin-top:20px;padding:16px;background:var(--accent-light);border:1px solid rgba(42,92,219,.2);border-radius:10px">
-          <div style="font-size:12px;font-weight:600;color:var(--accent);margin-bottom:10px">1. API認証元（MCCで先にOAuth）</div>
+          <div style="font-size:12px;font-weight:600;color:var(--accent);margin-bottom:10px">1. API認証元（MCCでOAuth・<strong>選択中の Target 専用</strong>）</div>
           <div id="google-auth-sources-list" style="margin-bottom:12px"></div>
-          <div style="margin-bottom:12px">
+          <div style="margin-bottom:14px">
             <div style="margin-bottom:8px">
-              <input id="google-auth-source-name" type="text" placeholder="認証元名（例: Google Ads_ワンエイティ）" maxlength="100" style="width:100%;border:1px solid var(--border);padding:8px 12px;border-radius:6px;font-size:13px">
+              <input id="google-auth-source-name" type="text" placeholder="認証元名（例: クライアントA / Google）" maxlength="100" style="width:100%;border:1px solid var(--border);padding:8px 12px;border-radius:6px;font-size:13px">
             </div>
             <div style="margin-bottom:8px">
-              <input id="google-auth-source-mcc-id" type="text" placeholder="MCC ID（9838710115）" maxlength="12" style="width:100%;border:1px solid var(--border);padding:8px 12px;border-radius:6px;font-size:13px;font-family:'DM Mono',monospace" inputmode="numeric">
+              <input id="google-auth-source-mcc-id" type="text" placeholder="MCC ID（例: 9838710115）" maxlength="12" style="width:100%;border:1px solid var(--border);padding:8px 12px;border-radius:6px;font-size:13px;font-family:'DM Mono',monospace" inputmode="numeric">
             </div>
             <button id="google-auth-connect-btn" type="button" style="display:inline-flex;align-items:center;gap:6px;background:var(--accent);color:#fff;padding:8px 16px;border-radius:8px;font-size:12px;font-weight:600;border:none;cursor:pointer">
-              <svg width="14" height="14" viewBox="0 0 24 24"><path fill="currentColor" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/></svg>
               Google で連携
             </button>
           </div>
-          <div style="font-size:12px;font-weight:600;color:var(--accent);margin:16px 0 10px;padding-top:14px;border-top:1px dashed rgba(42,92,219,.3)">2. アカウント（1URLで1アカウントのみ連携）</div>
+          <div style="font-size:12px;font-weight:600;color:var(--accent);margin-bottom:10px;padding-top:12px;border-top:1px solid rgba(42,92,219,.25)">2. 広告アカウント（1 Target で 1 つのみ選択）</div>
+          <div style="font-size:11px;color:var(--text-muted);margin-bottom:12px">API認証元は<strong>上部で選んでいる Target（ドメイン）ごと</strong>に別々です。認証元の追加は Target 選択後に「Google で連携」から行ってください（管理者画面でも可）。</div>
           <div id="google-ads-account-list" style="margin-bottom:16px"></div>
-          <div id="google-ads-add-section" style="border-top:1px dashed rgba(42,92,219,.3);padding-top:14px;margin-top:14px">
+          <div id="google-ads-add-section" style="margin-top:12px;padding-top:4px">
             <div style="font-size:11px;font-weight:600;color:var(--text-muted);margin-bottom:8px">アカウントを追加</div>
             <div style="margin-bottom:8px">
               <select id="google-ads-auth-source-select" style="width:100%;border:1px solid var(--border);padding:8px 12px;border-radius:6px;font-size:13px;background:#fff">
                 <option value="">API認証元を選択</option>
               </select>
             </div>
-            <div style="margin-bottom:8px">
+            <div style="margin-bottom:8px;position:relative">
               <label style="display:block;font-size:11px;font-weight:600;color:var(--text-muted);margin-bottom:4px">Customer ID</label>
-              <select id="google-ads-customer-select" disabled style="width:100%;border:1px solid var(--border);padding:8px 12px;border-radius:6px;font-size:13px;background:var(--surface2);color:var(--text-primary)">
+              <select id="google-ads-customer-select" disabled aria-hidden="true" tabindex="-1" style="position:absolute;width:1px;height:1px;opacity:0;overflow:hidden;clip:rect(0,0,0,0);pointer-events:none">
                 <option value="">先に「API認証元」を選択してください</option>
               </select>
+              <button type="button" id="google-ads-customer-picker-btn" disabled style="width:100%;border:1px solid var(--border);padding:8px 12px;border-radius:6px;font-size:13px;background:var(--surface2);color:var(--text-primary);text-align:left;cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:8px;font-family:'DM Sans',sans-serif">
+                <span id="google-ads-customer-picker-label">先に「API認証元」を選択してください</span>
+                <span style="font-size:10px;color:var(--text-muted);flex-shrink:0">選択</span>
+              </button>
               <div id="google-ads-customer-loading" style="font-size:11px;color:var(--text-muted);margin-top:4px;display:none">MCC配下のアカウントを読み込み中…</div>
               <div id="google-ads-client-error-hint" style="display:none;font-size:11px;color:var(--bad);margin-top:6px;max-width:100%;white-space:pre-wrap;line-height:1.45;word-break:break-word"></div>
             </div>
             <div id="google-ads-customer-manual-wrap" style="margin-bottom:8px;display:none">
               <label style="display:block;font-size:11px;font-weight:600;color:var(--text-muted);margin-bottom:4px">Customer ID（手入力・ハイフン可）</label>
               <input id="google-ads-customer-id-manual" type="text" placeholder="例: 8675712193 または 867-571-2193" maxlength="14" style="width:100%;border:1px solid var(--border);padding:8px 12px;border-radius:6px;font-size:13px;font-family:'DM Mono',monospace" inputmode="numeric">
-            </div>
-            <div style="margin-bottom:8px">
-              <input id="google-ads-account-name" type="text" placeholder="アカウント名（任意・未入力時はCustomer IDで表示）" maxlength="100" style="width:100%;border:1px solid var(--border);padding:8px 12px;border-radius:6px;font-size:13px">
             </div>
             <button id="google-ads-add-account-btn" type="button" style="display:inline-flex;align-items:center;gap:6px;background:var(--good);color:#fff;padding:8px 16px;border-radius:8px;font-size:12px;font-weight:600;border:none;cursor:pointer">
               保存
@@ -1097,17 +1103,18 @@
         ` : ""}
         ${m.id === "yahoo" ? `
         <div style="margin-top:20px;padding:16px;background:rgba(255,0,51,.08);border:1px solid rgba(255,0,51,.2);border-radius:10px">
-          <div style="font-size:12px;font-weight:600;color:#cc0029;margin-bottom:10px">1. API認証元（OAuth）</div>
+          <div style="font-size:12px;font-weight:600;color:#cc0029;margin-bottom:10px">1. Yahoo API認証元（<strong>選択中の Target 専用</strong>）</div>
           <div id="yahoo-auth-sources-list" style="margin-bottom:12px"></div>
-          <div style="margin-bottom:12px">
-            <input id="yahoo-auth-source-name" type="text" placeholder="認証元名（例: Yahoo広告_ワンエイティ）" maxlength="100" style="width:100%;border:1px solid var(--border);padding:8px 12px;border-radius:6px;font-size:13px;margin-bottom:8px">
+          <div style="margin-bottom:14px">
+            <input id="yahoo-auth-source-name" type="text" placeholder="認証元名（例: クライアントA / Yahoo）" maxlength="100" style="width:100%;border:1px solid var(--border);padding:8px 12px;border-radius:6px;font-size:13px;margin-bottom:8px">
             <button id="yahoo-auth-connect-btn" type="button" style="display:inline-flex;align-items:center;gap:6px;background:#cc0029;color:#fff;padding:8px 16px;border-radius:8px;font-size:12px;font-weight:600;border:none;cursor:pointer">
               Yahoo で連携
             </button>
           </div>
-          <div style="font-size:12px;font-weight:600;color:#cc0029;margin:16px 0 10px;padding-top:14px;border-top:1px dashed rgba(255,0,51,.3)">2. アカウント</div>
+          <div style="font-size:12px;font-weight:600;color:#cc0029;margin-bottom:10px;padding-top:12px;border-top:1px solid rgba(255,0,51,.25)">2. 広告アカウント</div>
+          <div style="font-size:11px;color:var(--text-muted);margin-bottom:12px">API認証元は Target ごとに別々です。上で連携してから、アカウントを追加してください。</div>
           <div id="yahoo-ads-account-list" style="margin-bottom:16px"></div>
-          <div id="yahoo-ads-add-section" style="border-top:1px dashed rgba(255,0,51,.3);padding-top:14px;margin-top:14px">
+          <div id="yahoo-ads-add-section" style="margin-top:8px;padding-top:4px">
             <div style="font-size:11px;font-weight:600;color:var(--text-muted);margin-bottom:8px">アカウントを追加</div>
             <div style="margin-bottom:8px">
               <select id="yahoo-ads-auth-source-select" style="width:100%;border:1px solid var(--border);padding:8px 12px;border-radius:6px;font-size:13px;background:#fff">
@@ -1179,7 +1186,7 @@
       const sources = lastConnectionStatus?.google?.auth_sources || [];
       if (!authSourcesListEl) return;
       if (sources.length === 0) {
-        authSourcesListEl.innerHTML = "<div style='font-size:12px;color:var(--text-muted)'>API認証元がありません。認証元名とMCC IDを入力して「Google で連携」をクリックしてください。</div>";
+        authSourcesListEl.innerHTML = "<div style='font-size:12px;color:var(--text-muted)'>この Target 用のAPI認証元がありません。Target を選んだうえで、認証元名・MCC IDを入力し「Google で連携」をクリックしてください。</div>";
         return;
       }
       authSourcesListEl.innerHTML = sources.map((s) => `
@@ -1271,7 +1278,7 @@
       if (btn && confirm("このAPI認証元を削除しますか？紐づくアカウントも削除されます。")) {
         const r = await fetch("/api/ads/yahoo/auth-sources/" + btn.dataset.id, { method: "DELETE", credentials: "include" });
         if (r.ok) {
-          const st = await fetch("/api/ads/status", { credentials: "include" }).then((x) => x.json());
+          const st = await fetchStatus();
           lastConnectionStatus = st;
           renderYahooAuthSourcesList();
           renderYahooAuthSourceSelect();
@@ -1281,16 +1288,26 @@
     });
     yahooAccountListEl?.addEventListener("change", async (e) => {
       if (e.target.name === "yahoo-ads-selected" && e.target.value) {
-        const r = await fetch("/api/ads/yahoo/accounts/select", {
-          method: "POST",
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ account_id: parseInt(e.target.value, 10) }),
-        });
-        if (r.ok) {
-          const st = await fetch("/api/ads/status", { credentials: "include" }).then((x) => x.json());
-          lastConnectionStatus = st;
+        const accountId = parseInt(e.target.value, 10);
+        const cuId = window._selectedCompanyUrlId || sessionStorage.getItem("ads_company_url_id") || "";
+        if (cuId) {
+          await fetch(`/api/ads/company-url/${encodeURIComponent(cuId)}/accounts`, {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ platform: "yahoo", ads_account_id: accountId }),
+          });
+        } else {
+          await fetch("/api/ads/yahoo/accounts/select", {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ account_id: accountId }),
+          });
         }
+        const st = await fetchStatus();
+        lastConnectionStatus = st;
+        renderYahooAccountList();
       }
     });
     yahooAccountListEl?.addEventListener("click", async (e) => {
@@ -1298,7 +1315,7 @@
       if (btn && confirm("削除しますか？")) {
         const r = await fetch("/api/ads/yahoo/accounts/" + btn.dataset.id, { method: "DELETE", credentials: "include" });
         if (r.ok) {
-          const st = await fetch("/api/ads/status", { credentials: "include" }).then((x) => x.json());
+          const st = await fetchStatus();
           lastConnectionStatus = st;
           renderYahooAccountList();
         }
@@ -1309,12 +1326,18 @@
     const yahooAuthSourceNameInput = document.getElementById("yahoo-auth-source-name");
     if (yahooAuthConnectBtn) {
       yahooAuthConnectBtn.onclick = () => {
+        const cuId = (window._selectedCompanyUrlId || sessionStorage.getItem("ads_company_url_id") || "").trim();
+        if (!cuId) {
+          alert("先に画面上部で Target（サイト）を選択してください。API認証はサイトごとに分かれます。");
+          return;
+        }
         const name = (yahooAuthSourceNameInput?.value || "").trim();
         if (!name) {
           alert("認証元名を入力してください");
           return;
         }
-        window.location.href = "/api/ads/yahoo/connect?name=" + encodeURIComponent(name);
+        window.location.href =
+          "/api/ads/yahoo/connect?name=" + encodeURIComponent(name) + "&company_url_id=" + encodeURIComponent(cuId);
       };
     }
     const yahooAddAccountBtn = document.getElementById("yahoo-ads-add-account-btn");
@@ -1331,16 +1354,38 @@
           alert("API認証元とアカウントIDを入力してください");
           return;
         }
+        const yahooCuId = (window._selectedCompanyUrlId || sessionStorage.getItem("ads_company_url_id") || "").trim();
+        if (!yahooCuId) {
+          alert("先に Target（サイト）を選択してください。");
+          return;
+        }
         try {
           const r = await fetch("/api/ads/yahoo/accounts", {
             method: "POST",
             credentials: "include",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ name: name || undefined, account_id: aid, agency_account_id: agid || undefined, api_auth_source_id: authId }),
+            body: JSON.stringify({
+              name: name || undefined,
+              account_id: aid,
+              agency_account_id: agid || undefined,
+              api_auth_source_id: authId,
+              company_url_id: yahooCuId,
+            }),
           });
           const d = await parseJsonResponse(r, { success: false });
           if (d.success) {
-            const st = await fetch("/api/ads/status", { credentials: "include" }).then((x) => x.json());
+            // このTARGET URLにアカウントを紐付け
+            const cuId = window._selectedCompanyUrlId || sessionStorage.getItem("ads_company_url_id") || "";
+            const newAccountId = d.account_id || d.id;
+            if (cuId && newAccountId) {
+              await fetch(`/api/ads/company-url/${encodeURIComponent(cuId)}/accounts`, {
+                method: "POST",
+                credentials: "include",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ platform: "yahoo", ads_account_id: newAccountId }),
+              });
+            }
+            const st = await fetchStatus();
             lastConnectionStatus = st;
             renderYahooAccountList();
             yahooAccountNameInput.value = "";
@@ -1496,16 +1541,28 @@
     }
     accountListEl?.addEventListener("change", async (e) => {
       if (e.target.name === "google-ads-selected" && e.target.value) {
-        const r = await fetch("/api/ads/google/accounts/select", {
-          method: "POST",
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ account_id: parseInt(e.target.value, 10) }),
-        });
-        if (r.ok) {
-          const st = await fetch("/api/ads/status", { credentials: "include" }).then((x) => x.json());
-          lastConnectionStatus = st;
+        const accountId = parseInt(e.target.value, 10);
+        const cuId = window._selectedCompanyUrlId || sessionStorage.getItem("ads_company_url_id") || "";
+        // 案件が選択されている場合は案件への紐付け
+        if (cuId) {
+          await fetch(`/api/ads/company-url/${encodeURIComponent(cuId)}/accounts`, {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ platform: "google", ads_account_id: accountId }),
+          });
+        } else {
+          // 従来の per-user 選択
+          await fetch("/api/ads/google/accounts/select", {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ account_id: accountId }),
+          });
         }
+        const st = await fetchStatus();
+        lastConnectionStatus = st;
+        renderAccountList();
       }
     });
     authSourcesListEl?.addEventListener("click", async (e) => {
@@ -1520,7 +1577,7 @@
             body: JSON.stringify({ login_customer_id: mccId.trim().replace(/-/g, "") }),
           });
           if (r.ok) {
-            const st = await fetch("/api/ads/status", { credentials: "include" }).then((x) => x.json());
+            const st = await fetchStatus();
             lastConnectionStatus = st;
             renderAuthSourcesList();
             renderAuthSourceSelect();
@@ -1535,7 +1592,7 @@
       if (btn && confirm("このAPI認証元を削除しますか？紐づくアカウントも削除されます。")) {
         const r = await fetch("/api/ads/google/auth-sources/" + btn.dataset.id, { method: "DELETE", credentials: "include" });
         if (r.ok) {
-          const st = await fetch("/api/ads/status", { credentials: "include" }).then((x) => x.json());
+          const st = await fetchStatus();
           lastConnectionStatus = st;
           renderAuthSourcesList();
           renderAuthSourceSelect();
@@ -1548,7 +1605,7 @@
       if (btn && confirm("削除しますか？")) {
         const r = await fetch("/api/ads/google/accounts/" + btn.dataset.id, { method: "DELETE", credentials: "include" });
         if (r.ok) {
-          const st = await fetch("/api/ads/status", { credentials: "include" }).then((x) => x.json());
+          const st = await fetchStatus();
           lastConnectionStatus = st;
           renderAccountList();
         }
@@ -1560,6 +1617,11 @@
     const googleAuthSourceMccInput = document.getElementById("google-auth-source-mcc-id");
     if (googleAuthConnectBtn) {
       googleAuthConnectBtn.onclick = () => {
+        const cuId = (window._selectedCompanyUrlId || sessionStorage.getItem("ads_company_url_id") || "").trim();
+        if (!cuId) {
+          alert("先に画面上部で Target（サイト）を選択してください。API認証はサイトごとに分かれます。");
+          return;
+        }
         const name = (googleAuthSourceNameInput?.value || "").trim();
         const mccId = (googleAuthSourceMccInput?.value || "").trim().replace(/\s/g, "").replace(/-/g, "");
         if (!name) {
@@ -1572,16 +1634,19 @@
         }
         const params = new URLSearchParams({ mode: "auth_source", name });
         params.set("login_customer_id", mccId);
+        params.set("company_url_id", cuId);
         window.location.href = "/api/ads/google/connect?" + params.toString();
       };
     }
-    // --- Customer ID: MCC配下一覧をセレクトで選択（不可時は手入力） ---
+    // --- Customer ID: 非表示セレクト + モーダルで検索付き一覧（不可時は手入力） ---
+    let googleAdsCustomerClientsCache = [];
     const customerSelect = document.getElementById("google-ads-customer-select");
     const customerLoading = document.getElementById("google-ads-customer-loading");
     const clientErrorHint = document.getElementById("google-ads-client-error-hint");
     const customerManualWrap = document.getElementById("google-ads-customer-manual-wrap");
     const googleCustomerManualInput = document.getElementById("google-ads-customer-id-manual");
-    const googleAccountNameInput = document.getElementById("google-ads-account-name");
+    const customerPickerBtn = document.getElementById("google-ads-customer-picker-btn");
+    const customerPickerLabel = document.getElementById("google-ads-customer-picker-label");
     const GOOGLE_CID_MANUAL = "__manual__";
     function getGoogleAdsCustomerIdForSave() {
       if (!customerSelect) return "";
@@ -1596,15 +1661,154 @@
       if (customerManualWrap) customerManualWrap.style.display = show ? "block" : "none";
       if (!show && googleCustomerManualInput) googleCustomerManualInput.value = "";
     }
+    function syncGoogleCustomerPickerUI() {
+      if (!customerPickerBtn || !customerPickerLabel || !customerSelect) return;
+      const authId = (authSourceSelectEl && authSourceSelectEl.value) || "";
+      if (!authId) {
+        customerPickerBtn.disabled = true;
+        customerPickerLabel.textContent = "先に「API認証元」を選択してください";
+        return;
+      }
+      if (customerLoading && customerLoading.style.display === "block") {
+        customerPickerBtn.disabled = true;
+        customerPickerLabel.textContent = "MCC配下を読み込み中…";
+        return;
+      }
+      customerPickerBtn.disabled = false;
+      const v = customerSelect.value;
+      if (!v) {
+        const first = customerSelect.options[0];
+        customerPickerLabel.textContent = first && first.textContent ? first.textContent.trim() : "Customer ID を選択";
+        return;
+      }
+      if (v === GOOGLE_CID_MANUAL) {
+        customerPickerLabel.textContent = "手入力で指定";
+        return;
+      }
+      const opt = customerSelect.selectedOptions[0];
+      const name = (opt && opt.getAttribute("data-name") ? opt.getAttribute("data-name") : "").trim();
+      customerPickerLabel.textContent = name ? name + " (" + v + ")" : String(v);
+    }
+    function closeGoogleAdsCustomerModal() {
+      const m = document.getElementById("google-ads-customer-modal");
+      if (m) m.style.display = "none";
+    }
+    function renderGoogleAdsCustomerModalList(query) {
+      const list = document.getElementById("google-ads-customer-modal-list");
+      if (!list || !customerSelect) return;
+      const q = (query || "").trim().toLowerCase();
+      const hasManualOption = Array.from(customerSelect.options).some((o) => o.value === GOOGLE_CID_MANUAL);
+      let rows = [];
+      if (googleAdsCustomerClientsCache.length > 0) {
+        rows = googleAdsCustomerClientsCache.filter((c) => {
+          if (!q) return true;
+          const id = String(c.customer_id || "").toLowerCase();
+          const name = String(c.name || "").toLowerCase();
+          return id.includes(q) || name.includes(q);
+        });
+      }
+      let html = "";
+      if (googleAdsCustomerClientsCache.length > 0) {
+        if (rows.length === 0) {
+          html +=
+            '<div style="padding:16px;text-align:center;font-size:13px;color:var(--text-muted,#64748b)">該当するアカウントがありません</div>';
+        } else {
+          html += rows
+            .map((c) => {
+              const rawId = String(c.customer_id || "");
+              const idAttr = escapeAttr(rawId);
+              const name = escapeHtml(c.name || c.customer_id || "");
+              const idDisp = escapeHtml(rawId);
+              return (
+                '<button type="button" class="google-ads-customer-modal-item" data-id="' +
+                idAttr +
+                '" style="display:block;width:100%;text-align:left;padding:10px 12px;border:none;background:transparent;border-radius:8px;cursor:pointer;font-size:13px;font-family:inherit;margin-bottom:2px">' +
+                '<div style="font-weight:600">' +
+                name +
+                "</div>" +
+                '<div style="font-size:11px;color:var(--text-muted,#64748b);font-family:DM Mono,monospace">ID: ' +
+                idDisp +
+                "</div></button>"
+              );
+            })
+            .join("");
+        }
+      } else {
+        html +=
+          '<div style="padding:12px;font-size:12px;color:var(--text-muted,#64748b);line-height:1.5">一覧を取得できていません。必要に応じて下の「手入力」から指定してください。</div>';
+      }
+      if (hasManualOption) {
+        html +=
+          '<button type="button" class="google-ads-customer-modal-item" data-id="manual" style="display:block;width:100%;text-align:left;padding:10px 12px;border:1px dashed var(--border,#e5e7eb);background:var(--surface2,#f8fafc);border-radius:8px;cursor:pointer;font-size:13px;font-family:inherit;margin-top:8px;font-weight:600">手入力で Customer ID を指定</button>';
+      }
+      list.innerHTML = html;
+    }
+    function ensureGoogleAdsCustomerModal() {
+      if (document.getElementById("google-ads-customer-modal")) return;
+      document.body.insertAdjacentHTML(
+        "beforeend",
+        '<div id="google-ads-customer-modal" style="display:none;position:fixed;inset:0;z-index:10002;background:rgba(15,23,42,.45);align-items:center;justify-content:center;padding:16px;box-sizing:border-box" role="dialog" aria-modal="true" aria-labelledby="google-ads-customer-modal-title">' +
+          '<div style="background:var(--surface,#fff);border-radius:12px;max-width:440px;width:100%;max-height:85vh;display:flex;flex-direction:column;box-shadow:0 20px 50px rgba(0,0,0,.2);border:1px solid var(--border,#e5e7eb)">' +
+          '<div style="padding:14px 16px;border-bottom:1px solid var(--border,#e5e7eb);flex-shrink:0">' +
+          '<div id="google-ads-customer-modal-title" style="font-size:14px;font-weight:600">Customer ID を選択</div>' +
+          '<input id="google-ads-customer-modal-search" type="search" autocomplete="off" placeholder="名前・Customer ID で検索…" style="width:100%;margin-top:10px;padding:8px 10px;border:1px solid var(--border,#e5e7eb);border-radius:8px;font-size:13px;box-sizing:border-box;font-family:inherit" />' +
+          "</div>" +
+          '<div id="google-ads-customer-modal-list" style="overflow-y:auto;flex:1;min-height:100px;max-height:48vh;padding:8px"></div>' +
+          '<div style="padding:12px 16px;border-top:1px solid var(--border,#e5e7eb);display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;flex-shrink:0">' +
+          '<button type="button" id="google-ads-customer-modal-close" style="padding:8px 14px;border-radius:8px;border:1px solid var(--border,#e5e7eb);background:var(--surface2,#f8fafc);font-size:13px;cursor:pointer;font-family:inherit">閉じる</button>' +
+          "</div></div></div>"
+      );
+      const modal = document.getElementById("google-ads-customer-modal");
+      const search = document.getElementById("google-ads-customer-modal-search");
+      const list = document.getElementById("google-ads-customer-modal-list");
+      modal.addEventListener("click", (e) => {
+        if (e.target === modal) closeGoogleAdsCustomerModal();
+      });
+      document.getElementById("google-ads-customer-modal-close").addEventListener("click", closeGoogleAdsCustomerModal);
+      search.addEventListener("input", () => renderGoogleAdsCustomerModalList(search.value));
+      list.addEventListener("click", (e) => {
+        const item = e.target.closest(".google-ads-customer-modal-item");
+        if (!item || !customerSelect) return;
+        const id = item.getAttribute("data-id");
+        if (id === "manual") {
+          customerSelect.value = GOOGLE_CID_MANUAL;
+        } else if (id) {
+          customerSelect.value = id;
+        }
+        customerSelect.dispatchEvent(new Event("change"));
+        syncGoogleCustomerPickerUI();
+        closeGoogleAdsCustomerModal();
+      });
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") {
+          const m = document.getElementById("google-ads-customer-modal");
+          if (m && m.style.display === "flex") closeGoogleAdsCustomerModal();
+        }
+      });
+    }
+    function openGoogleAdsCustomerModal() {
+      if (!customerPickerBtn || customerPickerBtn.disabled) return;
+      ensureGoogleAdsCustomerModal();
+      const modal = document.getElementById("google-ads-customer-modal");
+      const search = document.getElementById("google-ads-customer-modal-search");
+      if (!modal || !customerSelect) return;
+      modal.style.display = "flex";
+      if (search) {
+        search.value = "";
+        search.focus();
+      }
+      renderGoogleAdsCustomerModalList("");
+    }
     if (authSourceSelectEl && customerSelect) {
       authSourceSelectEl.addEventListener("change", async () => {
         const authId = authSourceSelectEl.value;
         customerSelect.disabled = !authId;
-        customerSelect.style.background = authId ? "#fff" : "var(--surface2)";
+        googleAdsCustomerClientsCache = [];
         setGoogleCustomerManualVisible(false);
         customerSelect.innerHTML = authId
           ? '<option value="">読み込み中…</option>'
           : '<option value="">先に「API認証元」を選択してください</option>';
+        syncGoogleCustomerPickerUI();
         if (!authId) return;
         if (customerLoading) customerLoading.style.display = "block";
         if (clientErrorHint) {
@@ -1623,6 +1827,7 @@
             }
           }
           if (d.unavailable) {
+            googleAdsCustomerClientsCache = [];
             customerSelect.innerHTML =
               '<option value="' +
               GOOGLE_CID_MANUAL +
@@ -1634,6 +1839,7 @@
               clientErrorHint.textContent = "";
             }
           } else if (d.clients && d.clients.length > 0) {
+            googleAdsCustomerClientsCache = Array.isArray(d.clients) ? d.clients.slice() : [];
             customerSelect.innerHTML =
               '<option value="">-- Customer ID を選択 (' + d.clients.length + "件) --</option>" +
               d.clients
@@ -1659,12 +1865,14 @@
               clientErrorHint.textContent = "";
             }
           } else if (d.error) {
+            googleAdsCustomerClientsCache = [];
             customerSelect.innerHTML =
               '<option value="">取得失敗（下に理由を表示）</option><option value="' +
               GOOGLE_CID_MANUAL +
               '">手入力で Customer ID を指定</option>';
             setGoogleCustomerManualVisible(false);
           } else {
+            googleAdsCustomerClientsCache = [];
             customerSelect.innerHTML =
               '<option value="">配下にクライアントがありません</option><option value="' +
               GOOGLE_CID_MANUAL +
@@ -1677,6 +1885,7 @@
           }
         } catch (e) {
           console.warn("[Ads] MCC クライアント一覧 fetch 失敗", e.message || e);
+          googleAdsCustomerClientsCache = [];
           if (clientErrorHint) {
             clientErrorHint.textContent = e.message || String(e);
             clientErrorHint.style.display = "block";
@@ -1686,6 +1895,7 @@
           setGoogleCustomerManualVisible(false);
         } finally {
           if (customerLoading) customerLoading.style.display = "none";
+          syncGoogleCustomerPickerUI();
         }
       });
       customerSelect.addEventListener("change", () => {
@@ -1696,14 +1906,12 @@
         } else {
           setGoogleCustomerManualVisible(false);
         }
-        if (cid && cid !== GOOGLE_CID_MANUAL) {
-          const opt = customerSelect.selectedOptions[0];
-          const cname = opt?.getAttribute("data-name") || "";
-          if (cname && googleAccountNameInput && !googleAccountNameInput.value) {
-            googleAccountNameInput.value = cname;
-          }
-        }
+        syncGoogleCustomerPickerUI();
       });
+      if (customerPickerBtn) {
+        customerPickerBtn.addEventListener("click", () => openGoogleAdsCustomerModal());
+      }
+      syncGoogleCustomerPickerUI();
     }
     // --- Customer ID セレクト ここまで ---
 
@@ -1711,10 +1919,19 @@
     if (googleAddAccountBtn) {
       googleAddAccountBtn.onclick = async () => {
         const authId = (authSourceSelectEl?.value || "").trim();
-        const name = (googleAccountNameInput?.value || "").trim();
         const cid = getGoogleAdsCustomerIdForSave();
+        const cuId = (window._selectedCompanyUrlId || sessionStorage.getItem("ads_company_url_id") || "").trim();
+        let displayName = "";
+        if (customerSelect && customerSelect.value && customerSelect.value !== GOOGLE_CID_MANUAL) {
+          const opt = customerSelect.selectedOptions[0];
+          displayName = (opt?.getAttribute("data-name") || "").trim();
+        }
         if (!authId || !cid) {
           alert("API認証元を選び、Customer ID を一覧から選ぶか「手入力」で入力してください");
+          return;
+        }
+        if (!cuId) {
+          alert("先に Target（サイト）を選択してください。");
           return;
         }
         try {
@@ -1722,14 +1939,29 @@
             method: "POST",
             credentials: "include",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ name: name || undefined, customer_id: cid, api_auth_source_id: authId }),
+            body: JSON.stringify({
+              name: displayName || undefined,
+              customer_id: cid,
+              api_auth_source_id: authId,
+              company_url_id: cuId,
+            }),
           });
           const d = await parseJsonResponse(r, { success: false });
           if (d.success) {
-            const st = await fetch("/api/ads/status", { credentials: "include" }).then((x) => x.json());
+            // このTARGET URLにアカウントを紐付け
+            const cuId = window._selectedCompanyUrlId || sessionStorage.getItem("ads_company_url_id") || "";
+            const newAccountId = d.account_id || d.id;
+            if (cuId && newAccountId) {
+              await fetch(`/api/ads/company-url/${encodeURIComponent(cuId)}/accounts`, {
+                method: "POST",
+                credentials: "include",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ platform: "google", ads_account_id: newAccountId }),
+              });
+            }
+            const st = await fetchStatus();
             lastConnectionStatus = st;
             renderAccountList();
-            googleAccountNameInput.value = "";
             if (googleCustomerManualInput) googleCustomerManualInput.value = "";
             if (customerSelect && authSourceSelectEl) {
               authSourceSelectEl.dispatchEvent(new Event("change"));
@@ -1771,7 +2003,7 @@
     if (debugBtn) {
       debugBtn.onclick = async () => {
         try {
-          const st = await fetch("/api/ads/status", { credentials: "include" }).then((r) => parseJsonResponse(r, {}));
+          const st = await fetchStatus();
           lastConnectionStatus = st;
           const d = st?.google?.account_debug;
           const accounts = st?.google?.accounts || [];
@@ -1930,11 +2162,26 @@
   }
 
   let lastConnectionStatus = {};
+  function getStatusUrl() {
+    const cuId = window._selectedCompanyUrlId || sessionStorage.getItem("ads_company_url_id") || "";
+    return cuId ? `/api/ads/status?company_url_id=${encodeURIComponent(cuId)}` : "/api/ads/status";
+  }
+  async function fetchStatus() {
+    const res = await fetch(getStatusUrl(), { credentials: "include" });
+    if (!res.ok) return lastConnectionStatus;
+    return parseJsonResponse(res, {});
+  }
   window.openSettings = async function (defaultTab) {
+    // 案件一覧を取得
     try {
-      const res = await fetch("/api/ads/status", { credentials: "include" });
-      if (res.ok) {
-        const st = await parseJsonResponse(res, {});
+      const cuRes = await fetch("/api/ads/company-urls", { credentials: "include" });
+      if (cuRes.ok) {
+        window._companyUrls = await cuRes.json();
+      }
+    } catch (_) {}
+    try {
+      const st = await fetchStatus();
+      if (st) {
         lastConnectionStatus = st;
         if (st.google?.connected) apiMedia[0].status = "connected";
         else apiMedia[0].status = "disconnected";
@@ -2136,6 +2383,8 @@
       }
       const meta = data.meta || {};
       lastReportMeta = meta || {};
+      adsGoogleAccountId = meta.google_customer_id || "";
+      adsGoogleAuthSourceId = meta.google_auth_source_id || "";
       if (meta.requested_startDate) {
         const called = meta._media_called || [];
         console.log("[Ads] 取得結果:", `${meta.requested_startDate}〜${meta.requested_endDate}`, "呼び出し媒体:", called.join(", ") || "なし", "| Google:", meta.google_row_count ?? 0, "件, Yahoo:", meta.yahoo_row_count ?? 0, "件");
@@ -2460,11 +2709,11 @@
     if (countEl) countEl.textContent = total > 0 ? `全 ${total.toLocaleString()} 件中 ${Math.min(displayCount, total).toLocaleString()} 件表示` : "—";
     if (!tbody) return;
     if (displayed.length === 0) {
-      tbody.innerHTML = '<tr class="empty-row"><td colspan="9" style="text-align:center;color:var(--text-muted);padding:24px">データがありません</td></tr>';
+      tbody.innerHTML = '<tr class="empty-row"><td colspan="15" style="text-align:center;color:var(--text-muted);padding:24px">データがありません</td></tr>';
       return;
     }
     tbody.innerHTML = displayed
-      .map((r) => {
+      .map((r, idx) => {
         const imp = Number(r.impressions) || 0;
         const clicks = Number(r.clicks) || 0;
         const cost = Number(r.cost) || 0;
@@ -2472,9 +2721,37 @@
         const ctr = imp > 0 ? ((clicks / imp) * 100).toFixed(1) + "%" : "0%";
         const cpa = cv > 0 ? Math.round(cost / cv) : 0;
         const avgCpc = Number(r.avgCpc) || 0;
+        const cpcBid = Number(r.cpcBid) || 0;
+        const matchLabel = { EXACT: "完全", PHRASE: "フレーズ", BROAD: "部分" }[r.matchType] || r.matchType || "—";
+        const statusLabel = r.status === "ENABLED" ? "有効" : r.status === "PAUSED" ? "停止中" : r.status || "—";
+        const statusColor = r.status === "ENABLED" ? "#16a34a" : r.status === "PAUSED" ? "#dc2626" : "var(--text-muted)";
+        const hasResource = !!r.resourceName;
+        const ev = r._aiEval || null;
+        let aiHtml = '<span style="color:var(--text-muted);font-size:11px">—</span>';
+        if (ev) {
+          const recColors = { continue: "#16a34a", pause: "#dc2626", bid_up: "#2563eb", bid_down: "#f59e0b" };
+          const recLabels = { continue: "継続", pause: "停止推奨", bid_up: "入札↑", bid_down: "入札↓" };
+          const confDots = { high: "●●●", medium: "●●○", low: "●○○" };
+          aiHtml = `<span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;color:#fff;background:${recColors[ev.recommendation] || "#888"};cursor:help" title="${escapeAttr(ev.reason)}">${recLabels[ev.recommendation] || ev.recommendation}</span>
+          <span style="font-size:9px;color:var(--text-muted);margin-left:4px" title="確信度">${confDots[ev.confidence] || ""}</span>`;
+        }
+        let actionHtml = "";
+        if (hasResource) {
+          actionHtml = `<select data-kw-action="${idx}" style="font-size:11px;padding:2px 6px;border:1px solid var(--border);border-radius:4px;background:var(--surface2)">
+            <option value="">—</option>
+            <option value="pause" ${r.status === "PAUSED" ? "disabled" : ""}>停止</option>
+            <option value="enable" ${r.status === "ENABLED" ? "disabled" : ""}>有効化</option>
+            <option value="bid_edit">入札変更</option>
+          </select>`;
+        } else {
+          actionHtml = '<span style="font-size:10px;color:var(--text-muted)">操作不可</span>';
+        }
         return `<tr>
+          <td><input type="checkbox" class="kw-check" data-kw-idx="${idx}" ${hasResource ? "" : "disabled"}></td>
           <td>${mediaTagHtml(r.media || "—")}</td>
           <td>${escapeHtml(r.keyword || "—")}</td>
+          <td style="font-size:11px">${matchLabel}</td>
+          <td style="font-size:11px;color:${statusColor};font-weight:600">${statusLabel}</td>
           <td>${escapeHtml(r.campaign || "—")}</td>
           <td>¥${cost.toLocaleString()}</td>
           <td>${imp.toLocaleString()}</td>
@@ -2482,9 +2759,14 @@
           <td>${cv}</td>
           <td>¥${cpa.toLocaleString()}</td>
           <td>¥${avgCpc.toLocaleString()}</td>
+          <td>${cpcBid > 0 ? "¥" + cpcBid.toLocaleString() : "—"}</td>
+          <td>${aiHtml}</td>
+          <td>${actionHtml}</td>
         </tr>`;
       })
       .join("");
+    // チェック操作のイベント
+    updateApplyBtnVisibility();
   }
 
   function assetTypeLabelForCreative(t) {
@@ -3508,75 +3790,110 @@
     XLSX.writeFile(wb, filename);
   };
 
-  function handleOAuthResult() {
-    const params = new URLSearchParams(window.location.search);
-    const linked = params.get("google_ads");
-    const yahooLinked = params.get("yahoo_ads");
-    const err = params.get("google_ads_error");
-    const yahooErr = params.get("yahoo_ads_error");
-    const refreshStatusAndOpenSettings = (tab) => {
-      fetch("/api/ads/status", { credentials: "include" })
-        .then(async (r) => parseJsonResponse(r, {}))
-        .then((st) => {
-          lastConnectionStatus = st;
-          if (st.google?.customer_id) localStorage.setItem("google_ads_customer_id", st.google.customer_id);
-          const conn = [];
-          if (st.google?.connected) conn.push("Google Ads");
-          if (st.yahoo?.connected) conn.push("Yahoo広告");
-          if (st.microsoft?.connected) conn.push("Microsoft Advertising");
-          connectedMediaFromStatus = conn;
-          refreshMediaFilter();
-          if (typeof openSettings === "function") openSettings(tab);
-        })
-        .catch(() => {});
+  /** OAuth リダイレクト戻りのクエリを、replaceState より前に退避（案件 ID 確定後に処理する） */
+  function readAdsOAuthQuery() {
+    try {
+      const p = new URLSearchParams(window.location.search);
+      return {
+        google_ads: p.get("google_ads"),
+        yahoo_ads: p.get("yahoo_ads"),
+        google_ads_error: p.get("google_ads_error"),
+        yahoo_ads_error: p.get("yahoo_ads_error"),
+      };
+    } catch (_) {
+      return { google_ads: null, yahoo_ads: null, google_ads_error: null, yahoo_ads_error: null };
+    }
+  }
+
+  function applyAdsOAuthAfterStatus(oauthQ) {
+    if (!oauthQ) return;
+    const strip = () => {
+      if (window.history.replaceState) window.history.replaceState({}, "", window.location.pathname);
     };
-    if (linked === "auth_linked") {
-      if (window.history.replaceState) window.history.replaceState({}, "", window.location.pathname);
-      refreshStatusAndOpenSettings("google");
+    if (oauthQ.google_ads_error) {
+      strip();
+      alert("Google Ads 連携エラー: " + decodeURIComponent(oauthQ.google_ads_error));
     }
-    if (yahooLinked === "auth_linked") {
-      if (window.history.replaceState) window.history.replaceState({}, "", window.location.pathname);
-      refreshStatusAndOpenSettings("yahoo");
+    if (oauthQ.yahoo_ads_error) {
+      strip();
+      alert("Yahoo広告 連携エラー: " + decodeURIComponent(oauthQ.yahoo_ads_error));
     }
-    if (linked === "linked") {
-      if (window.history.replaceState) window.history.replaceState({}, "", window.location.pathname);
+    if (oauthQ.google_ads === "auth_linked") {
+      strip();
+      if (typeof openSettings === "function") openSettings("google");
+    }
+    if (oauthQ.yahoo_ads === "auth_linked") {
+      strip();
+      if (typeof openSettings === "function") openSettings("yahoo");
+    }
+    if (oauthQ.google_ads === "linked") {
+      strip();
       const badge = document.getElementById("badge-integrated");
       if (badge) {
         badge.textContent = "✓ Google Ads 連携済み";
         badge.classList.add("connected");
       }
-      fetch("/api/ads/status", { credentials: "include" })
-        .then(async (r) => parseJsonResponse(r, {}))
-        .then((st) => {
-          lastConnectionStatus = st;
-          if (st.google?.customer_id) localStorage.setItem("google_ads_customer_id", st.google.customer_id);
-          const conn = [];
-          if (st.google?.connected) conn.push("Google Ads");
-          if (st.yahoo?.connected) conn.push("Yahoo広告");
-          if (st.microsoft?.connected) conn.push("Microsoft Advertising");
-          connectedMediaFromStatus = conn;
-          refreshMediaFilter();
-        })
-        .catch(() => {});
-    }
-    if (err) {
-      if (window.history.replaceState) window.history.replaceState({}, "", window.location.pathname);
-      alert("Google Ads 連携エラー: " + decodeURIComponent(err));
-    }
-    if (yahooErr) {
-      if (window.history.replaceState) window.history.replaceState({}, "", window.location.pathname);
-      alert("Yahoo広告 連携エラー: " + decodeURIComponent(yahooErr));
     }
   }
 
   function init() {
     initReportMonthSelect();
     switchPeriodTypeUI();
-    handleOAuthResult();
+    const adsOAuthQuery = readAdsOAuthQuery();
 
-    fetch("/api/ads/status", { credentials: "include" })
-      .then(async (r) => parseJsonResponse(r, {}))
+    // 案件一覧を取得し、現在のTARGET URLに対応する案件を自動選択
+    fetch("/api/ads/company-urls", { credentials: "include" })
+      .then((r) => r.ok ? r.json() : [])
+      .then(async (urls) => {
+        window._companyUrls = urls;
+        const saved = sessionStorage.getItem("ads_company_url_id") || "";
+        const scanFromUrl =
+          new URLSearchParams(window.location.search).get("scan") ||
+          new URLSearchParams(window.location.search).get("scanId") ||
+          "";
+
+        // ヘッダーで選択中のscanからTARGET URLを取得して照合
+        // URL に scan があるときは sessionStorage の案件 ID だけに頼らず必ず照合（別 scan に切り替えたときの取り違え防止）
+        if (!saved || !urls.some((u) => String(u.id) === saved) || scanFromUrl) {
+          window._selectedCompanyUrlId = undefined;
+          let targetUrl = "";
+          try {
+            const scanId = scanFromUrl || sessionStorage.getItem("seoscan:lastScanId") || "";
+            if (scanId) {
+              const scanRes = await fetch(`/api/scans/${scanId}`, { credentials: "include" });
+              if (scanRes.ok) {
+                const scanData = await scanRes.json();
+                targetUrl = scanData.scan?.target_url || scanData.target_url || "";
+              }
+            }
+          } catch (_) {}
+
+          if (targetUrl && urls.length > 0) {
+            // TARGET URLのドメインで照合
+            try {
+              const targetHost = new URL(targetUrl).hostname.replace(/^www\./, "");
+              const match = urls.find((u) => {
+                try { return new URL(u.url).hostname.replace(/^www\./, "") === targetHost; } catch (_) { return false; }
+              });
+              if (match) {
+                window._selectedCompanyUrlId = String(match.id);
+                sessionStorage.setItem("ads_company_url_id", window._selectedCompanyUrlId);
+              }
+            } catch (_) {}
+          }
+          // 照合失敗で1件のみなら自動選択
+          if (!window._selectedCompanyUrlId && urls.length === 1) {
+            window._selectedCompanyUrlId = String(urls[0].id);
+            sessionStorage.setItem("ads_company_url_id", window._selectedCompanyUrlId);
+          }
+        } else if (saved) {
+          window._selectedCompanyUrlId = saved;
+        }
+      })
+      .then(() => fetchStatus())
       .then((st) => {
+        lastConnectionStatus = st && typeof st === "object" ? st : lastConnectionStatus;
+        if (st.google?.customer_id) localStorage.setItem("google_ads_customer_id", st.google.customer_id);
         const connected = [];
         if (st.google?.connected) connected.push("Google Ads");
         if (st.yahoo?.connected) connected.push("Yahoo広告");
@@ -3591,22 +3908,13 @@
         connectedMediaFromStatus = connected;
         refreshMediaFilter();
         const badge = document.getElementById("badge-integrated");
-        if (!badge) return;
-        badge.textContent = connected.length > 0 ? "✓ " + connected.join("・") + " 連携済み" : "未連携";
-        badge.classList.toggle("connected", connected.length > 0);
-      })
-      .catch(() => {
-        const badge = document.getElementById("badge-integrated");
         if (badge) {
-          badge.textContent = "—";
-          badge.classList.remove("connected");
+          badge.textContent = connected.length > 0 ? "✓ " + connected.join("・") + " 連携済み" : "未連携";
+          badge.classList.toggle("connected", connected.length > 0);
         }
-      });
-
-    initCharts();
-
-    let loadAdsDataDebounceTimer = null;
-    loadAdsData({ trigger: "init" })
+        applyAdsOAuthAfterStatus(adsOAuthQuery);
+      })
+      .then(() => loadAdsData({ trigger: "init" }))
       .then((result) => {
         updateOverviewFromData();
         if (result?.adRows?.length > 0 || result?.assetRows?.length > 0) {
@@ -3616,10 +3924,19 @@
         runCreativeDiagnostic();
       })
       .catch((e) => {
-        if (e?.name !== "AbortError") console.warn("ads init load failed", e);
+        if (e?.name !== "AbortError") console.warn("ads init chain failed", e);
+        const badge = document.getElementById("badge-integrated");
+        if (badge) {
+          badge.textContent = "—";
+          badge.classList.remove("connected");
+        }
         _creativeAutoFetchDone = false;
         runCreativeDiagnostic();
       });
+
+    initCharts();
+
+    let loadAdsDataDebounceTimer = null;
     const scheduleLoadAdsData = () => {
       if (loadAdsDataDebounceTimer) clearTimeout(loadAdsDataDebounceTimer);
       loadAdsDataDebounceTimer = setTimeout(() => {
@@ -3803,6 +4120,117 @@
       });
     }
   }
+
+  // ── キーワード管理: AI判定 & 操作 ────────────────────
+
+  function updateApplyBtnVisibility() {
+    const btn = document.getElementById("btn-apply-actions");
+    if (!btn) return;
+    const hasAction = document.querySelector("[data-kw-action]");
+    const anySelected = hasAction && [...document.querySelectorAll("[data-kw-action]")].some((s) => s.value);
+    btn.style.display = anySelected ? "" : "none";
+  }
+
+  window.runAiEvaluate = async function () {
+    const rows = Array.isArray(adsKeywordRows) ? adsKeywordRows : [];
+    if (rows.length === 0) { alert("キーワードデータがありません。先にレポートを取得してください。"); return; }
+    const btn = document.getElementById("btn-ai-evaluate");
+    if (btn) { btn.disabled = true; btn.textContent = "判定中..."; }
+    try {
+      const res = await fetch("/api/ads/keywords/ai-evaluate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ keywords: rows }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "AI判定に失敗しました");
+      const evalMap = new Map();
+      (data.evaluations || []).forEach((ev) => {
+        const key = `${ev.campaign}\t${ev.keyword}`;
+        evalMap.set(key, ev);
+      });
+      adsKeywordRows.forEach((r) => {
+        const key = `${r.campaign}\t${r.keyword}`;
+        r._aiEval = evalMap.get(key) || null;
+      });
+      refreshKeywordTab();
+    } catch (e) {
+      alert("AI判定エラー: " + e.message);
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = "AI判定"; }
+    }
+  };
+
+  window.applyKeywordActions = async function () {
+    const rows = Array.isArray(adsKeywordRows) ? adsKeywordRows : [];
+    const selects = document.querySelectorAll("[data-kw-action]");
+    const operations = [];
+    selects.forEach((sel) => {
+      const idx = parseInt(sel.dataset.kwAction, 10);
+      const action = sel.value;
+      if (!action || isNaN(idx) || !rows[idx]) return;
+      const r = rows[idx];
+      if (!r.resourceName) return;
+      if (action === "bid_edit") {
+        const currentBid = r.cpcBid || r.avgCpc || 0;
+        const newBid = prompt(`「${r.keyword}」の新しい入札額（円）を入力`, currentBid);
+        if (newBid === null) return;
+        const bidYen = parseInt(newBid, 10);
+        if (!bidYen || bidYen <= 0) { alert("有効な金額を入力してください"); return; }
+        operations.push({ resourceName: r.resourceName, cpcBidMicros: bidYen * 1000000 });
+      } else {
+        operations.push({ resourceName: r.resourceName, action });
+      }
+    });
+    if (operations.length === 0) { alert("実行する操作がありません"); return; }
+    const summary = operations.map((op) => {
+      if (op.action === "pause") return "停止";
+      if (op.action === "enable") return "有効化";
+      if (op.cpcBidMicros) return `入札変更 → ¥${(op.cpcBidMicros / 1000000).toLocaleString()}`;
+      return "不明";
+    }).join(", ");
+    if (!confirm(`${operations.length}件のキーワード操作を実行します:\n${summary}\n\n続行しますか？`)) return;
+
+    const btn = document.getElementById("btn-apply-actions");
+    if (btn) { btn.disabled = true; btn.textContent = "実行中..."; }
+    try {
+      const res = await fetch("/api/ads/keywords/mutate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          operations,
+          google_account_id: adsGoogleAccountId || "",
+          api_auth_source_id: adsGoogleAuthSourceId || "",
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "操作に失敗しました");
+      const ok = (data.results || []).length;
+      const ng = (data.errors || []).length;
+      alert(`完了: 成功 ${ok}件` + (ng > 0 ? `, 失敗 ${ng}件` : ""));
+      // レポートを再取得して表示を更新
+      const updateBtn = document.querySelector("[data-action='update-report']");
+      if (updateBtn) updateBtn.click();
+    } catch (e) {
+      alert("操作エラー: " + e.message);
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = "選択した操作を実行"; btn.style.display = "none"; }
+    }
+  };
+
+  // 操作セレクト変更で実行ボタン表示切替
+  document.addEventListener("change", (e) => {
+    if (e.target.matches("[data-kw-action]")) updateApplyBtnVisibility();
+  });
+  // 全選択チェックボックス
+  document.addEventListener("change", (e) => {
+    if (e.target.id === "kw-check-all") {
+      const checked = e.target.checked;
+      document.querySelectorAll(".kw-check:not(:disabled)").forEach((cb) => { cb.checked = checked; });
+    }
+  });
 
   document.addEventListener("DOMContentLoaded", init);
 })();

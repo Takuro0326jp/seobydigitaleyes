@@ -156,7 +156,21 @@ async function fetchGoogleAdsReportWithMeta(startDate, endDate, userId = null, o
   let customerId = (process.env.GOOGLE_ADS_CUSTOMER_ID || "").trim().replace(/-/g, "");
   let loginCustomerId = (process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID || "").trim().replace(/-/g, "");
 
-  if (userId) {
+  // company_url_id ベースのアカウント解決（優先）
+  if (options?.company_url_id) {
+    try {
+      const { getAccountForCompanyUrl } = require("../companyUrlAdsAccounts");
+      const acc = await getAccountForCompanyUrl(options.company_url_id, "google");
+      if (acc?.refresh_token) {
+        refreshToken = acc.refresh_token;
+        customerId = String(acc.customer_id || "").trim().replace(/-/g, "") || customerId;
+        const lid = String(acc.login_customer_id ?? "").trim().replace(/-/g, "");
+        if (lid) loginCustomerId = lid;
+      }
+    } catch (e) {
+      if (process.env.NODE_ENV !== "production") console.warn("[Google Ads] getAccountForCompanyUrl error:", e.message);
+    }
+  } else if (userId) {
     try {
       const { getSelectedAccount } = require("../googleAdsAccounts");
       const acc = await getSelectedAccount(userId);
@@ -420,7 +434,12 @@ async function fetchGoogleAdsReportWithMeta(startDate, endDate, userId = null, o
     const qKeyword = `
       SELECT
         segments.date,
+        ad_group_criterion.resource_name,
         ad_group_criterion.keyword.text,
+        ad_group_criterion.keyword.match_type,
+        ad_group_criterion.status,
+        ad_group_criterion.cpc_bid_micros,
+        ad_group.name,
         campaign.name,
         campaign.advertising_channel_type,
         metrics.cost_micros,
@@ -437,7 +456,12 @@ async function fetchGoogleAdsReportWithMeta(startDate, endDate, userId = null, o
     const qKeywordNoAvgCpc = `
       SELECT
         segments.date,
+        ad_group_criterion.resource_name,
         ad_group_criterion.keyword.text,
+        ad_group_criterion.keyword.match_type,
+        ad_group_criterion.status,
+        ad_group_criterion.cpc_bid_micros,
+        ad_group.name,
         campaign.name,
         campaign.advertising_channel_type,
         metrics.cost_micros,
@@ -656,7 +680,12 @@ async function fetchGoogleAdsReportWithMeta(startDate, endDate, userId = null, o
       const text = kw.text || "";
       const camp = row.campaign?.name || "";
       const channelType = row.campaign?.advertising_channel_type || row.campaign?.advertisingChannelType || "";
-      const key = `${camp}\t${text}`;
+      const adGroupName = row.ad_group?.name || row.adGroup?.name || "";
+      const resourceName = crit.resource_name || crit.resourceName || "";
+      const matchType = kw.match_type || kw.matchType || "";
+      const status = crit.status || "";
+      const cpcBidMicros = num(crit.cpc_bid_micros || crit.cpcBidMicros);
+      const key = `${camp}\t${text}\t${matchType}`;
       const m = row.metrics || {};
       const imp = num(m.impressions);
       const clk = num(m.clicks);
@@ -664,7 +693,12 @@ async function fetchGoogleAdsReportWithMeta(startDate, endDate, userId = null, o
         byKeyword.set(key, {
           keyword: text,
           campaign: camp,
+          adGroup: adGroupName,
           channelType,
+          resourceName,
+          matchType,
+          status,
+          cpcBidMicros,
           impressions: 0,
           clicks: 0,
           cost: 0,
@@ -685,11 +719,19 @@ async function fetchGoogleAdsReportWithMeta(startDate, endDate, userId = null, o
         k.avgCpcMicrosWeighted += cpcMicros * clk;
         k.avgCpcClkWeight += clk;
       }
+      // 最新のリソース名・ステータスを保持
+      if (resourceName) k.resourceName = resourceName;
+      if (status) k.status = status;
     }
     const keywordRows = [...byKeyword.values()].map((v) => ({
       media: googleChannelToMedia(v.channelType),
       keyword: v.keyword,
       campaign: v.campaign,
+      adGroup: v.adGroup,
+      resourceName: v.resourceName,
+      matchType: v.matchType,
+      status: v.status,
+      cpcBid: v.cpcBidMicros > 0 ? microsToYen(v.cpcBidMicros) : 0,
       impressions: v.impressions,
       clicks: v.clicks,
       cost: v.cost,
@@ -907,4 +949,45 @@ async function validateCustomerAccess(customerId, loginCustomerId, refreshToken,
   }
 }
 
-module.exports = { fetchGoogleAdsReport, fetchGoogleAdsReportWithMeta, validateCustomerAccess };
+/**
+ * Google Ads キーワード操作（ステータス変更・入札額調整）
+ * @param {string} customerId - Google Ads アカウントID
+ * @param {string} resourceName - キーワードのリソース名 (customers/xxx/adGroupCriteria/xxx~xxx)
+ * @param {object} updates - { status?: "ENABLED"|"PAUSED", cpcBidMicros?: number }
+ */
+async function mutateKeyword(customerId, resourceName, updates, { refreshToken, loginCustomerId } = {}) {
+  const clientId = (process.env.GOOGLE_CLIENT_ID || "").trim();
+  const clientSecret = (process.env.GOOGLE_CLIENT_SECRET || "").trim();
+  const developerToken = (process.env.GOOGLE_ADS_DEVELOPER_TOKEN || "").trim();
+  if (!clientId || !clientSecret || !developerToken || !refreshToken) {
+    throw new Error("Google Ads API の認証情報が不足しています");
+  }
+
+  const { GoogleAdsApi } = require("google-ads-api");
+  const client = new GoogleAdsApi({ client_id: clientId, client_secret: clientSecret, developer_token: developerToken });
+  const opts = { customer_id: customerId, refresh_token: refreshToken };
+  if (loginCustomerId) opts.login_customer_id = loginCustomerId;
+  const customer = client.Customer(opts);
+
+  const updateObj = { resource_name: resourceName };
+  const updateMask = [];
+  if (updates.status) {
+    updateObj.status = updates.status; // "ENABLED" or "PAUSED"
+    updateMask.push("status");
+  }
+  if (updates.cpcBidMicros != null) {
+    updateObj.cpc_bid_micros = updates.cpcBidMicros;
+    updateMask.push("cpc_bid_micros");
+  }
+
+  const result = await customer.mutateResources([
+    {
+      _resource: "AdGroupCriterion",
+      _operation: "update",
+      ...updateObj,
+    },
+  ]);
+  return result;
+}
+
+module.exports = { fetchGoogleAdsReport, fetchGoogleAdsReportWithMeta, validateCustomerAccess, mutateKeyword };

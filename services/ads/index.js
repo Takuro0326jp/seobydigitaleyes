@@ -68,11 +68,16 @@ async function fetchAllReports(monthOrRange, userId = null, options = {}) {
     endDate = range.endDate;
   }
 
-  const status = await getConnectionStatus(userId);
+  const companyUrlId = options?.company_url_id || null;
+  const status = await getConnectionStatus(userId, companyUrlId);
   const fetchGoogle = status.google?.connected ?? false;
   const fetchYahoo = status.yahoo?.connected ?? false;
   const fetchMicrosoft = status.microsoft?.connected ?? false;
-  const adAccountId = (options?.ad_account_id || "").trim();
+  // Meta: company_url_id ベースの場合は紐付けから取得
+  let adAccountId = (options?.ad_account_id || "").trim();
+  if (!adAccountId && companyUrlId) {
+    adAccountId = status.meta?.meta_ad_account_id || "";
+  }
   const hasMetaToken = !!(process.env.META_ACCESS_TOKEN || "").trim();
   const fetchMeta = !!(adAccountId && hasMetaToken);
   const mediaCalled = [];
@@ -191,6 +196,7 @@ async function fetchAllReports(monthOrRange, userId = null, options = {}) {
     assetRows,
     meta: {
       google_customer_id: googleResult.customerId || null,
+      google_auth_source_id: googleResult.authSourceId || null,
       yahoo_account_id: yahooResult.customerId || null,
       meta_account_id: adAccountId || null,
       meta_error: metaError,
@@ -214,7 +220,73 @@ async function fetchAllReports(monthOrRange, userId = null, options = {}) {
   return res;
 }
 
-async function getConnectionStatus(userId = null) {
+async function getConnectionStatus(userId = null, companyUrlId = null) {
+  // ── company_url_id ベースの接続状態判定 ──
+  if (companyUrlId) {
+    const { getAccountForCompanyUrl, listAssignments } = require("../companyUrlAdsAccounts");
+    const apiAuthSources = require("../apiAuthSources");
+    const allAuthSources = await apiAuthSources.listAllPlatformsForCompanyUrl(companyUrlId);
+    const assignments = await listAssignments(companyUrlId);
+
+    const googleAcc = await getAccountForCompanyUrl(companyUrlId, "google");
+    const hasGoogle = !!(googleAcc?.refresh_token && process.env.GOOGLE_ADS_DEVELOPER_TOKEN && googleAcc.customer_id);
+
+    const yahooAcc = await getAccountForCompanyUrl(companyUrlId, "yahoo");
+    const hasYahoo = !!(yahooAcc?.refresh_token && (process.env.YAHOO_ADS_CLIENT_ID || process.env.YAHOO_ADS_ACCESS_TOKEN));
+
+    const metaAssign = assignments.find((a) => a.platform === "meta");
+
+    const hasMicrosoft = !!(
+      process.env.MICROSOFT_ADS_CLIENT_ID &&
+      process.env.MICROSOFT_ADS_CLIENT_SECRET &&
+      process.env.MICROSOFT_ADS_REFRESH_TOKEN &&
+      process.env.MICROSOFT_ADS_CUSTOMER_ID
+    );
+
+    // この Target に紐づくアカウント・認証元のみ（他ドメインと共有しない）
+    let googleAccounts = [];
+    let yahooAccounts = [];
+    const googleAssignment = assignments.find((a) => a.platform === "google");
+    const yahooAssignment = assignments.find((a) => a.platform === "yahoo");
+    try {
+      const { listAccountsForCompanyUrl: listGoogleForUrl } = require("../googleAdsAccounts");
+      googleAccounts = (await listGoogleForUrl(companyUrlId)).map((a) => ({
+        ...a,
+        is_selected: googleAssignment ? a.id === googleAssignment.ads_account_id : false,
+      }));
+    } catch (_) {}
+    try {
+      const { listAccountsForCompanyUrl: listYahooForUrl } = require("../yahooAdsAccounts");
+      yahooAccounts = (await listYahooForUrl(companyUrlId)).map((a) => ({
+        ...a,
+        is_selected: yahooAssignment ? a.id === yahooAssignment.ads_account_id : false,
+      }));
+    } catch (_) {}
+
+    return {
+      google: {
+        connected: hasGoogle,
+        customer_id: googleAcc?.customer_id || null,
+        login_customer_id: googleAcc?.login_customer_id || null,
+        accounts: googleAccounts,
+        auth_sources: allAuthSources.filter((s) => s.platform === "google"),
+        account_debug: googleAcc ? { account_id: googleAcc.id, name: googleAcc.name, customer_id: googleAcc.customer_id, has_refresh_token: !!googleAcc.refresh_token } : null,
+      },
+      yahoo: {
+        connected: hasYahoo,
+        accounts: yahooAccounts,
+        auth_sources: allAuthSources.filter((s) => s.platform === "yahoo"),
+      },
+      meta: {
+        meta_ad_account_id: metaAssign?.meta_ad_account_id || null,
+        auth_sources: allAuthSources.filter((s) => s.platform === "meta"),
+      },
+      microsoft: { connected: !!hasMicrosoft },
+      assignments,
+    };
+  }
+
+  // ── 従来の userId ベースの接続状態判定 ──
   let hasGoogle =
     process.env.GOOGLE_ADS_DEVELOPER_TOKEN &&
     (process.env.GOOGLE_ADS_CLIENT_ID || process.env.GOOGLE_CLIENT_ID) &&
@@ -230,7 +302,9 @@ async function getConnectionStatus(userId = null) {
     try {
       const { listAccounts, getSelectedAccount } = require("../googleAdsAccounts");
       const apiAuthSources = require("../apiAuthSources");
-      googleAuthSources = await apiAuthSources.list(userId, "google");
+      const allGoogleAuth = await apiAuthSources.listAll("google");
+      const userGoogleAuth = await apiAuthSources.list(userId, "google");
+      googleAuthSources = allGoogleAuth.length > 0 ? allGoogleAuth : userGoogleAuth;
       const accounts = await listAccounts(userId);
       googleAccounts = accounts;
       const selectedAcc = await getSelectedAccount(userId);
@@ -296,7 +370,9 @@ async function getConnectionStatus(userId = null) {
     try {
       const yahooAdsAccounts = require("../yahooAdsAccounts");
       const apiAuthSources = require("../apiAuthSources");
-      yahooAuthSources = await apiAuthSources.list(userId, "yahoo");
+      const allYahooAuth = await apiAuthSources.listAll("yahoo");
+      const userYahooAuth = await apiAuthSources.list(userId, "yahoo");
+      yahooAuthSources = allYahooAuth.length > 0 ? allYahooAuth : userYahooAuth;
       yahooAccounts = await yahooAdsAccounts.listAccounts(userId);
       const selectedYahoo = await yahooAdsAccounts.getSelectedAccount(userId);
       if (selectedYahoo?.refresh_token && process.env.YAHOO_ADS_CLIENT_ID) hasYahoo = true;

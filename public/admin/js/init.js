@@ -7,6 +7,7 @@ import { render as renderUsers } from "./pages/users.js?v=6";
 import { render as renderCompanies } from "./pages/companies.js";
 import { render as renderScans } from "./pages/scans.js";
 import { render as renderLinkAnalysis } from "./pages/link-analysis.js";
+import { render as renderAdsSettings } from "./pages/ads-settings.js?v=7";
 
 const routes = {
   "/": renderDashboard,
@@ -14,11 +15,14 @@ const routes = {
   "/companies": renderCompanies,
   "/scans": renderScans,
   "/link-analysis": renderLinkAnalysis,
+  "/ads-settings": renderAdsSettings,
 };
 
 function getRoute() {
-  const hash = window.location.hash.slice(1) || "/";
-  return hash;
+  let path = window.location.hash.slice(1) || "/";
+  const q = path.indexOf("?");
+  if (q >= 0) path = path.slice(0, q);
+  return path || "/";
 }
 
 function setNavActive(route) {
@@ -44,7 +48,8 @@ async function navigate(route) {
     "/users": "ユーザー管理",
     "/companies": "企業管理",
     "/scans": "スキャン管理",
-    "/link-analysis": "リンク分析"
+    "/link-analysis": "リンク分析",
+    "/ads-settings": "API認証元管理"
   };
   const topbarTitle = document.getElementById("topbar-title");
   if (topbarTitle) topbarTitle.textContent = titles[normalized] || "管理コンソール";

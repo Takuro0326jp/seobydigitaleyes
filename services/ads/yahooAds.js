@@ -104,11 +104,18 @@ async function getAccessToken(acc, userId) {
     if (refreshed?.access_token) {
       accessToken = refreshed.access_token;
       const apiAuthSources = require("../apiAuthSources");
-      if (acc.api_auth_source_id && userId) {
-        await apiAuthSources.updateTokens(acc.api_auth_source_id, userId, {
-          access_token: refreshed.access_token,
-          expiry_date: refreshed.expiry_date,
-        });
+      if (acc.api_auth_source_id) {
+        if (userId) {
+          await apiAuthSources.updateTokens(acc.api_auth_source_id, userId, {
+            access_token: refreshed.access_token,
+            expiry_date: refreshed.expiry_date,
+          });
+        } else {
+          await apiAuthSources.updateTokensGlobal(acc.api_auth_source_id, {
+            access_token: refreshed.access_token,
+            expiry_date: refreshed.expiry_date,
+          });
+        }
       }
     }
   }
@@ -401,7 +408,15 @@ async function fetchYahooAdsReportWithMeta(startDate, endDate, userId = null, op
   const wantDebug = !!(options && options.debug);
   const connectionTest = !!(options && options.connectionTest);
   let acc = null;
-  if (userId) {
+  // company_url_id ベースのアカウント解決（優先）
+  if (options?.company_url_id) {
+    try {
+      const { getAccountForCompanyUrl } = require("../companyUrlAdsAccounts");
+      acc = await getAccountForCompanyUrl(options.company_url_id, "yahoo");
+    } catch (e) {
+      if (process.env.NODE_ENV !== "production") console.warn("[Yahoo Ads] getAccountForCompanyUrl error:", e.message);
+    }
+  } else if (userId) {
     try {
       const { getSelectedAccount } = require("../yahooAdsAccounts");
       acc = await getSelectedAccount(userId);

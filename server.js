@@ -612,6 +612,65 @@ app.use((err, req, res, next) => {
   } catch (e) {
     if (e.code !== "ER_TABLE_EXISTS" && e.code !== "ER_TABLE_EXISTS_ERROR") console.warn("[DB] yahoo_ads_accounts スキップ:", e?.message);
   }
+  // ── 案件別広告アカウント紐付けテーブル ──
+  try {
+    await pool.execute(`CREATE TABLE IF NOT EXISTS company_url_ads_accounts (
+      id INT NOT NULL AUTO_INCREMENT,
+      company_url_id BIGINT NOT NULL,
+      platform VARCHAR(32) NOT NULL,
+      ads_account_id INT NULL,
+      meta_ad_account_id VARCHAR(64) NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+      PRIMARY KEY (id),
+      UNIQUE KEY uq_cu_platform (company_url_id, platform),
+      KEY idx_cuaa_company_url (company_url_id),
+      CONSTRAINT fk_cuaa_cu FOREIGN KEY (company_url_id) REFERENCES company_urls(id) ON DELETE CASCADE
+    )`);
+    console.log("[DB] company_url_ads_accounts 確認OK");
+  } catch (e) {
+    if (e.code !== "ER_TABLE_EXISTS" && e.code !== "ER_TABLE_EXISTS_ERROR") console.warn("[DB] company_url_ads_accounts スキップ:", e?.message);
+  }
+  // ── 広告API: Target（company_url）単位のスコープ ──
+  try {
+    await pool.query(
+      "ALTER TABLE api_auth_sources ADD COLUMN company_url_id BIGINT NULL, ADD KEY idx_api_auth_sources_company_url (company_url_id)"
+    );
+    console.log("[DB] api_auth_sources.company_url_id 追加OK");
+  } catch (e) {
+    if (e.code !== "ER_DUP_FIELDNAME") { /* ignore */ }
+  }
+  for (const tbl of ["google_ads_accounts", "yahoo_ads_accounts"]) {
+    try {
+      await pool.query(
+        `ALTER TABLE ${tbl} ADD COLUMN company_url_id BIGINT NULL, ADD KEY idx_${tbl}_cu (company_url_id)`
+      );
+      console.log(`[DB] ${tbl}.company_url_id 追加OK`);
+    } catch (e) {
+      if (e.code !== "ER_DUP_FIELDNAME") { /* ignore */ }
+    }
+  }
+  try {
+    await pool.query("ALTER TABLE oauth_states ADD COLUMN company_url_id BIGINT NULL");
+    console.log("[DB] oauth_states.company_url_id 追加OK");
+  } catch (e) {
+    if (e.code !== "ER_DUP_FIELDNAME") { /* ignore */ }
+  }
+  // ── user_id を nullable に変更（グローバル認証元対応） ──
+  for (const tbl of ["api_auth_sources", "google_ads_accounts", "yahoo_ads_accounts"]) {
+    try {
+      const [cols] = await pool.query(`SHOW COLUMNS FROM ${tbl} LIKE 'user_id'`);
+      if (cols?.length && cols[0].Null === "NO") {
+        // FK制約を先に削除してから nullable に変更
+        const fkName = `fk_${tbl}_user`;
+        try { await pool.query(`ALTER TABLE ${tbl} DROP FOREIGN KEY ${fkName}`); } catch (_) {}
+        await pool.query(`ALTER TABLE ${tbl} MODIFY COLUMN user_id INT NULL`);
+        console.log(`[DB] ${tbl}.user_id → NULL許可に変更`);
+      }
+    } catch (e) {
+      if (e.code !== "ER_NO_SUCH_TABLE") console.warn(`[DB] ${tbl} user_id nullable化スキップ:`, e?.message);
+    }
+  }
   try {
     await pool.execute(`CREATE TABLE IF NOT EXISTS scan_google_tokens (
       scan_id VARCHAR(36) NOT NULL,

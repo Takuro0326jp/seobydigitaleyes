@@ -122,24 +122,6 @@ function scanFilterClause(scanId) {
   return { sql: " AND scan_id = ?", params: [scanId] };
 }
 
-const STRATEGY_AGENT_LOG_PATHS = [
-  path.join(__dirname, "..", "debug-159bed.log"),
-  path.join(__dirname, "..", ".cursor", "debug-159bed.log"),
-];
-function strategyAgentFileLog(payload) {
-  const line = JSON.stringify({ sessionId: "159bed", timestamp: Date.now(), ...payload }) + "\n";
-  try {
-    process.stderr.write("[debug-159bed] " + line);
-  } catch (_) {}
-  for (const p of STRATEGY_AGENT_LOG_PATHS) {
-    try {
-      const dir = path.dirname(p);
-      if (dir && dir !== ".") fs.mkdirSync(dir, { recursive: true });
-      fs.appendFileSync(p, line);
-    } catch (_) {}
-  }
-}
-
 /** GET /api/strategy?scan=xxx&company_id=xxx - 一覧（scan 必須: 未指定時は空。管理者のみ ?company_id= で全件可） */
 router.get("/", async (req, res) => {
   const user = await getUserWithContext(req);
@@ -154,28 +136,6 @@ router.get("/", async (req, res) => {
 
   /** scan なしだと company 全件になり全ドメインで同じ一覧になるため、管理者の明示用途以外は返さない */
   if (!scanParam && !adminCompanyDump) {
-    // #region agent log
-    fetch("http://127.0.0.1:7591/ingest/d7a5fde3-9c6b-445c-8f0d-e1414fbf33cc", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "159bed" },
-      body: JSON.stringify({
-        sessionId: "159bed",
-        location: "routes/strategy.js:GET/",
-        message: "strategy list blocked no scan",
-        data: { earlyEmpty: true },
-        timestamp: Date.now(),
-        hypothesisId: "H1",
-        runId: "verify",
-      }),
-    }).catch(() => {});
-    strategyAgentFileLog({
-      hypothesisId: "H1",
-      runId: "verify",
-      location: "routes/strategy.js:GET/",
-      message: "strategy list blocked no scan",
-      data: { earlyEmpty: true },
-    });
-    // #endregion
     return res.json([]);
   }
 
@@ -186,13 +146,6 @@ router.get("/", async (req, res) => {
     ctx = await resolveStrategyContext(user, scanParam);
   }
   if (!ctx.ok) {
-    strategyAgentFileLog({
-      hypothesisId: "H2",
-      runId: "verify",
-      location: "routes/strategy.js:GET/",
-      message: "strategy list context error",
-      data: { status: ctx.status, scanParam: scanParam || null },
-    });
     return res.status(ctx.status).json({ error: ctx.error });
   }
   let { companyId, scanId } = ctx;
@@ -242,39 +195,6 @@ router.get("/", async (req, res) => {
       };
     });
 
-    // #region agent log
-    fetch("http://127.0.0.1:7591/ingest/d7a5fde3-9c6b-445c-8f0d-e1414fbf33cc", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "159bed" },
-      body: JSON.stringify({
-        sessionId: "159bed",
-        location: "routes/strategy.js:GET/",
-        message: "strategy list result",
-        data: {
-          rowCount: list.length,
-          hasScanParam: Boolean(scanParam),
-          scanId: scanId ?? null,
-          adminCompanyDump,
-        },
-        timestamp: Date.now(),
-        hypothesisId: "H1",
-        runId: "verify",
-      }),
-    }).catch(() => {});
-    strategyAgentFileLog({
-      hypothesisId: "H1",
-      runId: "verify",
-      location: "routes/strategy.js:GET/",
-      message: "strategy list result",
-      data: {
-        rowCount: list.length,
-        hasScanParam: Boolean(scanParam),
-        scanId: scanId ?? null,
-        companyId,
-        adminCompanyDump,
-      },
-    });
-    // #endregion
     res.json(list);
   } catch (e) {
     console.error("[strategy] GET error:", e.message);
@@ -291,15 +211,6 @@ router.post("/", async (req, res) => {
 
   const scanParam = (req.body?.scanId || req.body?.scan || "").trim() || null;
   if (!scanParam) {
-    // #region agent log
-    strategyAgentFileLog({
-      hypothesisId: "H3",
-      runId: "verify",
-      location: "routes/strategy.js:POST/",
-      message: "strategy post blocked no scanId",
-      data: {},
-    });
-    // #endregion
     return res.status(400).json({
       error:
         "サイトごとに登録するため scanId が必要です。対象サイトを選んでから追加してください。",
@@ -353,16 +264,6 @@ router.post("/", async (req, res) => {
         }
       } catch (_) {}
     }
-
-    // #region agent log
-    strategyAgentFileLog({
-      hypothesisId: "H3",
-      runId: "verify",
-      location: "routes/strategy.js:POST/",
-      message: "strategy post inserted",
-      data: { insertId, scanId: scanId ?? null, companyId },
-    });
-    // #endregion
 
     res.status(201).json({
       id: insertId,

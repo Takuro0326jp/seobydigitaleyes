@@ -649,8 +649,10 @@
 <div class="tab-panel" id="tab-keyword">
   <div class="panel">
     <div class="panel-header">
-      <span class="panel-title">キーワード一覧</span>
+      <span class="panel-title">キーワード管理</span>
       <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+        <button id="btn-ai-evaluate" onclick="runAiEvaluate()" style="border:1px solid #6366f1;background:#6366f1;color:#fff;padding:6px 14px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap">AI判定</button>
+        <button id="btn-apply-actions" onclick="applyKeywordActions()" style="border:1px solid var(--border);background:var(--surface2);padding:6px 14px;border-radius:6px;font-size:12px;cursor:pointer;white-space:nowrap;display:none">選択した操作を実行</button>
         <select id="keyword-media-filter" style="border:1px solid var(--border);padding:6px 12px;border-radius:6px;font-size:13px;min-width:150px;max-width:250px;background:var(--surface2)">
           <option value="">すべての媒体</option>
         </select>
@@ -661,11 +663,15 @@
         <span id="keyword-count" style="font-size:12px;color:var(--text-muted)">—</span>
       </div>
     </div>
+    <div style="overflow-x:auto">
     <table class="data-table">
       <thead>
         <tr>
+          <th style="width:36px;"><input type="checkbox" id="kw-check-all" title="全選択"></th>
           <th class="sortable" data-sort="media">媒体 <span class="sort-icon">↕</span></th>
           <th class="sortable" data-sort="keyword">キーワード <span class="sort-icon">↕</span></th>
+          <th class="sortable" data-sort="matchType">マッチ <span class="sort-icon">↕</span></th>
+          <th class="sortable" data-sort="status">状態 <span class="sort-icon">↕</span></th>
           <th class="sortable" data-sort="campaign">キャンペーン <span class="sort-icon">↕</span></th>
           <th class="sortable" data-sort="cost">広告費 <span class="sort-icon">↕</span></th>
           <th class="sortable" data-sort="impressions">IMP <span class="sort-icon">↕</span></th>
@@ -673,12 +679,16 @@
           <th class="sortable" data-sort="conversions">CV <span class="sort-icon">↕</span></th>
           <th class="sortable" data-sort="cpa">CPA <span class="sort-icon">↕</span></th>
           <th class="sortable" data-sort="avgCpc">平均CPC <span class="sort-icon">↕</span></th>
+          <th class="sortable" data-sort="cpcBid">入札額 <span class="sort-icon">↕</span></th>
+          <th style="min-width:120px;">AI判定</th>
+          <th style="min-width:100px;">操作</th>
         </tr>
       </thead>
       <tbody id="keyword-tbody">
-        <tr class="empty-row"><td colspan="9" style="text-align:center;color:var(--text-muted);padding:24px">データがありません</td></tr>
+        <tr class="empty-row"><td colspan="15" style="text-align:center;color:var(--text-muted);padding:24px">データがありません</td></tr>
       </tbody>
     </table>
+    </div>
   </div>
 </div>
 
@@ -714,6 +724,6 @@
 </div>
 
 <script src="/js/header.js?v=7"></script>
-<script src="/js/ads.js?v=20"></script>
+<script src="/js/ads.js?v=28"></script>
 </body>
 </html>

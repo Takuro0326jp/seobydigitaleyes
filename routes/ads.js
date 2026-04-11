@@ -18,9 +18,10 @@ async function requireAdmin(req, res) {
   if (!isAdmin(user)) { res.status(403).json({ error: "この操作にはマスター権限が必要です" }); return null; }
   return user;
 }
+
 const { fetchAllReports, getConnectionStatus, getDateRangeForMonth, getDateRangeFromDates } = require("../services/ads");
 const { fetchMetaInsightsReport } = require("../services/ads/metaAds");
-const { fetchGoogleAdsReportWithMeta, validateCustomerAccess } = require("../services/ads/googleAds");
+const { fetchGoogleAdsReportWithMeta, validateCustomerAccess, mutateKeyword } = require("../services/ads/googleAds");
 const { fetchYahooAdsReportWithMeta, testYahooAccountService, getCampaignRawDownload, getCreativeReportsDebug, cleanupReportJobs } = require("../services/ads/yahooAds");
 const {
   getOAuth2Client,
@@ -46,7 +47,23 @@ const {
   deleteAccount: deleteYahooAccount,
 } = require("../services/yahooAdsAccounts");
 const { getAuthUrl, exchangeCodeForTokens, getRedirectUri: getYahooRedirectUri } = require("../services/yahooAdsOAuth");
+const metaOAuth = require("../services/metaOAuth");
 const apiAuthSources = require("../services/apiAuthSources");
+
+/** Target（company_url_id）用: 認証元がその案件に属するか */
+async function assertAuthSourceBelongsToCompanyUrl(res, companyUrlId, authId, platform) {
+  const cid = parseInt(String(companyUrlId || ""), 10);
+  if (!cid || Number.isNaN(cid)) return true;
+  const allowed = await apiAuthSources.listForCompanyUrl(cid, platform);
+  if (!allowed.some((a) => a.id === authId)) {
+    res.status(400).json({
+      error:
+        "この Target では利用できない API 認証元です。Target を選んだ状態で「Google/Yahoo で連携」から認証元を追加するか、正しい Target を選択してください。",
+    });
+    return false;
+  }
+  return true;
+}
 
 /** レポート API のメモリキャッシュ（Meta 等の外部 API 負荷軽減）。TTL 3 時間。 */
 const REPORT_CACHE_TTL_MS = 3 * 60 * 60 * 1000;
@@ -372,6 +389,7 @@ router.get("/report", async (req, res) => {
   const endDate = (req.query.endDate || "").trim();
   /** Meta 広告アカウント ID（act_…）。DB ではなくクライアント設定から渡す。 */
   const adAccountId = (req.query.ad_account_id || "").trim();
+  const companyUrlId = (req.query.company_url_id || "").trim() || null;
   const debug = /^(1|true|yes)$/i.test((req.query.debug || "").trim());
   const force = /^(1|true|yes)$/i.test((req.query.force || "").trim());
 
@@ -388,7 +406,9 @@ router.get("/report", async (req, res) => {
     if (!param) {
       param = month || undefined;
     }
-    const cacheKey = buildReportCacheKey(userId, adAccountId, month, startDate, endDate);
+    const cacheKey = companyUrlId
+      ? buildReportCacheKey("cu_" + companyUrlId, adAccountId, month, startDate, endDate)
+      : buildReportCacheKey(userId, adAccountId, month, startDate, endDate);
     const skipCache = force || debug;
     if (!skipCache) {
       const cached = getReportFromCache(cacheKey);
@@ -398,7 +418,7 @@ router.get("/report", async (req, res) => {
       }
     }
 
-    const result = await fetchAllReports(param, userId, { debug, force, ad_account_id: adAccountId || undefined });
+    const result = await fetchAllReports(param, userId, { debug, force, ad_account_id: adAccountId || undefined, company_url_id: companyUrlId || undefined });
     const adRows = result.adRows ?? [];
     const json = {
       rows: result.rows ?? [],
@@ -615,7 +635,8 @@ router.get("/status", async (req, res) => {
       return res.status(401).json({ error: "ログインが必要です" });
     }
 
-    const status = await getConnectionStatus(user.id);
+    const companyUrlId = (req.query.company_url_id || "").trim() || null;
+    const status = await getConnectionStatus(user.id, companyUrlId);
     res.json(status);
   } catch (e) {
     console.error("[ads] status error:", e.message);
@@ -652,24 +673,27 @@ router.get("/google/connect", async (req, res) => {
   }
 
   const mode = (req.query.mode || "").trim() || "auth_source";
+  const isGlobal = mode === "global";
   const accountName = (req.query.name || req.query.account_name || "").trim().slice(0, 100);
   const customerId = (req.query.customer_id || "").trim().replace(/\s/g, "").replace(/-/g, "");
   const loginCustomerId = (req.query.login_customer_id || "").trim().replace(/\s/g, "").replace(/-/g, "") || null;
   const state = crypto.randomBytes(24).toString("hex");
 
+  const oauthPlatform = isGlobal ? "google_global" : "google";
   try {
     const [cols] = await pool.query("SHOW COLUMNS FROM oauth_states");
     const hasLogin = cols?.some((c) => c.Field === "login_customer_id");
     const hasName = cols?.some((c) => c.Field === "account_name");
+    const hasPlatform = cols?.some((c) => c.Field === "platform");
     if (hasLogin && hasName) {
       await pool.query(
-        "INSERT INTO oauth_states (state, user_id, expires_at, customer_id, login_customer_id, account_name) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 10 MINUTE), ?, ?, ?)",
-        [state, userId, mode === "auth_source" ? null : (customerId || null), loginCustomerId || null, accountName || null]
+        `INSERT INTO oauth_states (state, user_id, expires_at, customer_id, login_customer_id, account_name${hasPlatform ? ", platform" : ""}) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 10 MINUTE), ?, ?, ?${hasPlatform ? ", ?" : ""})`,
+        [state, userId, (isGlobal || mode === "auth_source") ? null : (customerId || null), loginCustomerId || null, accountName || null, ...(hasPlatform ? [oauthPlatform] : [])]
       );
     } else {
       await pool.query(
         "INSERT INTO oauth_states (state, user_id, expires_at, customer_id) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 10 MINUTE), ?)",
-        [state, userId, mode === "auth_source" ? null : (customerId || null)]
+        [state, userId, (isGlobal || mode === "auth_source") ? null : (customerId || null)]
       );
     }
   } catch (e) {
@@ -681,6 +705,17 @@ router.get("/google/connect", async (req, res) => {
         [state, userId]
       );
     } else throw e;
+  }
+
+  const oauthCu = parseInt((req.query.company_url_id || "").trim(), 10);
+  const oauthCompanyUrlId = oauthCu && !Number.isNaN(oauthCu) ? oauthCu : null;
+  if (oauthCompanyUrlId && state) {
+    try {
+      const [oc] = await pool.query("SHOW COLUMNS FROM oauth_states LIKE 'company_url_id'");
+      if (oc?.length) {
+        await pool.query("UPDATE oauth_states SET company_url_id = ? WHERE state = ?", [oauthCompanyUrlId, state]);
+      }
+    } catch (_) {}
   }
 
   client.redirectUri = redirectUri;
@@ -712,20 +747,27 @@ router.get("/google/callback", async (req, res) => {
   let rows;
   try {
     [rows] = await pool.query(
-      "SELECT user_id, customer_id, login_customer_id, account_name FROM oauth_states WHERE state = ? AND expires_at > NOW() LIMIT 1",
+      "SELECT user_id, customer_id, login_customer_id, account_name, platform, company_url_id FROM oauth_states WHERE state = ? AND expires_at > NOW() LIMIT 1",
       [state]
     );
   } catch (e) {
     try {
       [rows] = await pool.query(
-        "SELECT user_id, customer_id FROM oauth_states WHERE state = ? AND expires_at > NOW() LIMIT 1",
+        "SELECT user_id, customer_id, login_customer_id, account_name, platform FROM oauth_states WHERE state = ? AND expires_at > NOW() LIMIT 1",
         [state]
       );
     } catch (e2) {
-      [rows] = await pool.query(
-        "SELECT user_id FROM oauth_states WHERE state = ? AND expires_at > NOW() LIMIT 1",
-        [state]
-      );
+      try {
+        [rows] = await pool.query(
+          "SELECT user_id, customer_id, login_customer_id, account_name FROM oauth_states WHERE state = ? AND expires_at > NOW() LIMIT 1",
+          [state]
+        );
+      } catch (e3) {
+        [rows] = await pool.query(
+          "SELECT user_id FROM oauth_states WHERE state = ? AND expires_at > NOW() LIMIT 1",
+          [state]
+        );
+      }
     }
   }
   await pool.query("DELETE FROM oauth_states WHERE state = ?", [state]);
@@ -738,6 +780,11 @@ router.get("/google/callback", async (req, res) => {
   let customerId = (rows[0].customer_id || "").trim().replace(/-/g, "") || null;
   const loginCustomerId = (rows[0].login_customer_id || "").trim().replace(/-/g, "") || null;
   const accountName = (rows[0].account_name || "").trim() || null;
+  const oauthPlatform = (rows[0].platform || "").trim();
+  const isGlobalMode = oauthPlatform === "google_global";
+  const rawOauthCu = rows[0].company_url_id;
+  const parsedOauthCu = rawOauthCu != null && rawOauthCu !== "" ? parseInt(String(rawOauthCu), 10) : null;
+  const oauthCompanyUrlId = parsedOauthCu && !Number.isNaN(parsedOauthCu) ? parsedOauthCu : null;
 
   const isAuthSourceMode = accountName && !customerId;
 
@@ -763,6 +810,20 @@ router.get("/google/callback", async (req, res) => {
       } catch (_) {}
     }
 
+    if (isGlobalMode) {
+      const authSourceId = await apiAuthSources.createGlobal({
+        name: accountName || "Google連携",
+        platform: "google",
+        loginCustomerId,
+        tokens,
+        googleEmail,
+        companyUrlId: oauthCompanyUrlId || undefined,
+      });
+      if (authSourceId) {
+        return res.redirect("/admin.html#/ads-settings?google_ads=auth_linked&auth_source=" + authSourceId);
+      }
+    }
+
     if (isAuthSourceMode) {
       const authSourceId = await apiAuthSources.create(userId, {
         name: accountName,
@@ -770,6 +831,7 @@ router.get("/google/callback", async (req, res) => {
         loginCustomerId,
         tokens,
         googleEmail,
+        companyUrlId: oauthCompanyUrlId || undefined,
       });
       if (authSourceId) {
         return res.redirect("/ads.html?google_ads=auth_linked&auth_source=" + authSourceId);
@@ -981,9 +1043,13 @@ router.post("/google/accounts", async (req, res) => {
   if (!admin) return;
   const userId = admin.id;
   if (!userId) return res.status(401).json({ error: "ログインが必要です" });
-  const { name, customer_id, login_customer_id, api_auth_source_id } = req.body || {};
+  const { name, customer_id, login_customer_id, api_auth_source_id, company_url_id: bodyCompanyUrlId } = req.body || {};
   const cid = (customer_id || "").trim().replace(/-/g, "");
   const authId = api_auth_source_id ? parseInt(api_auth_source_id, 10) : null;
+  const targetCu = bodyCompanyUrlId != null && String(bodyCompanyUrlId).trim() !== ""
+    ? parseInt(String(bodyCompanyUrlId).trim(), 10)
+    : null;
+  const targetCompanyUrlId = targetCu && !Number.isNaN(targetCu) ? targetCu : null;
   if (!cid) {
     return res.status(400).json({ error: "Customer ID を入力してください" });
   }
@@ -991,7 +1057,11 @@ router.post("/google/accounts", async (req, res) => {
     return res.status(400).json({ error: "API認証元を選択してください" });
   }
   try {
-    const authSource = await apiAuthSources.getById(authId, userId);
+    if (targetCompanyUrlId && !(await assertAuthSourceBelongsToCompanyUrl(res, targetCompanyUrlId, authId, "google"))) {
+      return;
+    }
+    let authSource = await apiAuthSources.getById(authId, userId);
+    if (!authSource) authSource = await apiAuthSources.getByIdGlobal(authId);
     if (!authSource) {
       return res.status(400).json({ error: "指定したAPI認証元が見つかりません" });
     }
@@ -1005,6 +1075,7 @@ router.post("/google/accounts", async (req, res) => {
       customerId: cid,
       loginCustomerId: lid,
       apiAuthSourceId: authId,
+      companyUrlId: targetCompanyUrlId || undefined,
     });
     if (!accountId) {
       return res.status(500).json({ error: "アカウントの登録に失敗しました" });
@@ -1155,16 +1226,18 @@ router.get("/yahoo/connect", async (req, res) => {
   if (!authName) {
     return res.status(400).json({ error: "認証元名を入力してください（name パラメータ）" });
   }
+  const isGlobal = (req.query.mode || "").trim() === "global";
 
   const { url, state } = getAuthUrl(req);
   if (!url) return res.status(503).json({ error: "Yahoo OAuth の設定が不正です" });
 
+  const yahooPlatform = isGlobal ? "yahoo_global" : "yahoo";
   try {
     const [cols] = await pool.query("SHOW COLUMNS FROM oauth_states LIKE 'platform'");
     if (cols?.length) {
       await pool.query(
-        "INSERT INTO oauth_states (state, user_id, expires_at, account_name, platform) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 10 MINUTE), ?, 'yahoo')",
-        [state, userId, authName]
+        "INSERT INTO oauth_states (state, user_id, expires_at, account_name, platform) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 10 MINUTE), ?, ?)",
+        [state, userId, authName, yahooPlatform]
       );
     } else {
       await pool.query(
@@ -1177,6 +1250,17 @@ router.get("/yahoo/connect", async (req, res) => {
       "INSERT INTO oauth_states (state, user_id, expires_at) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 10 MINUTE))",
       [state, userId]
     );
+  }
+
+  const yahooOauthCu = parseInt((req.query.company_url_id || "").trim(), 10);
+  const yahooOauthCompanyUrlId = yahooOauthCu && !Number.isNaN(yahooOauthCu) ? yahooOauthCu : null;
+  if (yahooOauthCompanyUrlId && state) {
+    try {
+      const [oc] = await pool.query("SHOW COLUMNS FROM oauth_states LIKE 'company_url_id'");
+      if (oc?.length) {
+        await pool.query("UPDATE oauth_states SET company_url_id = ? WHERE state = ?", [yahooOauthCompanyUrlId, state]);
+      }
+    } catch (_) {}
   }
 
   res.redirect(url);
@@ -1195,11 +1279,25 @@ router.get("/yahoo/callback", async (req, res) => {
   let rows;
   try {
     [rows] = await pool.query(
-      "SELECT user_id, account_name FROM oauth_states WHERE state = ? AND expires_at > NOW() LIMIT 1",
+      "SELECT user_id, account_name, platform, company_url_id FROM oauth_states WHERE state = ? AND expires_at > NOW() LIMIT 1",
       [state]
     );
   } catch (e) {
-    return res.redirect("/ads.html?yahoo_ads_error=invalid_state");
+    try {
+      [rows] = await pool.query(
+        "SELECT user_id, account_name, platform FROM oauth_states WHERE state = ? AND expires_at > NOW() LIMIT 1",
+        [state]
+      );
+    } catch (_) {
+      try {
+        [rows] = await pool.query(
+          "SELECT user_id, account_name FROM oauth_states WHERE state = ? AND expires_at > NOW() LIMIT 1",
+          [state]
+        );
+      } catch (e2) {
+        return res.redirect("/ads.html?yahoo_ads_error=invalid_state");
+      }
+    }
   }
   await pool.query("DELETE FROM oauth_states WHERE state = ?", [state]);
 
@@ -1207,28 +1305,52 @@ router.get("/yahoo/callback", async (req, res) => {
 
   const userId = rows[0].user_id;
   const authName = (rows[0].account_name || "").trim() || "Yahoo広告";
+  const isGlobalMode = (rows[0].platform || "") === "yahoo_global";
+  const rawYahooCu = rows[0].company_url_id;
+  const parsedYahooCu = rawYahooCu != null && rawYahooCu !== "" ? parseInt(String(rawYahooCu), 10) : null;
+  const yahooOauthCompanyUrlId = parsedYahooCu && !Number.isNaN(parsedYahooCu) ? parsedYahooCu : null;
 
   const redirectUri = getYahooRedirectUri(req);
   try {
     const tokens = await exchangeCodeForTokens(code, redirectUri, state);
     if (!tokens?.refresh_token) {
-      return res.redirect("/ads.html?yahoo_ads_error=no_refresh_token");
+      const errRedirect = isGlobalMode ? "/admin.html#/ads-settings?yahoo_ads_error=no_refresh_token" : "/ads.html?yahoo_ads_error=no_refresh_token";
+      return res.redirect(errRedirect);
     }
 
-    const authSourceId = await apiAuthSources.create(userId, {
-      name: authName,
-      platform: "yahoo",
-      tokens: {
-        access_token: tokens.access_token,
-        refresh_token: tokens.refresh_token,
-        expiry_date: tokens.expiry_date,
-      },
-    });
+    let authSourceId;
+    if (isGlobalMode) {
+      authSourceId = await apiAuthSources.createGlobal({
+        name: authName,
+        platform: "yahoo",
+        tokens: {
+          access_token: tokens.access_token,
+          refresh_token: tokens.refresh_token,
+          expiry_date: tokens.expiry_date,
+        },
+        companyUrlId: yahooOauthCompanyUrlId || undefined,
+      });
+    } else {
+      authSourceId = await apiAuthSources.create(userId, {
+        name: authName,
+        platform: "yahoo",
+        tokens: {
+          access_token: tokens.access_token,
+          refresh_token: tokens.refresh_token,
+          expiry_date: tokens.expiry_date,
+        },
+        companyUrlId: yahooOauthCompanyUrlId || undefined,
+      });
+    }
     if (authSourceId) {
       clearReportResponseCache("yahoo_oauth_callback");
-      return res.redirect("/ads.html?yahoo_ads=auth_linked&auth_source=" + authSourceId);
+      const successRedirect = isGlobalMode
+        ? "/admin.html#/ads-settings?yahoo_ads=auth_linked&auth_source=" + authSourceId
+        : "/ads.html?yahoo_ads=auth_linked&auth_source=" + authSourceId;
+      return res.redirect(successRedirect);
     }
-    return res.redirect("/ads.html?yahoo_ads_error=save_failed");
+    const failRedirect = isGlobalMode ? "/admin.html#/ads-settings?yahoo_ads_error=save_failed" : "/ads.html?yahoo_ads_error=save_failed";
+    return res.redirect(failRedirect);
   } catch (e) {
     console.error("[Yahoo Ads OAuth] token exchange error:", e.message);
     return res.redirect("/ads.html?yahoo_ads_error=" + encodeURIComponent(e.message || "token_exchange_failed"));
@@ -1269,19 +1391,198 @@ router.get("/yahoo/auth-sources", async (req, res) => {
   }
 });
 
+// ── Meta (Facebook) OAuth ─────────────────────
+
+/** GET /api/ads/meta/connect - Meta OAuth 開始 */
+router.get("/meta/connect", async (req, res) => {
+  const admin = await requireAdmin(req, res);
+  if (!admin) return;
+  const userId = admin.id;
+
+  const { appId, appSecret } = metaOAuth.getClientConfig();
+  if (!appId || !appSecret) {
+    return res.status(503).json({
+      error: "Meta OAuth が設定されていません。.env に META_APP_ID / META_APP_SECRET を設定してください。",
+    });
+  }
+
+  const authName = (req.query.name || "").trim().slice(0, 100);
+  if (!authName) {
+    return res.status(400).json({ error: "認証元名を入力してください（name パラメータ）" });
+  }
+  const isGlobal = (req.query.mode || "").trim() === "global";
+  const state = crypto.randomBytes(24).toString("hex");
+  const metaPlatform = isGlobal ? "meta_global" : "meta";
+
+  try {
+    const [cols] = await pool.query("SHOW COLUMNS FROM oauth_states LIKE 'platform'");
+    if (cols?.length) {
+      await pool.query(
+        "INSERT INTO oauth_states (state, user_id, expires_at, account_name, platform) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 10 MINUTE), ?, ?)",
+        [state, userId, authName, metaPlatform]
+      );
+    } else {
+      await pool.query(
+        "INSERT INTO oauth_states (state, user_id, expires_at, account_name) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 10 MINUTE), ?)",
+        [state, userId, authName]
+      );
+    }
+  } catch (e) {
+    await pool.query(
+      "INSERT INTO oauth_states (state, user_id, expires_at) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 10 MINUTE))",
+      [state, userId]
+    );
+  }
+
+  const url = metaOAuth.getAuthUrl(req, state);
+  res.redirect(url);
+});
+
+/** GET /api/ads/meta/callback - Meta OAuth コールバック */
+router.get("/meta/callback", async (req, res) => {
+  const { code, state, error, error_reason } = req.query;
+
+  if (error) {
+    console.warn("[Meta OAuth] error:", error, error_reason);
+    return res.redirect("/admin.html#/ads-settings?meta_error=" + encodeURIComponent(error));
+  }
+  if (!code || !state) return res.redirect("/admin.html#/ads-settings?meta_error=missing_params");
+
+  let rows;
+  try {
+    [rows] = await pool.query(
+      "SELECT user_id, account_name, platform FROM oauth_states WHERE state = ? AND expires_at > NOW() LIMIT 1",
+      [state]
+    );
+  } catch (e) {
+    try {
+      [rows] = await pool.query(
+        "SELECT user_id, account_name FROM oauth_states WHERE state = ? AND expires_at > NOW() LIMIT 1",
+        [state]
+      );
+    } catch (_) {
+      return res.redirect("/admin.html#/ads-settings?meta_error=invalid_state");
+    }
+  }
+  await pool.query("DELETE FROM oauth_states WHERE state = ?", [state]);
+
+  if (!rows?.length) return res.redirect("/admin.html#/ads-settings?meta_error=invalid_state");
+
+  const userId = rows[0].user_id;
+  const authName = (rows[0].account_name || "").trim() || "Meta広告";
+  const isGlobalMode = (rows[0].platform || "") === "meta_global";
+
+  const redirectUri = metaOAuth.getRedirectUri(req);
+  try {
+    const tokens = await metaOAuth.exchangeCodeForTokens(code, redirectUri);
+    if (!tokens?.access_token) {
+      return res.redirect("/admin.html#/ads-settings?meta_error=no_access_token");
+    }
+
+    // ユーザー情報取得
+    const userInfo = await metaOAuth.fetchUserInfo(tokens.access_token);
+
+    let authSourceId;
+    if (isGlobalMode) {
+      authSourceId = await apiAuthSources.createGlobal({
+        name: authName,
+        platform: "meta",
+        tokens: {
+          access_token: tokens.access_token,
+          refresh_token: tokens.access_token, // Meta は長期トークン = refresh 不要だが DB スキーマ必須
+          expiry_date: tokens.expiry_date,
+        },
+        googleEmail: userInfo.email || userInfo.name || "",
+      });
+    } else {
+      authSourceId = await apiAuthSources.create(userId, {
+        name: authName,
+        platform: "meta",
+        tokens: {
+          access_token: tokens.access_token,
+          refresh_token: tokens.access_token,
+          expiry_date: tokens.expiry_date,
+        },
+        googleEmail: userInfo.email || userInfo.name || "",
+      });
+    }
+    if (authSourceId) {
+      clearReportResponseCache("meta_oauth_callback");
+      return res.redirect("/admin.html#/ads-settings?meta=auth_linked&auth_source=" + authSourceId);
+    }
+    return res.redirect("/admin.html#/ads-settings?meta_error=save_failed");
+  } catch (e) {
+    console.error("[Meta OAuth] token exchange error:", e.message);
+    return res.redirect("/admin.html#/ads-settings?meta_error=" + encodeURIComponent(e.message || "token_exchange_failed"));
+  }
+});
+
+/** GET /api/ads/meta/auth-sources - Meta API認証元一覧 */
+router.get("/meta/auth-sources", async (req, res) => {
+  const admin = await requireAdmin(req, res);
+  if (!admin) return;
+  const userId = admin.id;
+  try {
+    const sources = await apiAuthSources.list(userId, "meta");
+    res.json({ auth_sources: sources });
+  } catch (e) {
+    console.error("[ads] meta auth-sources list error:", e.message);
+    res.status(500).json({ error: "取得に失敗しました" });
+  }
+});
+
+/** DELETE /api/ads/meta/auth-sources/:id - Meta API認証元削除 */
+router.delete("/meta/auth-sources/:id", async (req, res) => {
+  const admin = await requireAdmin(req, res);
+  if (!admin) return;
+  const userId = admin.id;
+  try {
+    const ok = await apiAuthSources.remove(userId, parseInt(req.params.id, 10));
+    if (ok) clearReportResponseCache("meta_auth_source_deleted");
+    res.json({ success: ok });
+  } catch (e) {
+    console.error("[ads] meta auth-sources delete error:", e.message);
+    res.status(500).json({ error: "削除に失敗しました" });
+  }
+});
+
+/** GET /api/ads/meta/auth-sources/:id/adaccounts - Meta 広告アカウント一覧 */
+router.get("/meta/auth-sources/:id/adaccounts", async (req, res) => {
+  const admin = await requireAdmin(req, res);
+  if (!admin) return;
+  const id = parseInt(req.params.id, 10);
+  try {
+    const src = await apiAuthSources.getByIdGlobal(id);
+    if (!src) return res.status(404).json({ error: "認証元が見つかりません" });
+    const accounts = await metaOAuth.fetchAdAccounts(src.access_token);
+    res.json({ accounts });
+  } catch (e) {
+    console.error("[ads] meta adaccounts error:", e.message);
+    res.status(500).json({ error: e.message || "広告アカウントの取得に失敗しました" });
+  }
+});
+
 /** POST /api/ads/yahoo/accounts - アカウント追加 */
 router.post("/yahoo/accounts", async (req, res) => {
   const admin = await requireAdmin(req, res);
   if (!admin) return;
   const userId = admin.id;
   if (!userId) return res.status(401).json({ error: "ログインが必要です" });
-  const { name, account_id, agency_account_id, api_auth_source_id } = req.body || {};
+  const { name, account_id, agency_account_id, api_auth_source_id, company_url_id: yahooBodyCu } = req.body || {};
   const aid = (account_id || "").trim();
   const authId = api_auth_source_id ? parseInt(api_auth_source_id, 10) : null;
+  const yahooTargetCu = yahooBodyCu != null && String(yahooBodyCu).trim() !== ""
+    ? parseInt(String(yahooBodyCu).trim(), 10)
+    : null;
+  const yahooTargetCompanyUrlId = yahooTargetCu && !Number.isNaN(yahooTargetCu) ? yahooTargetCu : null;
   if (!aid) return res.status(400).json({ error: "アカウントID を入力してください" });
   if (!authId) return res.status(400).json({ error: "API認証元を選択してください" });
   try {
-    const authSource = await apiAuthSources.getById(authId, userId);
+    if (yahooTargetCompanyUrlId && !(await assertAuthSourceBelongsToCompanyUrl(res, yahooTargetCompanyUrlId, authId, "yahoo"))) {
+      return;
+    }
+    let authSource = await apiAuthSources.getById(authId, userId);
+    if (!authSource) authSource = await apiAuthSources.getByIdGlobal(authId);
     if (!authSource || authSource.platform !== "yahoo") {
       return res.status(400).json({ error: "指定したYahoo API認証元が見つかりません" });
     }
@@ -1290,6 +1591,7 @@ router.post("/yahoo/accounts", async (req, res) => {
       accountId: aid,
       agencyAccountId: (agency_account_id || "").trim() || null,
       apiAuthSourceId: authId,
+      companyUrlId: yahooTargetCompanyUrlId || undefined,
     });
     if (!accountId) return res.status(500).json({ error: "アカウントの登録に失敗しました" });
     clearReportResponseCache("yahoo_account_created");
@@ -1344,6 +1646,335 @@ router.delete("/yahoo/accounts/:id", async (req, res) => {
     console.error("[ads] yahoo accounts delete error:", e.message);
     res.status(500).json({ error: "削除に失敗しました" });
   }
+});
+
+// ── グローバル認証元管理（管理コンソール用） ─────────────
+
+/** GET /api/ads/admin/auth-sources - 全認証元一覧 */
+router.get("/admin/auth-sources", async (req, res) => {
+  const admin = await requireAdmin(req, res);
+  if (!admin) return;
+  try {
+    const sources = await apiAuthSources.listAllPlatforms();
+    res.json(sources);
+  } catch (e) {
+    console.error("[ads] admin auth-sources list error:", e.message);
+    res.status(500).json({ error: "取得に失敗しました" });
+  }
+});
+
+/** POST /api/ads/admin/auth-sources/:id/mcc - MCC ID更新（グローバル） */
+router.post("/admin/auth-sources/:id/mcc", async (req, res) => {
+  const admin = await requireAdmin(req, res);
+  if (!admin) return;
+  const id = parseInt(req.params.id, 10);
+  const loginCustomerId = (req.body?.login_customer_id ?? req.body?.loginCustomerId ?? "").trim().replace(/-/g, "");
+  if (!id || !loginCustomerId) return res.status(400).json({ error: "IDまたはMCC IDが不正です" });
+  try {
+    const ok = await apiAuthSources.updateLoginCustomerIdGlobal(id, loginCustomerId);
+    res.json({ success: ok });
+  } catch (e) {
+    console.error("[ads] admin auth-sources mcc error:", e.message);
+    res.status(500).json({ error: "更新に失敗しました" });
+  }
+});
+
+/** DELETE /api/ads/admin/auth-sources/:id - 認証元削除（グローバル） */
+router.delete("/admin/auth-sources/:id", async (req, res) => {
+  const admin = await requireAdmin(req, res);
+  if (!admin) return;
+  const id = parseInt(req.params.id, 10);
+  if (!id) return res.status(400).json({ error: "無効なIDです" });
+  try {
+    const ok = await apiAuthSources.removeGlobal(id);
+    if (ok) clearReportResponseCache("admin_auth_source_deleted");
+    res.json({ success: ok });
+  } catch (e) {
+    console.error("[ads] admin auth-sources delete error:", e.message);
+    res.status(500).json({ error: "削除に失敗しました" });
+  }
+});
+
+/** GET /api/ads/admin/accounts - 全広告アカウント一覧 */
+router.get("/admin/accounts", async (req, res) => {
+  const admin = await requireAdmin(req, res);
+  if (!admin) return;
+  try {
+    const { listAllAccounts: listGoogleAll } = require("../services/googleAdsAccounts");
+    const { listAllAccounts: listYahooAll } = require("../services/yahooAdsAccounts");
+    const google = await listGoogleAll();
+    const yahoo = await listYahooAll();
+    res.json({ google, yahoo });
+  } catch (e) {
+    console.error("[ads] admin accounts list error:", e.message);
+    res.status(500).json({ error: "取得に失敗しました" });
+  }
+});
+
+/** POST /api/ads/admin/accounts - アカウント追加（グローバル） */
+router.post("/admin/accounts", async (req, res) => {
+  const admin = await requireAdmin(req, res);
+  if (!admin) return;
+  const { platform, name, customer_id, account_id, login_customer_id, agency_account_id, api_auth_source_id } = req.body || {};
+  try {
+    let accountId;
+    if (platform === "google") {
+      const { createAccountGlobal } = require("../services/googleAdsAccounts");
+      accountId = await createAccountGlobal({ name, customerId: customer_id, loginCustomerId: login_customer_id, apiAuthSourceId: api_auth_source_id });
+    } else if (platform === "yahoo") {
+      const { createAccountGlobal } = require("../services/yahooAdsAccounts");
+      accountId = await createAccountGlobal({ name, accountId: account_id, agencyAccountId: agency_account_id, apiAuthSourceId: api_auth_source_id });
+    } else {
+      return res.status(400).json({ error: "platform は google または yahoo を指定してください" });
+    }
+    if (!accountId) return res.status(400).json({ error: "アカウントの追加に失敗しました" });
+    res.json({ success: true, id: accountId });
+  } catch (e) {
+    console.error("[ads] admin accounts create error:", e.message);
+    res.status(500).json({ error: "追加に失敗しました" });
+  }
+});
+
+/** DELETE /api/ads/admin/accounts/:id - アカウント削除（グローバル） */
+router.delete("/admin/accounts/:id", async (req, res) => {
+  const admin = await requireAdmin(req, res);
+  if (!admin) return;
+  const id = parseInt(req.params.id, 10);
+  const platform = (req.query.platform || "google").trim();
+  if (!id) return res.status(400).json({ error: "無効なIDです" });
+  try {
+    let ok;
+    if (platform === "yahoo") {
+      const { deleteAccountGlobal } = require("../services/yahooAdsAccounts");
+      ok = await deleteAccountGlobal(id);
+    } else {
+      const { deleteAccountGlobal } = require("../services/googleAdsAccounts");
+      ok = await deleteAccountGlobal(id);
+    }
+    if (ok) clearReportResponseCache("admin_account_deleted");
+    res.json({ success: ok });
+  } catch (e) {
+    console.error("[ads] admin accounts delete error:", e.message);
+    res.status(500).json({ error: "削除に失敗しました" });
+  }
+});
+
+// ── 案件別アカウント紐付け ──────────────────────────
+
+const companyUrlAdsAccounts = require("../services/companyUrlAdsAccounts");
+
+/** GET /api/ads/company-urls - ユーザーがアクセス可能な案件一覧 */
+router.get("/company-urls", async (req, res) => {
+  const user = await getUserWithContext(req);
+  if (!user) return res.status(401).json({ error: "ログインが必要です" });
+  try {
+    const isMaster = isAdmin(user);
+    let rows;
+    if (isMaster) {
+      [rows] = await pool.query("SELECT id, company_id, url FROM company_urls ORDER BY id");
+    } else {
+      [rows] = await pool.query(
+        `SELECT cu.id, cu.company_id, cu.url
+         FROM company_urls cu
+         JOIN user_url_access ua ON cu.id = ua.url_id
+         WHERE ua.user_id = ? ORDER BY cu.id`,
+        [user.id]
+      );
+    }
+    res.json(rows || []);
+  } catch (e) {
+    console.error("[ads] company-urls error:", e.message);
+    res.status(500).json({ error: "取得に失敗しました" });
+  }
+});
+
+/** GET /api/ads/company-url/:id/accounts - 案件のアカウント紐付け取得 */
+router.get("/company-url/:id/accounts", async (req, res) => {
+  const user = await getUserWithContext(req);
+  if (!user) return res.status(401).json({ error: "ログインが必要です" });
+  const companyUrlId = parseInt(req.params.id, 10);
+  if (!companyUrlId) return res.status(400).json({ error: "無効なIDです" });
+  try {
+    const assignments = await companyUrlAdsAccounts.listAssignments(companyUrlId);
+    res.json(assignments);
+  } catch (e) {
+    console.error("[ads] company-url accounts error:", e.message);
+    res.status(500).json({ error: "取得に失敗しました" });
+  }
+});
+
+/** POST /api/ads/company-url/:id/accounts - 案件にアカウント紐付け */
+router.post("/company-url/:id/accounts", async (req, res) => {
+  const admin = await requireAdmin(req, res);
+  if (!admin) return;
+  const companyUrlId = parseInt(req.params.id, 10);
+  if (!companyUrlId) return res.status(400).json({ error: "無効なIDです" });
+  const { platform, ads_account_id, meta_ad_account_id } = req.body || {};
+  if (!platform) return res.status(400).json({ error: "platform を指定してください" });
+  try {
+    const ok = await companyUrlAdsAccounts.setAccountForCompanyUrl(companyUrlId, platform, {
+      adsAccountId: ads_account_id ? parseInt(ads_account_id, 10) : null,
+      metaAdAccountId: meta_ad_account_id,
+    });
+    if (ok) clearReportResponseCache("company_url_account_set");
+    res.json({ success: ok });
+  } catch (e) {
+    console.error("[ads] company-url accounts set error:", e.message);
+    res.status(500).json({ error: "設定に失敗しました" });
+  }
+});
+
+/** DELETE /api/ads/company-url/:id/accounts/:platform - 案件のアカウント紐付け解除 */
+router.delete("/company-url/:id/accounts/:platform", async (req, res) => {
+  const admin = await requireAdmin(req, res);
+  if (!admin) return;
+  const companyUrlId = parseInt(req.params.id, 10);
+  const platform = req.params.platform;
+  if (!companyUrlId || !platform) return res.status(400).json({ error: "パラメータが不正です" });
+  try {
+    const ok = await companyUrlAdsAccounts.removeAccountForCompanyUrl(companyUrlId, platform);
+    if (ok) clearReportResponseCache("company_url_account_removed");
+    res.json({ success: ok });
+  } catch (e) {
+    console.error("[ads] company-url accounts remove error:", e.message);
+    res.status(500).json({ error: "解除に失敗しました" });
+  }
+});
+
+// ── キーワード管理（ステータス変更・入札調整） ─────────────────────
+
+/** POST /api/ads/keywords/mutate - Google Ads キーワードの一括操作 */
+router.post("/keywords/mutate", async (req, res) => {
+  const admin = await requireAdmin(req, res);
+  if (!admin) return;
+  const userId = admin.id;
+
+  const { operations, google_account_id, api_auth_source_id } = req.body || {};
+  if (!Array.isArray(operations) || operations.length === 0) {
+    return res.status(400).json({ error: "operations が必要です" });
+  }
+  if (!google_account_id) {
+    return res.status(400).json({ error: "google_account_id が必要です" });
+  }
+
+  // 認証情報を取得
+  let refreshToken, loginCustomerId;
+  try {
+    if (api_auth_source_id) {
+      const src = await apiAuthSources.getByIdGlobal(parseInt(api_auth_source_id, 10));
+      if (!src) return res.status(404).json({ error: "認証元が見つかりません" });
+      refreshToken = src.refresh_token;
+      loginCustomerId = src.login_customer_id || null;
+    } else {
+      const { getSelectedAccount } = require("../services/googleAdsAccounts");
+      const acc = await getSelectedAccount(userId);
+      if (!acc) return res.status(400).json({ error: "Google Ads アカウントが選択されていません" });
+      refreshToken = acc.refresh_token;
+      loginCustomerId = acc.login_customer_id || null;
+    }
+  } catch (e) {
+    return res.status(500).json({ error: "認証情報の取得に失敗: " + e.message });
+  }
+
+  const results = [];
+  const errors = [];
+  for (const op of operations) {
+    const { resourceName, action, cpcBidMicros } = op;
+    if (!resourceName) { errors.push({ ...op, error: "resourceName が必要です" }); continue; }
+    const updates = {};
+    if (action === "pause") updates.status = "PAUSED";
+    else if (action === "enable") updates.status = "ENABLED";
+    if (cpcBidMicros != null) updates.cpcBidMicros = cpcBidMicros;
+    if (Object.keys(updates).length === 0) { errors.push({ ...op, error: "変更内容がありません" }); continue; }
+    try {
+      await mutateKeyword(google_account_id, resourceName, updates, { refreshToken, loginCustomerId });
+      results.push({ resourceName, success: true, action, cpcBidMicros });
+    } catch (e) {
+      console.error("[ads] keyword mutate error:", e.message);
+      errors.push({ resourceName, error: e.message });
+    }
+  }
+  clearReportResponseCache("keyword_mutate");
+  res.json({ success: true, results, errors });
+});
+
+/** POST /api/ads/keywords/ai-evaluate - キーワードのAI評価（継続/停止/入札調整の提案） */
+router.post("/keywords/ai-evaluate", async (req, res) => {
+  const admin = await requireAdmin(req, res);
+  if (!admin) return;
+
+  const { keywords } = req.body || {};
+  if (!Array.isArray(keywords) || keywords.length === 0) {
+    return res.status(400).json({ error: "keywords が必要です" });
+  }
+
+  const evaluations = keywords.map((kw) => {
+    const cost = Number(kw.cost) || 0;
+    const cv = Number(kw.conversions) || 0;
+    const clicks = Number(kw.clicks) || 0;
+    const impressions = Number(kw.impressions) || 0;
+    const ctr = impressions > 0 ? (clicks / impressions) * 100 : 0;
+    const cpa = cv > 0 ? cost / cv : 0;
+    const avgCpc = Number(kw.avgCpc) || 0;
+    const cpcBid = Number(kw.cpcBid) || 0;
+
+    let recommendation = "continue"; // continue, pause, bid_up, bid_down
+    let confidence = "medium"; // high, medium, low
+    let reason = "";
+
+    if (cost > 0 && cv === 0 && clicks >= 30) {
+      recommendation = "pause";
+      confidence = cost >= 50000 ? "high" : "medium";
+      reason = `広告費 ¥${cost.toLocaleString()} でCV 0件（${clicks}クリック）。検索意図のミスマッチの可能性があります。`;
+    } else if (cost > 0 && cv === 0 && clicks >= 15) {
+      recommendation = "pause";
+      confidence = "low";
+      reason = `${clicks}クリックでCV未発生。もう少し様子を見るか、LP・広告文の見直しも検討してください。`;
+    } else if (cv > 0 && cpa > 0) {
+      const targetCpa = 30000; // 不動産の目安CPL
+      if (cpa <= targetCpa * 0.6) {
+        recommendation = "bid_up";
+        confidence = "high";
+        reason = `CPA ¥${Math.round(cpa).toLocaleString()} は目標（¥${targetCpa.toLocaleString()}）の${Math.round(cpa / targetCpa * 100)}%。入札額を上げてインプレッションシェアを拡大できます。`;
+      } else if (cpa <= targetCpa) {
+        recommendation = "continue";
+        confidence = "high";
+        reason = `CPA ¥${Math.round(cpa).toLocaleString()} は目標範囲内。現状維持で問題ありません。`;
+      } else if (cpa <= targetCpa * 1.5) {
+        recommendation = "bid_down";
+        confidence = "medium";
+        reason = `CPA ¥${Math.round(cpa).toLocaleString()} が目標を${Math.round((cpa / targetCpa - 1) * 100)}%超過。入札額を下げて効率改善を図ってください。`;
+      } else {
+        recommendation = "pause";
+        confidence = "medium";
+        reason = `CPA ¥${Math.round(cpa).toLocaleString()} が目標の${Math.round(cpa / targetCpa * 100)}%。大幅に非効率です。停止または大幅な入札引き下げを検討してください。`;
+      }
+    } else if (impressions > 0 && clicks === 0) {
+      recommendation = "pause";
+      confidence = "low";
+      reason = `${impressions.toLocaleString()}表示でクリック 0。広告文との関連性が低い可能性があります。`;
+    } else if (cost === 0 && impressions === 0) {
+      recommendation = "continue";
+      confidence = "low";
+      reason = "データ不足のため判定できません。引き続きデータ収集してください。";
+    } else {
+      recommendation = "continue";
+      confidence = "low";
+      reason = "現時点のデータでは明確な判定ができません。";
+    }
+
+    return {
+      keyword: kw.keyword,
+      campaign: kw.campaign,
+      resourceName: kw.resourceName || "",
+      recommendation,
+      confidence,
+      reason,
+      metrics: { cost, cv, clicks, impressions, ctr: Math.round(ctr * 100) / 100, cpa: Math.round(cpa), avgCpc },
+    };
+  });
+
+  res.json({ evaluations });
 });
 
 module.exports = router;
