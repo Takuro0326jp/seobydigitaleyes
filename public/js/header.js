@@ -292,7 +292,7 @@ class="block px-4 py-3 text-[11px] font-bold text-slate-600 hover:bg-slate-50 ho
            <div class="flex items-center gap-2 sm:gap-6 min-w-0">
     <div class="flex items-center gap-2 shrink-0">
     <a href="seo.html" class="flex items-center gap-2 hover:opacity-80 transition-opacity">
-        <img src="/img/d_logo.png" alt="Logo" class="w-7 h-7 sm:w-8 sm:h-8" onerror="this.style.display='none'">
+        <img src="/img/d_logo.png" alt="Logo" style="width:28px;height:28px;max-width:28px;max-height:28px" class="sm:!w-8 sm:!h-8" onerror="this.style.display='none'">
         <span class="text-sm sm:text-lg font-bold text-slate-900 whitespace-nowrap">
             SEO Scan <span class="text-slate-400 font-medium text-[10px] ml-1 uppercase tracking-wider hidden sm:inline">by DIGITALEYES</span>
         </span>
