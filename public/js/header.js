@@ -389,9 +389,168 @@ class="block px-4 py-3 text-[11px] font-bold text-slate-600 hover:bg-slate-50 ho
       .catch(() => {});
   }
 
+  // ── Pull-to-Refresh ──────────────────────
+  function initPullToRefresh() {
+    if (!("ontouchstart" in window)) return;
+    let startY = 0;
+    let pulling = false;
+    let indicator = null;
+
+    function getIndicator() {
+      if (indicator) return indicator;
+      indicator = document.createElement("div");
+      indicator.id = "ptr-indicator";
+      indicator.innerHTML = '<div class="ptr-spinner"></div><span>引っ張って更新</span>';
+      document.body.prepend(indicator);
+      const s = document.createElement("style");
+      s.textContent = `
+        #ptr-indicator{position:fixed;top:-60px;left:0;right:0;height:60px;display:flex;align-items:center;justify-content:center;gap:8px;
+          background:#fff;border-bottom:1px solid #e2e8f0;z-index:9999;transition:transform .25s ease;font-size:13px;font-weight:600;color:#64748b}
+        #ptr-indicator.visible{transform:translateY(60px)}
+        #ptr-indicator.refreshing span{display:none}
+        .ptr-spinner{width:20px;height:20px;border:2.5px solid #e2e8f0;border-top-color:#6366f1;border-radius:50%;animation:none}
+        #ptr-indicator.refreshing .ptr-spinner{animation:ptr-spin .6s linear infinite}
+        @keyframes ptr-spin{to{transform:rotate(360deg)}}
+      `;
+      document.head.appendChild(s);
+      return indicator;
+    }
+
+    document.addEventListener("touchstart", (e) => {
+      if (window.scrollY > 5) return;
+      startY = e.touches[0].clientY;
+      pulling = true;
+    }, { passive: true });
+
+    document.addEventListener("touchmove", (e) => {
+      if (!pulling) return;
+      const dy = e.touches[0].clientY - startY;
+      if (dy > 40 && window.scrollY <= 0) {
+        const el = getIndicator();
+        el.classList.add("visible");
+        el.classList.remove("refreshing");
+        el.querySelector("span").textContent = dy > 100 ? "離して更新" : "引っ張って更新";
+      } else {
+        if (indicator) indicator.classList.remove("visible");
+      }
+    }, { passive: true });
+
+    document.addEventListener("touchend", () => {
+      if (!pulling) return;
+      pulling = false;
+      if (indicator && indicator.classList.contains("visible")) {
+        const el = getIndicator();
+        const span = el.querySelector("span");
+        if (span.textContent === "離して更新") {
+          el.classList.add("refreshing");
+          setTimeout(() => window.location.reload(), 400);
+        } else {
+          el.classList.remove("visible");
+        }
+      }
+    }, { passive: true });
+  }
+
+  // ── モバイル用ボトムナビ ──────────────────────
+  function initBottomNav() {
+    if (window.innerWidth > 768) return;
+    const path = window.location.pathname.split("/").pop() || "index.html";
+    const isHideNavPage = path.includes("index.html") || path === "index";
+    if (isHideNavPage) return;
+
+    const urlSuffix = navQuerySuffix();
+    const activeGroup = (() => {
+      if (path.includes("gsc-task.html")) return "task";
+      if (path.includes("result.html") || path.includes("link-structure.html") || path.includes("mobile.html") || path.includes("llmo.html")) return "seo";
+      if (path.includes("gsc.html") || path.includes("gsc-indexhealth.html") || path.includes("gsc-technical.html") || path.includes("gsc-opportunities.html") || path.includes("gsc-monitoring.html")) return "gsc";
+      if (path.includes("domain.html")) return "domain";
+      if (path.includes("security.html")) return "security";
+      if (path.includes("strategy.html")) return "strategy";
+      if (path.includes("ads.html")) return "ads";
+      if (path.includes("seo.html") || path.includes("settings.html")) return "home";
+      return "";
+    })();
+
+    const tabs = [
+      { id: "home", icon: "⌂", label: "ホーム", href: "seo.html" },
+      { id: "task", icon: "✓", label: "TASK", href: "gsc-task.html" + urlSuffix },
+      { id: "seo", icon: "◉", label: "SEO", href: "result.html" + urlSuffix },
+      { id: "gsc", icon: "◎", label: "GSC", href: "gsc.html" + urlSuffix },
+      { id: "ads", icon: "▣", label: "ADs", href: "ads.html" + urlSuffix },
+      { id: "more", icon: "⋯", label: "その他", href: "#" },
+    ];
+
+    const nav = document.createElement("nav");
+    nav.id = "bottom-nav";
+    nav.innerHTML = tabs.map(t => {
+      const active = t.id === activeGroup || (t.id === "home" && activeGroup === "home");
+      return `<a href="${t.href}" class="bnav-item${active ? " bnav-active" : ""}" data-bnav="${t.id}">
+        <span class="bnav-icon">${t.icon}</span><span class="bnav-label">${t.label}</span>
+      </a>`;
+    }).join("");
+    document.body.appendChild(nav);
+
+    // 「その他」メニュー
+    const moreItems = [
+      { label: "Domain Authority", href: "domain.html" + urlSuffix, id: "domain" },
+      { label: "Security", href: "security.html" + urlSuffix, id: "security" },
+      { label: "SEO Strategy", href: "strategy.html" + urlSuffix, id: "strategy" },
+      { label: "設定", href: "settings.html", id: "settings" },
+    ];
+    const overlay = document.createElement("div");
+    overlay.id = "bnav-more-overlay";
+    overlay.innerHTML = `<div id="bnav-more-menu">${moreItems.map(m =>
+      `<a href="${m.href}" class="bnav-more-item${activeGroup === m.id ? " bnav-more-active" : ""}">${m.label}</a>`
+    ).join("")}</div>`;
+    document.body.appendChild(overlay);
+
+    nav.querySelector('[data-bnav="more"]').addEventListener("click", (e) => {
+      e.preventDefault();
+      overlay.classList.toggle("open");
+    });
+    overlay.addEventListener("click", (e) => {
+      if (e.target === overlay) overlay.classList.remove("open");
+    });
+
+    // スタイル注入
+    const s = document.createElement("style");
+    s.textContent = `
+      @media(min-width:769px){#bottom-nav,#bnav-more-overlay{display:none!important}}
+      #bottom-nav{position:fixed;bottom:0;left:0;right:0;height:64px;background:#fff;border-top:1px solid #e2e8f0;
+        display:flex;align-items:stretch;z-index:9998;padding-bottom:env(safe-area-inset-bottom,0)}
+      .bnav-item{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
+        text-decoration:none;color:#94a3b8;font-size:10px;font-weight:700;transition:color .15s}
+      .bnav-item.bnav-active{color:#4f46e5}
+      .bnav-icon{font-size:20px;line-height:1}
+      .bnav-label{font-size:10px;letter-spacing:.02em}
+      body{padding-bottom:64px!important}
+      #bnav-more-overlay{position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:9999;display:none;align-items:flex-end;justify-content:center}
+      #bnav-more-overlay.open{display:flex}
+      #bnav-more-menu{width:100%;max-width:400px;background:#fff;border-radius:20px 20px 0 0;padding:24px 20px calc(24px + env(safe-area-inset-bottom,0));
+        display:flex;flex-direction:column;gap:4px}
+      .bnav-more-item{display:block;padding:14px 16px;border-radius:12px;font-size:15px;font-weight:600;color:#334155;text-decoration:none}
+      .bnav-more-item:active{background:#f1f5f9}
+      .bnav-more-active{color:#4f46e5;background:#eef2ff}
+    `;
+    document.head.appendChild(s);
+
+    // ヘッダーのメインタブをモバイルで非表示（ボトムナビに移行）
+    const headerTabs = document.querySelector("header .overflow-x-auto");
+    if (headerTabs && !isHideNavPage) {
+      headerTabs.style.cssText += ";display:none";
+      // サブナビは残す
+    }
+  }
+
   function bootCommonHeader() {
     loadCommonHeader();
     setHeaderTargetDomain();
+    initPullToRefresh();
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", initBottomNav);
+    } else {
+      initBottomNav();
+    }
   }
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", bootCommonHeader);
