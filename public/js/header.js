@@ -538,14 +538,15 @@ class="block px-4 py-3 text-[11px] font-bold text-slate-600 hover:bg-slate-50 ho
     const s = document.createElement("style");
     s.textContent = `
       @media(min-width:769px){#bottom-nav,#bnav-more-overlay{display:none!important}}
-      #bottom-nav{position:fixed;bottom:0;left:0;right:0;height:64px;background:#fff;border-top:1px solid #e2e8f0;
-        display:flex;align-items:stretch;z-index:9998;padding-bottom:env(safe-area-inset-bottom,0)}
-      .bnav-item{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
-        text-decoration:none;color:#94a3b8;font-size:10px;font-weight:700;transition:color .15s}
+      #bottom-nav{position:fixed;bottom:0;left:0;right:0;height:calc(72px + env(safe-area-inset-bottom,0));background:#fff;border-top:1px solid #e2e8f0;
+        display:flex;align-items:stretch;z-index:9998;padding-bottom:env(safe-area-inset-bottom,0);
+        padding-left:env(safe-area-inset-left,0);padding-right:env(safe-area-inset-right,0)}
+      .bnav-item{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
+        text-decoration:none;color:#94a3b8;font-size:10px;font-weight:700;transition:color .15s;min-height:56px}
       .bnav-item.bnav-active{color:#4f46e5}
-      .bnav-icon{font-size:20px;line-height:1}
+      .bnav-icon{font-size:22px;line-height:1}
       .bnav-label{font-size:10px;letter-spacing:.02em}
-      body{padding-bottom:64px!important}
+      body{padding-bottom:calc(72px + env(safe-area-inset-bottom,0))!important}
       #bnav-more-overlay{position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:9999;display:none;align-items:flex-end;justify-content:center}
       #bnav-more-overlay.open{display:flex}
       #bnav-more-menu{width:100%;max-width:400px;background:#fff;border-radius:20px 20px 0 0;padding:24px 20px calc(24px + env(safe-area-inset-bottom,0));
