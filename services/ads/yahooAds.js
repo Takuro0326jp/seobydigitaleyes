@@ -443,7 +443,8 @@ async function fetchYahooAdsReportWithMeta(startDate, endDate, userId = null, op
   }
 
   const accountId = String(acc.account_id || "").trim();
-  let baseAccountId = String(acc.agency_account_id || acc.account_id || "").trim();
+  // MCC配下アカウントの場合: auth_login_customer_id（認証元の MCC ID）を x-z-base-account-id に使用
+  let baseAccountId = String(acc.auth_login_customer_id || acc.agency_account_id || acc.account_id || "").trim();
   if (baseAccountId.includes("-")) {
     const numPart = baseAccountId.split("-").pop();
     if (/^\d+$/.test(numPart)) baseAccountId = numPart;
@@ -949,7 +950,7 @@ async function testYahooAccountService(userId) {
     acc = { account_id: aid, agency_account_id: bid, access_token: at, refresh_token: null };
   }
   const accountId = String(acc.account_id || "").trim();
-  let baseAccountId = String(acc.agency_account_id || acc.account_id || "").trim();
+  let baseAccountId = String(acc.auth_login_customer_id || acc.agency_account_id || acc.account_id || "").trim();
   if (baseAccountId.includes("-")) {
     const numPart = baseAccountId.split("-").pop();
     if (/^\d+$/.test(numPart)) baseAccountId = numPart;
@@ -1001,7 +1002,7 @@ async function getCampaignRawDownload(startDate, endDate, userId) {
   } catch (e) {}
   if (!acc?.refresh_token) return { error: "Yahoo認証なし" };
   const accountId = String(acc.account_id || "").trim();
-  let baseAccountId = String(acc.agency_account_id || acc.account_id || "").trim();
+  let baseAccountId = String(acc.auth_login_customer_id || acc.agency_account_id || acc.account_id || "").trim();
   if (baseAccountId.includes("-")) baseAccountId = baseAccountId.split("-").pop();
   const accessToken = await getAccessToken(acc, userId);
   if (!accessToken) return { error: "トークンなし" };
@@ -1103,7 +1104,7 @@ async function cleanupReportJobs(userId) {
     acc = { account_id: aid, agency_account_id: process.env.YAHOO_ADS_BASE_ACCOUNT_ID || aid, access_token: at, refresh_token: null };
   }
   const accountId = String(acc.account_id || "").trim();
-  let baseAccountId = String(acc.agency_account_id || acc.account_id || "").trim();
+  let baseAccountId = String(acc.auth_login_customer_id || acc.agency_account_id || acc.account_id || "").trim();
   if (baseAccountId.includes("-")) baseAccountId = baseAccountId.split("-").pop();
   const accessToken = await getAccessToken(acc, userId);
   if (!accessToken) return { error: "トークンなし", removed: 0 };
@@ -1181,7 +1182,7 @@ async function getCreativeReportsDebug(startDate, endDate, userId) {
     acc = { account_id: aid, agency_account_id: process.env.YAHOO_ADS_BASE_ACCOUNT_ID || aid, access_token: at, refresh_token: null };
   }
   const accountId = String(acc.account_id || "").trim();
-  let baseAccountId = String(acc.agency_account_id || acc.account_id || "").trim();
+  let baseAccountId = String(acc.auth_login_customer_id || acc.agency_account_id || acc.account_id || "").trim();
   if (baseAccountId.includes("-")) baseAccountId = baseAccountId.split("-").pop();
   const accessToken = await getAccessToken(acc, userId);
   if (!accessToken) return { error: "トークンなし", _diagnostic: true };

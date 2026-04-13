@@ -920,10 +920,6 @@ router.get("/google/auth-sources/:id/clients", async (req, res) => {
     if (!authSource) {
       return res.status(400).json({ error: "指定したAPI認証元が見つかりません" });
     }
-    const loginCustomerId = (authSource.login_customer_id || "").trim().replace(/-/g, "");
-    if (!loginCustomerId) {
-      return res.status(400).json({ error: "この認証元にはMCC ID（login_customer_id）が設定されていません。先にMCC設定を行ってください。" });
-    }
     const refreshToken = authSource.refresh_token;
     if (!refreshToken) {
       return res.status(400).json({ error: "認証トークンが見つかりません。再連携してください。" });
@@ -936,92 +932,69 @@ router.get("/google/auth-sources/:id/clients", async (req, res) => {
       return res.status(503).json({ error: "Google Ads API の設定が不完全です" });
     }
 
-    // OAuth2 でアクセストークンを取得（失敗時は例外になりがちなので分離して detail を返す）
-    const { OAuth2Client } = require("google-auth-library");
-    const oauth2 = new OAuth2Client(clientId, clientSecret);
-    oauth2.setCredentials({
-      refresh_token: refreshToken,
-      access_token: authSource.access_token || null,
-      expiry_date: authSource.expiry_date ? Number(authSource.expiry_date) : null,
-    });
-    let accessToken;
-    try {
-      const tok = await oauth2.getAccessToken();
-      accessToken = tok?.token || null;
-    } catch (te) {
-      const raw =
-        te?.response?.data !== undefined
-          ? JSON.stringify(te.response.data)
-          : te?.message || String(te);
-      console.error("[ads] oauth getAccessToken (clients list):", raw);
-      return res.status(401).json({
-        error:
-          "Google のアクセストークンが取得できません（refresh_token の失効や Client ID/Secret の不一致が多いです）。「Google で連携」から再認証してください。",
-        detail: raw.slice(0, 1200),
-      });
-    }
-    if (!accessToken) {
-      return res.status(401).json({
-        error: "アクセストークンが空です。「Google で連携」から再認証してください。",
-        detail: "",
-      });
-    }
-
-    // Google Ads REST API で customer_client を直接クエリ
-    // login-customer-id ヘッダー付きなので開発者トークンの検証が通る
-    const gaql = [
-      "SELECT customer_client.id, customer_client.descriptive_name,",
-      "customer_client.manager, customer_client.status",
-      "FROM customer_client",
-      "WHERE customer_client.manager = false",
-    ].join(" ");
-
-    const apiVersion = "v23";
-    const searchUrl = `https://googleads.googleapis.com/${apiVersion}/customers/${loginCustomerId}/googleAds:search`;
-    const searchResp = await fetch(searchUrl, {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${accessToken}`,
-        "developer-token": developerToken,
-        "login-customer-id": loginCustomerId,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ query: gaql }),
+    const { GoogleAdsApi } = require("google-ads-api");
+    const gadsClient = new GoogleAdsApi({
+      client_id: clientId,
+      client_secret: clientSecret,
+      developer_token: developerToken,
     });
 
-    if (!searchResp.ok) {
-      const errBody = await searchResp.text();
-      console.error("[ads] REST customer_client error:", searchResp.status, errBody);
-      // 開発者トークンの権限不足系エラー → 手入力へフォールバック
-      if (errBody.includes("DEVELOPER_TOKEN_PROHIBITED") || errBody.includes("DEVELOPER_TOKEN_NOT_APPROVED")) {
-        const reason = errBody.includes("DEVELOPER_TOKEN_NOT_APPROVED") ? "developer_token_not_approved" : "developer_token_prohibited";
-        return res.status(200).json({
-          clients: [],
-          login_customer_id: loginCustomerId,
-          unavailable: true,
-          reason,
-          message: "アカウント自動取得は現在利用できません。Customer ID を手入力してください。",
+    const loginCustomerId = (authSource.login_customer_id || "").trim().replace(/-/g, "");
+
+    if (!loginCustomerId) {
+      // MCC未設定: listAccessibleCustomers でアクセス可能なアカウント一覧を取得（rem と同じロジック）
+      try {
+        const accessible = await gadsClient.listAccessibleCustomers(refreshToken);
+        const resourceNames = accessible?.resource_names || accessible?.resourceNames || [];
+        const clients = [];
+        for (const rn of resourceNames) {
+          const cid = String(rn).replace("customers/", "");
+          if (!cid || !/^\d+$/.test(cid)) continue;
+          try {
+            const cust = gadsClient.Customer({ customer_id: cid, refresh_token: refreshToken, login_customer_id: cid });
+            const info = await cust.query("SELECT customer.id, customer.descriptive_name, customer.manager FROM customer LIMIT 1");
+            const row = (Array.isArray(info) ? info[0] : info?.results?.[0]) || {};
+            if (!row.customer?.manager) {
+              clients.push({
+                customer_id: String(row.customer?.id || cid),
+                name: row.customer?.descriptive_name || cid,
+              });
+            }
+          } catch (_) {
+            clients.push({ customer_id: cid, name: cid });
+          }
+        }
+        if (clients.length) {
+          clients.sort((a, b) => (a.name || a.customer_id).localeCompare(b.name || b.customer_id, "ja"));
+          return res.json({
+            clients,
+            login_customer_id: loginCustomerId,
+            note: "MCC未設定のため、アクセス可能なアカウント一覧を表示しています",
+          });
+        }
+        return res.status(400).json({
+          error: "MCC IDが未設定です。Google Ads管理画面でMCC IDを確認し、認証設定の「MCC ID設定」から入力してください。",
+        });
+      } catch (e2) {
+        return res.status(400).json({
+          error: "MCC IDが未設定です。認証設定の「MCC ID設定」からMCC IDを入力してください。（エラー: " + e2.message + "）",
         });
       }
-      return res.status(500).json({
-        error: "Google Ads API エラー (HTTP " + searchResp.status + ")",
-        detail: errBody.slice(0, 500),
-      });
     }
 
-    const searchData = await searchResp.json();
-    const rows = searchData.results || [];
-    const clients = rows.map((r) => {
-      const cc = r.customerClient || {};
-      return {
-        customer_id: String(cc.id || "").replace(/-/g, ""),
-        name: cc.descriptiveName || "",
-        manager: !!(cc.manager),
-        status: cc.status || "UNKNOWN",
-      };
-    }).filter((c) => c.customer_id && !c.manager);
+    // MCC設定済み: google-ads-api ライブラリで customer_client をクエリ
+    const customer = gadsClient.Customer({ customer_id: loginCustomerId, refresh_token: refreshToken, login_customer_id: loginCustomerId });
+    const rows = await customer.query(
+      "SELECT customer_client.id, customer_client.descriptive_name, customer_client.manager, customer_client.status FROM customer_client WHERE customer_client.status = 'ENABLED'"
+    );
+    const clients = (Array.isArray(rows) ? rows : rows?.results ? [...rows.results] : [])
+      .filter((r) => !r.customer_client?.manager)
+      .map((r) => ({
+        customer_id: String(r.customer_client?.id || "").replace(/-/g, ""),
+        name: r.customer_client?.descriptive_name || "",
+        status: r.customer_client?.status || "UNKNOWN",
+      }));
 
-    // 名前順でソート
     clients.sort((a, b) => (a.name || a.customer_id).localeCompare(b.name || b.customer_id, "ja"));
 
     res.json({ clients, login_customer_id: loginCustomerId });
@@ -1375,6 +1348,118 @@ router.delete("/yahoo/auth-sources/:id", async (req, res) => {
   } catch (e) {
     console.error("[ads] yahoo auth-sources delete error:", e.message);
     res.status(500).json({ error: "削除に失敗しました" });
+  }
+});
+
+/** GET /api/ads/yahoo/auth-sources/:id/clients - Yahoo MCC配下のクライアントアカウント一覧を取得 */
+router.get("/yahoo/auth-sources/:id/clients", async (req, res) => {
+  const userId = await getUserIdFromRequest(req);
+  if (!userId) return res.status(401).json({ error: "ログインが必要です" });
+  const id = parseInt(req.params.id, 10);
+  if (!id) return res.status(400).json({ error: "無効なIDです" });
+  try {
+    const authSource = await apiAuthSources.getById(id, userId);
+    if (!authSource) {
+      return res.status(400).json({ error: "指定したAPI認証元が見つかりません" });
+    }
+    const refreshToken = authSource.refresh_token;
+    if (!refreshToken) {
+      return res.status(400).json({ error: "認証トークンが見つかりません。再連携してください。" });
+    }
+    const yahooClientId = (process.env.YAHOO_ADS_CLIENT_ID || "").trim();
+    const yahooClientSecret = (process.env.YAHOO_ADS_CLIENT_SECRET || "").trim();
+    if (!yahooClientId || !yahooClientSecret) {
+      return res.status(503).json({ error: "Yahoo Ads API の設定が不完全です（YAHOO_ADS_CLIENT_ID / YAHOO_ADS_CLIENT_SECRET）" });
+    }
+
+    // refresh_token から access_token を取得
+    const tokenRes = await fetch("https://biz-oauth.yahoo.co.jp/oauth/v1/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        grant_type: "refresh_token",
+        client_id: yahooClientId,
+        client_secret: yahooClientSecret,
+        refresh_token: refreshToken,
+      }),
+    });
+    const tokenData = await tokenRes.json();
+    if (!tokenData.access_token) {
+      return res.status(500).json({ error: "Yahoo!トークン更新に失敗しました", detail: JSON.stringify(tokenData).slice(0, 500) });
+    }
+
+    // 1) BaseAccountService で MCC アカウントを特定
+    const baseRes = await fetch("https://ads-search.yahooapis.jp/api/v19/BaseAccountService/get", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${tokenData.access_token}` },
+      body: JSON.stringify({}),
+    });
+    const baseData = await baseRes.json();
+    if (baseData?.errors && baseData.errors.length) {
+      return res.status(500).json({
+        error: "Yahoo!広告API: " + baseData.errors.map((e) => e.message || JSON.stringify(e)).join(", "),
+      });
+    }
+    const baseValues = baseData?.rval?.values || [];
+    const mccIds = baseValues
+      .filter((v) => v.operationSucceeded !== false)
+      .map((v) => v.baseAccount || v.account || v)
+      .filter((a) => String(a.isMccAccount || "").toUpperCase() === "TRUE")
+      .map((a) => String(a.accountId || a.baseAccountId || ""));
+
+    // 2) MCC 配下のアカウントを AccountService で取得
+    const clients = [];
+    for (const mccId of mccIds) {
+      let startIndex = 1;
+      while (true) {
+        const accRes = await fetch("https://ads-search.yahooapis.jp/api/v19/AccountService/get", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${tokenData.access_token}`,
+            "x-z-base-account-id": mccId,
+          },
+          body: JSON.stringify({ numberResults: 500, startIndex }),
+        });
+        const accData = await accRes.json();
+        const values = accData?.rval?.Page?.values || accData?.rval?.values || [];
+        for (const v of values) {
+          const a = v.account || v;
+          const aid = String(a.accountId || "");
+          const name = a.accountName || "";
+          if (aid) clients.push({ customer_id: aid, name, mccId });
+        }
+        const total = accData?.rval?.totalNumEntries || accData?.rval?.Page?.totalNumEntries || 0;
+        startIndex += 500;
+        if (startIndex > total) break;
+      }
+    }
+
+    // MCC が見つからなかった場合はベースアカウントをフォールバック
+    if (!mccIds.length) {
+      for (const v of baseValues) {
+        if (v.operationSucceeded === false) continue;
+        const a = v.baseAccount || v.account || v;
+        const aid = String(a.accountId || a.baseAccountId || "");
+        const name = a.accountName || a.baseAccountName || "";
+        if (aid) clients.push({ customer_id: aid, name });
+      }
+    }
+
+    // MCC ID を auth_source の login_customer_id に保存（初回のみ）
+    if (mccIds.length && !authSource.login_customer_id) {
+      try {
+        await apiAuthSources.updateLoginCustomerIdGlobal(id, mccIds[0]);
+      } catch (_) {}
+    }
+
+    clients.sort((a, b) => (a.name || a.customer_id).localeCompare(b.name || b.customer_id, "ja"));
+    res.json({ clients });
+  } catch (e) {
+    console.error("[ads] yahoo auth-sources clients error:", e.message);
+    res.status(500).json({
+      error: "アカウント一覧の取得に失敗しました: " + (e.message || ""),
+    });
   }
 });
 

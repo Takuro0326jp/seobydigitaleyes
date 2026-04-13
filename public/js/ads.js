@@ -1103,10 +1103,17 @@
               </select>
             </div>
             <div style="margin-bottom:8px">
-              <input id="yahoo-ads-account-id" type="text" placeholder="アカウントID（例: 1432223）" maxlength="32" style="width:100%;border:1px solid var(--border);padding:8px 12px;border-radius:6px;font-size:13px;font-family:'DM Mono',monospace">
+              <label style="font-size:11px;color:var(--text-muted)">アカウントID</label>
+              <div style="display:flex;gap:6px;align-items:center">
+                <select id="yahoo-ads-customer-select" style="flex:1;border:1px solid var(--border);padding:8px 12px;border-radius:6px;font-size:13px;background:#fff" disabled>
+                  <option value="">先に「API認証元」を選択してください</option>
+                </select>
+                <button type="button" id="yahoo-ads-customer-picker-btn" disabled style="flex-shrink:0;padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:12px;cursor:pointer;background:#fff;color:var(--text-muted)">選択</button>
+              </div>
+              <div id="yahoo-client-error-hint" style="display:none;color:#cc0029;font-size:11px;margin-top:4px;white-space:pre-wrap"></div>
             </div>
-            <div style="margin-bottom:8px">
-              <input id="yahoo-ads-agency-account-id" type="text" placeholder="代理店アカウント（例: belga8241waler-1002467041）※代理店配下の場合のみ" maxlength="64" style="width:100%;border:1px solid var(--border);padding:8px 12px;border-radius:6px;font-size:13px;font-family:'DM Mono',monospace">
+            <div id="yahoo-ads-manual-id-wrap" style="margin-bottom:8px;display:none">
+              <input id="yahoo-ads-account-id" type="text" placeholder="アカウントID（例: 1432223）" maxlength="32" style="width:100%;border:1px solid var(--border);padding:8px 12px;border-radius:6px;font-size:13px;font-family:'DM Mono',monospace">
             </div>
             <div style="margin-bottom:8px">
               <input id="yahoo-ads-account-name" type="text" placeholder="アカウント名（任意）" maxlength="100" style="width:100%;border:1px solid var(--border);padding:8px 12px;border-radius:6px;font-size:13px">
@@ -1321,16 +1328,172 @@
           "/api/ads/yahoo/connect?name=" + encodeURIComponent(name) + "&company_url_id=" + encodeURIComponent(cuId);
       };
     }
+    // Yahoo: 認証元選択時にクライアント一覧を自動取得（モーダル検索UI付き）
+    const yahooCustomerSelect = document.getElementById("yahoo-ads-customer-select");
+    const yahooCustomerPickerBtn = document.getElementById("yahoo-ads-customer-picker-btn");
+    const yahooManualIdWrap = document.getElementById("yahoo-ads-manual-id-wrap");
+    const yahooClientErrorHint = document.getElementById("yahoo-client-error-hint");
+    const YAHOO_CID_MANUAL = "__manual__";
+    let yahooCustomerClientsCache = [];
+
+    function syncYahooCustomerPickerUI() {
+      if (yahooCustomerPickerBtn) {
+        yahooCustomerPickerBtn.disabled = yahooCustomerClientsCache.length === 0;
+      }
+    }
+    function closeYahooCustomerModal() {
+      const m = document.getElementById("yahoo-ads-customer-modal");
+      if (m) m.style.display = "none";
+    }
+    function renderYahooCustomerModalList(query) {
+      const list = document.getElementById("yahoo-ads-customer-modal-list");
+      if (!list || !yahooCustomerSelect) return;
+      const q = (query || "").trim().toLowerCase();
+      let rows = yahooCustomerClientsCache.filter((c) => {
+        if (!q) return true;
+        return String(c.customer_id || "").toLowerCase().includes(q) || String(c.name || "").toLowerCase().includes(q);
+      });
+      let html = "";
+      if (yahooCustomerClientsCache.length > 0) {
+        if (rows.length === 0) {
+          html += '<div style="padding:16px;text-align:center;font-size:13px;color:var(--text-muted,#64748b)">該当するアカウントがありません</div>';
+        } else {
+          html += rows.map((c) => {
+            const idAttr = escapeAttr(String(c.customer_id || ""));
+            const nameAttr = escapeAttr(String(c.name || ""));
+            return '<button type="button" class="yahoo-ads-customer-modal-item" data-id="' + idAttr + '" data-name="' + nameAttr + '" style="display:block;width:100%;text-align:left;padding:10px 12px;border:none;background:transparent;border-radius:8px;cursor:pointer;font-size:13px;font-family:inherit;margin-bottom:2px">' +
+              '<div style="font-weight:600">' + escapeHtml(c.name || c.customer_id) + '</div>' +
+              '<div style="font-size:11px;color:var(--text-muted,#64748b);font-family:DM Mono,monospace">ID: ' + escapeHtml(String(c.customer_id)) + '</div></button>';
+          }).join("");
+        }
+      } else {
+        html += '<div style="padding:12px;font-size:12px;color:var(--text-muted,#64748b)">一覧を取得できていません。</div>';
+      }
+      html += '<button type="button" class="yahoo-ads-customer-modal-item" data-id="manual" style="display:block;width:100%;text-align:left;padding:10px 12px;border:1px dashed var(--border,#e5e7eb);background:var(--surface2,#f8fafc);border-radius:8px;cursor:pointer;font-size:13px;font-family:inherit;margin-top:8px;font-weight:600">手入力でアカウント ID を指定</button>';
+      list.innerHTML = html;
+    }
+    function ensureYahooCustomerModal() {
+      if (document.getElementById("yahoo-ads-customer-modal")) return;
+      document.body.insertAdjacentHTML("beforeend",
+        '<div id="yahoo-ads-customer-modal" style="display:none;position:fixed;inset:0;z-index:10002;background:rgba(15,23,42,.45);align-items:center;justify-content:center;padding:16px;box-sizing:border-box" role="dialog" aria-modal="true">' +
+        '<div style="background:var(--surface,#fff);border-radius:12px;max-width:440px;width:100%;max-height:85vh;display:flex;flex-direction:column;box-shadow:0 20px 50px rgba(0,0,0,.2);border:1px solid var(--border,#e5e7eb)">' +
+        '<div style="padding:14px 16px;border-bottom:1px solid var(--border,#e5e7eb);flex-shrink:0">' +
+        '<div style="font-size:14px;font-weight:600">アカウント ID を選択</div>' +
+        '<input id="yahoo-ads-customer-modal-search" type="search" autocomplete="off" placeholder="名前・アカウント ID で検索…" style="width:100%;margin-top:10px;padding:8px 10px;border:1px solid var(--border,#e5e7eb);border-radius:8px;font-size:13px;box-sizing:border-box;font-family:inherit" />' +
+        '</div>' +
+        '<div id="yahoo-ads-customer-modal-list" style="overflow-y:auto;flex:1;min-height:100px;max-height:48vh;padding:8px"></div>' +
+        '<div style="padding:12px 16px;border-top:1px solid var(--border,#e5e7eb);display:flex;gap:8px;justify-content:flex-end;flex-shrink:0">' +
+        '<button type="button" id="yahoo-ads-customer-modal-close" style="padding:8px 14px;border-radius:8px;border:1px solid var(--border,#e5e7eb);background:var(--surface2,#f8fafc);font-size:13px;cursor:pointer;font-family:inherit">閉じる</button>' +
+        '</div></div></div>'
+      );
+      const modal = document.getElementById("yahoo-ads-customer-modal");
+      const search = document.getElementById("yahoo-ads-customer-modal-search");
+      const list = document.getElementById("yahoo-ads-customer-modal-list");
+      modal.addEventListener("click", (e) => { if (e.target === modal) closeYahooCustomerModal(); });
+      document.getElementById("yahoo-ads-customer-modal-close").addEventListener("click", closeYahooCustomerModal);
+      search.addEventListener("input", () => renderYahooCustomerModalList(search.value));
+      list.addEventListener("click", (e) => {
+        const item = e.target.closest(".yahoo-ads-customer-modal-item");
+        if (!item || !yahooCustomerSelect) return;
+        const id = item.getAttribute("data-id");
+        if (id === "manual") {
+          yahooCustomerSelect.value = YAHOO_CID_MANUAL;
+          if (yahooManualIdWrap) yahooManualIdWrap.style.display = "block";
+        } else if (id) {
+          yahooCustomerSelect.value = id;
+          if (yahooManualIdWrap) yahooManualIdWrap.style.display = "none";
+        }
+        yahooCustomerSelect.dispatchEvent(new Event("change"));
+        closeYahooCustomerModal();
+      });
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") {
+          const m = document.getElementById("yahoo-ads-customer-modal");
+          if (m && m.style.display === "flex") closeYahooCustomerModal();
+        }
+      });
+    }
+    function openYahooCustomerModal() {
+      if (!yahooCustomerPickerBtn || yahooCustomerPickerBtn.disabled) return;
+      ensureYahooCustomerModal();
+      const modal = document.getElementById("yahoo-ads-customer-modal");
+      const search = document.getElementById("yahoo-ads-customer-modal-search");
+      if (!modal) return;
+      modal.style.display = "flex";
+      if (search) { search.value = ""; search.focus(); }
+      renderYahooCustomerModalList("");
+    }
+    if (yahooCustomerPickerBtn) {
+      yahooCustomerPickerBtn.addEventListener("click", openYahooCustomerModal);
+    }
+
+    if (yahooAuthSourceSelectEl && yahooCustomerSelect) {
+      yahooAuthSourceSelectEl.addEventListener("change", async () => {
+        const authId = yahooAuthSourceSelectEl.value;
+        yahooCustomerSelect.disabled = !authId;
+        yahooCustomerClientsCache = [];
+        if (yahooManualIdWrap) yahooManualIdWrap.style.display = "none";
+        if (yahooClientErrorHint) { yahooClientErrorHint.style.display = "none"; yahooClientErrorHint.textContent = ""; }
+        yahooCustomerSelect.innerHTML = authId
+          ? '<option value="">読み込み中…</option>'
+          : '<option value="">先に「API認証元」を選択してください</option>';
+        syncYahooCustomerPickerUI();
+        if (!authId) return;
+        try {
+          const r = await fetch("/api/ads/yahoo/auth-sources/" + authId + "/clients", { credentials: "include" });
+          const d = await parseJsonResponse(r, { clients: [] });
+          if (!r.ok || d.error) {
+            if (yahooClientErrorHint && d.error) {
+              yahooClientErrorHint.textContent = d.error;
+              yahooClientErrorHint.style.display = "block";
+            }
+          }
+          if (d.clients && d.clients.length > 0) {
+            yahooCustomerClientsCache = d.clients.slice();
+            yahooCustomerSelect.innerHTML =
+              '<option value="">-- アカウントを選択 (' + d.clients.length + '件) --</option>' +
+              d.clients.map((c) =>
+                '<option value="' + escapeHtml(c.customer_id) + '" data-name="' + escapeHtml(c.name || "") + '">' +
+                escapeHtml(c.name || c.customer_id) + ' (' + escapeHtml(c.customer_id) + ')</option>'
+              ).join("") +
+              '<option value="' + YAHOO_CID_MANUAL + '">リストにない・手入力する</option>';
+            if (yahooClientErrorHint) { yahooClientErrorHint.style.display = "none"; }
+          } else if (d.error) {
+            yahooCustomerSelect.innerHTML =
+              '<option value="">取得失敗</option><option value="' + YAHOO_CID_MANUAL + '">手入力で指定</option>';
+          } else {
+            yahooCustomerSelect.innerHTML =
+              '<option value="">アカウントがありません</option><option value="' + YAHOO_CID_MANUAL + '">手入力で指定</option>';
+          }
+          syncYahooCustomerPickerUI();
+        } catch (e) {
+          yahooCustomerSelect.innerHTML =
+            '<option value="">取得エラー</option><option value="' + YAHOO_CID_MANUAL + '">手入力で指定</option>';
+          syncYahooCustomerPickerUI();
+          if (yahooClientErrorHint) { yahooClientErrorHint.textContent = e.message; yahooClientErrorHint.style.display = "block"; }
+        }
+      });
+      yahooCustomerSelect.addEventListener("change", () => {
+        const isManual = yahooCustomerSelect.value === YAHOO_CID_MANUAL;
+        if (yahooManualIdWrap) yahooManualIdWrap.style.display = isManual ? "block" : "none";
+      });
+    }
+
     const yahooAddAccountBtn = document.getElementById("yahoo-ads-add-account-btn");
     const yahooAccountNameInput = document.getElementById("yahoo-ads-account-name");
     const yahooAccountIdInput = document.getElementById("yahoo-ads-account-id");
-    const yahooAgencyAccountIdInput = document.getElementById("yahoo-ads-agency-account-id");
     if (yahooAddAccountBtn) {
       yahooAddAccountBtn.onclick = async () => {
         const authId = (yahooAuthSourceSelectEl?.value || "").trim();
-        const name = (yahooAccountNameInput?.value || "").trim();
-        const aid = (yahooAccountIdInput?.value || "").trim();
-        const agid = (yahooAgencyAccountIdInput?.value || "").trim() || null;
+        const yahooSelectedCustomer = yahooCustomerSelect?.value || "";
+        const selectedOption = yahooCustomerSelect?.selectedOptions?.[0];
+        const autoName = (selectedOption && yahooSelectedCustomer !== YAHOO_CID_MANUAL) ? (selectedOption.dataset.name || "") : "";
+        const name = (yahooAccountNameInput?.value || "").trim() || autoName;
+        const manualAid = (yahooAccountIdInput?.value || "").trim();
+        // セレクトから選択 or 手入力
+        const aid = (yahooSelectedCustomer && yahooSelectedCustomer !== YAHOO_CID_MANUAL)
+          ? yahooSelectedCustomer
+          : manualAid;
         if (!authId || !aid) {
           alert("API認証元とアカウントIDを入力してください");
           return;
@@ -1348,7 +1511,6 @@
             body: JSON.stringify({
               name: name || undefined,
               account_id: aid,
-              agency_account_id: agid || undefined,
               api_auth_source_id: authId,
               company_url_id: yahooCuId,
             }),
@@ -1371,7 +1533,6 @@
             renderYahooAccountList();
             yahooAccountNameInput.value = "";
             yahooAccountIdInput.value = "";
-            yahooAgencyAccountIdInput.value = "";
           } else {
             alert(d.error || "登録に失敗しました");
           }
@@ -2256,7 +2417,7 @@
   let reportAbortController = null;
   /** フロントエンドキャッシュ: SessionStorage に保存、TTL 30分 */
   const FE_CACHE_TTL_MS = 30 * 60 * 1000;
-  const FE_CACHE_VERSION = "v5"; // バージョン変更でキャッシュ無効化
+  const FE_CACHE_VERSION = "v6"; // バージョン変更でキャッシュ無効化
   function getFeCacheKey(params) {
     return "ads_report_" + FE_CACHE_VERSION + "_" + new URLSearchParams(params).toString();
   }

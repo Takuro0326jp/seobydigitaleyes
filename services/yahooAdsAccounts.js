@@ -66,9 +66,10 @@ async function getSelectedAccount(userId) {
   try {
     const [rows] = await pool.query(
       `SELECT y.id, y.name, y.account_id, y.agency_account_id, y.api_auth_source_id,
-              a.refresh_token, a.access_token, a.expiry_date
+              a.refresh_token, a.access_token, a.expiry_date,
+              a.login_customer_id AS auth_login_customer_id
        FROM yahoo_ads_accounts y
-       LEFT JOIN api_auth_sources a ON y.api_auth_source_id = a.id AND y.user_id = a.user_id AND a.platform = 'yahoo'
+       LEFT JOIN api_auth_sources a ON y.api_auth_source_id = a.id AND a.platform = 'yahoo'
        WHERE y.user_id = ? AND y.is_selected = 1 LIMIT 1`,
       [userId]
     );
@@ -76,9 +77,10 @@ async function getSelectedAccount(userId) {
 
     const [rows2] = await pool.query(
       `SELECT y.id, y.name, y.account_id, y.agency_account_id, y.api_auth_source_id,
-              a.refresh_token, a.access_token, a.expiry_date
+              a.refresh_token, a.access_token, a.expiry_date,
+              a.login_customer_id AS auth_login_customer_id
        FROM yahoo_ads_accounts y
-       LEFT JOIN api_auth_sources a ON y.api_auth_source_id = a.id AND y.user_id = a.user_id AND a.platform = 'yahoo'
+       LEFT JOIN api_auth_sources a ON y.api_auth_source_id = a.id AND a.platform = 'yahoo'
        WHERE y.user_id = ? LIMIT 1`,
       [userId]
     );

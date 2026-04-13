@@ -26,8 +26,9 @@ async function getById(id, userId) {
   const selectCols = hasLid
     ? "id, user_id, name, platform, login_customer_id, refresh_token, access_token, expiry_date, google_email, created_at"
     : "id, user_id, name, platform, refresh_token, access_token, expiry_date, google_email, created_at";
+  // ユーザー専用 → グローバル（user_id IS NULL）の順に検索
   const [[row]] = await pool.query(
-    `SELECT ${selectCols} FROM api_auth_sources WHERE id = ? AND user_id = ?`,
+    `SELECT ${selectCols} FROM api_auth_sources WHERE id = ? AND (user_id = ? OR user_id IS NULL) LIMIT 1`,
     [id, userId]
   );
   return row || null;
@@ -61,7 +62,7 @@ async function listForCompanyUrl(companyUrlId, platform = "google") {
     if (platform === "meta") {
       if (!hasCu) return [];
       const [metaRows] = await pool.query(
-        `SELECT ${selectCols} FROM api_auth_sources a WHERE a.platform = 'meta' AND a.company_url_id = ? ORDER BY a.created_at DESC`,
+        `SELECT ${selectCols} FROM api_auth_sources a WHERE a.platform = 'meta' AND (a.company_url_id = ? OR a.company_url_id IS NULL) ORDER BY a.created_at DESC`,
         [cid]
       );
       return metaRows || [];
@@ -81,7 +82,8 @@ async function listForCompanyUrl(companyUrlId, platform = "google") {
     let where;
     const params = [platform];
     if (hasCu) {
-      where = `a.platform = ? AND (a.company_url_id = ? OR (${fromLinked}))`;
+      // グローバル認証元（company_url_id IS NULL）も含める
+      where = `a.platform = ? AND (a.company_url_id = ? OR a.company_url_id IS NULL OR (${fromLinked}))`;
       params.push(cid, cid, cid);
     } else {
       where = `a.platform = ? AND (${fromLinked})`;
@@ -179,7 +181,7 @@ async function updateLoginCustomerId(id, userId, loginCustomerId) {
     const [cols] = await pool.query("SHOW COLUMNS FROM api_auth_sources LIKE 'login_customer_id'");
     if (!cols?.length) return false;
     const [r] = await pool.query(
-      "UPDATE api_auth_sources SET login_customer_id = ?, updated_at = NOW() WHERE id = ? AND user_id = ?",
+      "UPDATE api_auth_sources SET login_customer_id = ?, updated_at = NOW() WHERE id = ? AND (user_id = ? OR user_id IS NULL)",
       [lid, id, userId]
     );
     return r.affectedRows > 0;
@@ -191,7 +193,7 @@ async function updateLoginCustomerId(id, userId, loginCustomerId) {
 async function updateTokens(id, userId, tokens) {
   const [r] = await pool.query(
     `UPDATE api_auth_sources SET access_token = ?, expiry_date = ?, updated_at = NOW()
-     WHERE id = ? AND user_id = ?`,
+     WHERE id = ? AND (user_id = ? OR user_id IS NULL)`,
     [tokens?.access_token || null, tokens?.expiry_date || null, id, userId]
   );
   return r.affectedRows > 0;
@@ -199,7 +201,7 @@ async function updateTokens(id, userId, tokens) {
 
 async function remove(userId, id) {
   const [r] = await pool.query(
-    "DELETE FROM api_auth_sources WHERE id = ? AND user_id = ?",
+    "DELETE FROM api_auth_sources WHERE id = ? AND (user_id = ? OR user_id IS NULL)",
     [id, userId]
   );
   return r.affectedRows > 0;
