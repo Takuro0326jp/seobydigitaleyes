@@ -12,6 +12,89 @@
         .scrollbar-thin::-webkit-scrollbar { width: 6px; }
         .scrollbar-thin::-webkit-scrollbar-track { background: #f1f5f9; }
         .scrollbar-thin::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+
+        /* タスクリスト視認性向上 */
+        #action-item-list-container {
+          font-size: 15px;
+        }
+        /* タスクタイトル */
+        #action-item-list-container .text-xs.font-medium {
+          font-size: 15px !important;
+          font-weight: 600;
+          line-height: 1.5;
+        }
+        /* 説明文 */
+        #action-item-list-container .text-\[11px\] {
+          font-size: 13px !important;
+          line-height: 1.7;
+        }
+        /* バッジ・ラベル (10px → 12px) */
+        #action-item-list-container .text-\[10px\] {
+          font-size: 12px !important;
+        }
+        /* カテゴリフィルターボタン */
+        #action-item-list-container button[data-category] {
+          font-size: 13px !important;
+          padding: 6px 14px;
+        }
+        /* セクションラベル */
+        #action-item-list-container .uppercase.tracking-wider,
+        #action-item-list-container .uppercase.tracking-widest {
+          font-size: 13px !important;
+        }
+        /* カードのパディング拡大 */
+        #action-item-list-container .rounded-r-xl {
+          padding: 16px !important;
+        }
+        /* チェックボックス */
+        #action-item-list-container input[type="checkbox"] {
+          width: 20px;
+          height: 20px;
+          margin-top: 2px;
+        }
+        /* リンク・ボタン */
+        #action-item-list-container a,
+        #action-item-list-container button[data-confirm-complete-id],
+        #action-item-list-container button[data-undo-id] {
+          font-size: 13px !important;
+        }
+        #action-item-list-container button[data-confirm-complete-id] {
+          padding: 6px 14px !important;
+          border-radius: 8px;
+        }
+        /* 完了済みセクション */
+        #action-item-list-container button[data-action="toggle-completed"] {
+          font-size: 14px !important;
+        }
+        #action-item-list-container .line-through {
+          font-size: 14px !important;
+        }
+        /* フッター表示件数 */
+        #action-item-list-container button[data-action="load-more"] {
+          font-size: 14px !important;
+          padding: 14px !important;
+        }
+        /* 再生成ボタン */
+        #action-item-list-container button[data-action="regenerate"] {
+          font-size: 14px !important;
+          padding: 10px 20px !important;
+        }
+        /* 空状態・ローディング */
+        #action-item-list-container .text-sm {
+          font-size: 15px !important;
+        }
+
+        @media (max-width: 640px) {
+          #action-item-list-container .text-xs.font-medium {
+            font-size: 14px !important;
+          }
+          #action-item-list-container .text-\[11px\] {
+            font-size: 13px !important;
+          }
+          #action-item-list-container .rounded-r-xl {
+            padding: 14px 12px !important;
+          }
+        }
     </style>
   <link rel="manifest" href="/manifest.json">
   <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
