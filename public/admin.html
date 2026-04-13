@@ -39,17 +39,53 @@
       animation: shimmer 1.5s infinite;
       border-radius: 8px;
     }
+
+    /* Mobile hamburger - hidden on desktop */
+    .sidebar-toggle { display: none; }
+    .sidebar-close { display: none; }
+    .sidebar-overlay { display: none; }
+
+    @media (max-width: 767px) {
+      .sidebar-toggle { display: flex; }
+      .sidebar-close { display: flex; }
+      #admin-sidebar {
+        position: fixed !important;
+        top: 0; left: 0; bottom: 0;
+        width: 260px !important;
+        z-index: 100;
+        transform: translateX(-100%);
+        transition: transform 0.25s ease;
+      }
+      #admin-sidebar.open {
+        transform: translateX(0);
+      }
+      .sidebar-overlay {
+        display: none;
+        position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+        background: rgba(0,0,0,0.4);
+        z-index: 99;
+      }
+      .sidebar-overlay.open { display: block; }
+      .admin-topbar { padding-left: 16px !important; padding-right: 16px !important; }
+      .admin-content-pad { padding: 16px !important; }
+    }
   </style>
 </head>
 <body class="text-slate-900">
   <!-- 外枠: flex + h-screen でサイドバーと右側を固定 -->
   <div style="display:flex; height:100vh; overflow:hidden;">
 
+    <!-- サイドバーオーバーレイ（モバイル用） -->
+    <div class="sidebar-overlay" id="sidebar-overlay" onclick="closeSidebar()"></div>
+
     <!-- サイドバー -->
-    <aside style="width:240px; flex-shrink:0;" class="bg-slate-900 flex flex-col overflow-hidden">
+    <aside id="admin-sidebar" style="width:240px; flex-shrink:0;" class="bg-slate-900 flex flex-col overflow-hidden">
       <!-- ロゴエリア -->
       <div class="px-5 py-5 shrink-0 border-b border-slate-700/50">
-        <div class="flex items-center gap-3">
+        <div class="flex items-center gap-3" style="position:relative;">
+          <button class="sidebar-close" onclick="closeSidebar()" style="position:absolute;top:-4px;right:-8px;align-items:center;justify-content:center;width:28px;height:28px;border:none;background:transparent;color:#94a3b8;cursor:pointer;border-radius:6px;" onmouseover="this.style.background='rgba(255,255,255,0.1)'" onmouseout="this.style.background='transparent'">
+            <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+          </button>
           <div class="w-8 h-8 bg-indigo-500 rounded-lg flex items-center justify-center shrink-0">
             <img src="/img/d_logo.png" alt="S" class="w-5 h-5 object-contain" style="filter:brightness(0) invert(1);" onerror="this.style.display='none'">
           </div>
@@ -105,14 +141,19 @@
     <div style="flex:1; display:flex; flex-direction:column; min-width:0; overflow:hidden;">
 
       <!-- トップバー（幅100%固定） -->
-      <div style="background:#fff; border-bottom:1px solid #e2e8f0; padding:14px 32px; display:flex; align-items:center; justify-content:space-between; flex-shrink:0; z-index:10;">
-        <div id="topbar-title" style="font-size:14px; font-weight:600; color:#334155;">管理コンソール</div>
+      <div class="admin-topbar" style="background:#fff; border-bottom:1px solid #e2e8f0; padding:14px 32px; display:flex; align-items:center; justify-content:space-between; flex-shrink:0; z-index:10;">
+        <div style="display:flex; align-items:center; gap:12px;">
+          <button class="sidebar-toggle" onclick="openSidebar()" style="align-items:center;justify-content:center;width:32px;height:32px;border:1px solid #e2e8f0;background:#fff;border-radius:8px;cursor:pointer;color:#475569;">
+            <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16"/></svg>
+          </button>
+          <div id="topbar-title" style="font-size:14px; font-weight:600; color:#334155;">管理コンソール</div>
+        </div>
         <span style="font-size:11px; color:#94a3b8; background:#f8fafc; padding:4px 12px; border-radius:999px; border:1px solid #e2e8f0;">Admin Console</span>
       </div>
 
       <!-- スクロール可能なコンテンツエリア -->
       <div style="flex:1; overflow-y:auto;">
-        <div style="padding:32px; max-width:1280px; margin:0 auto;">
+        <div class="admin-content-pad" style="padding:32px; max-width:1280px; margin:0 auto;">
           <div id="admin-content">
             <!-- スケルトンローディング -->
             <div class="space-y-6">
@@ -132,6 +173,16 @@
     </div>
   </div>
 
+  <script>
+    function openSidebar() {
+      document.getElementById('admin-sidebar').classList.add('open');
+      document.getElementById('sidebar-overlay').classList.add('open');
+    }
+    function closeSidebar() {
+      document.getElementById('admin-sidebar').classList.remove('open');
+      document.getElementById('sidebar-overlay').classList.remove('open');
+    }
+  </script>
   <script type="module" src="/admin/js/init.js?v=7"></script>
 </body>
 </html>

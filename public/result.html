@@ -9,14 +9,32 @@
 <link href="/css/tailwind.css" rel="stylesheet">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style/dist/xlsx.bundle.js"></script>
-<style>body{font-family:Inter,sans-serif}</style>
+<style>
+body{font-family:Inter,sans-serif}
+@media (max-width: 768px) {
+    main.p-8, main { padding: 1rem !important; }
+    #stats-container { gap: 0.75rem !important; }
+    #stats-container > div { padding: 1.25rem !important; }
+    #stats-container .text-4xl { font-size: 1.75rem !important; }
+    .table-container table { table-layout: auto !important; min-width: 900px; }
+    #pageQualityTableSection { flex-direction: column !important; }
+    #pageQualityTableSection .flex.gap-2 { flex-direction: column; width: 100%; }
+    #pageQualityTableSection #dirFilterContainer { width: 100% !important; }
+    #pageQualityTableSection #searchInput { width: 100% !important; }
+    .flex.justify-end.gap-3 { flex-wrap: wrap; justify-content: center !important; }
+    .flex.justify-end.gap-3 button { flex: 1 1 auto; min-width: 0; }
+    .flex.justify-between.items-end.border-b { flex-direction: column; gap: 1rem; }
+    #dirHealthSearch { width: 100% !important; }
+    .flex.justify-between.items-center.mb-8 { flex-direction: column; align-items: flex-start; gap: 1rem; }
+}
+</style>
 </head>
 
 <body class="antialiased bg-slate-50">
 
 <div id="header-container"></div>
 
-<main class="relative max-w-[1600px] mx-auto p-8 space-y-8">
+<main class="relative max-w-[1600px] mx-auto p-4 sm:p-8 space-y-6 sm:space-y-8">
 
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-12" id="stats-container">
 
@@ -360,8 +378,8 @@ focus:outline-none focus:ring-2 focus:ring-blue-500/20"
 >
 </div>
 <div class="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
-<div style="height:450px;overflow-y:auto;" class="scroll-area">
-<table class="w-full text-xs table-fixed">
+<div style="height:450px;overflow-y:auto;overflow-x:auto;" class="scroll-area">
+<table class="w-full text-xs table-fixed" style="min-width:600px;">
 <thead class="bg-slate-50 text-slate-400 border-b border-slate-200 sticky top-0 z-10">
                     <tr>
                         <th class="bg-slate-50 px-6 py-3 text-left font-bold w-[50%]">ディレクトリ</th>
@@ -515,7 +533,7 @@ class="bg-slate-900 text-white font-bold py-2.5 px-8 rounded-lg text-xs hover:bg
     
 </div>
 
-    <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-8 mt-12">
+    <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 sm:p-8 mt-8 sm:mt-12">
         <div class="flex justify-between items-center mb-8">
 
             <div>
