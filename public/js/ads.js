@@ -175,29 +175,42 @@
       else if (apiRows === 0) mediaNote = "実施なし";
 
       if (name === "Google Ads") {
-        // Google Ads 合計（全チャネル）
+        // P-MAX はトップレベル独立カードとして分離
+        const PMAX_KEY = "Google P-MAX";
         const googleTotal = { cost: 0, cv: 0, imp: 0, clicks: 0 };
+        const pmaxData = { cost: 0, cv: 0, imp: 0, clicks: 0 };
         const googleChannels = [];
+        let hasPmax = false;
         Object.keys(byMedia).forEach((k) => {
           if (isGoogleChannelMedia(k)) {
             const d = byMedia[k];
-            googleTotal.cost += d.cost; googleTotal.cv += d.cv; googleTotal.imp += d.imp; googleTotal.clicks += d.clicks;
-            if (k !== "Google Ads") googleChannels.push(k);
+            if (k === PMAX_KEY) {
+              pmaxData.cost += d.cost; pmaxData.cv += d.cv; pmaxData.imp += d.imp; pmaxData.clicks += d.clicks;
+              hasPmax = true;
+            } else {
+              googleTotal.cost += d.cost; googleTotal.cv += d.cv; googleTotal.imp += d.imp; googleTotal.clicks += d.clicks;
+              if (k !== "Google Ads") googleChannels.push(k);
+            }
           }
         });
-        if (wasCalled && apiRows > 0 && googleTotal.cost > 0) {
-          out.push(buildMediaEntry("Google Ads（合計）", googleTotal, ""));
-          // チャネル別内訳
-          googleChannels.sort((a, b) => (byMedia[b]?.cost || 0) - (byMedia[a]?.cost || 0));
-          googleChannels.forEach((ch) => {
-            const d = byMedia[ch];
-            if (d && (d.cost > 0 || d.imp > 0)) {
-              out.push(buildMediaEntry(ch, d, ""));
+        if (wasCalled && apiRows > 0 && (googleTotal.cost > 0 || hasPmax)) {
+          // Google Ads（P-MAX除く）合計
+          if (googleTotal.cost > 0 || googleTotal.imp > 0) {
+            out.push(buildMediaEntry("Google Ads（合計）", googleTotal, ""));
+            googleChannels.sort((a, b) => (byMedia[b]?.cost || 0) - (byMedia[a]?.cost || 0));
+            googleChannels.forEach((ch) => {
+              const d = byMedia[ch];
+              if (d && (d.cost > 0 || d.imp > 0)) {
+                out.push(buildMediaEntry(ch, d, ""));
+              }
+            });
+            if (byMedia["Google Ads"] && (byMedia["Google Ads"].cost > 0 || byMedia["Google Ads"].imp > 0)) {
+              out.push(buildMediaEntry("Google Ads（その他）", byMedia["Google Ads"], ""));
             }
-          });
-          // チャネル不明の "Google Ads" があれば
-          if (byMedia["Google Ads"] && (byMedia["Google Ads"].cost > 0 || byMedia["Google Ads"].imp > 0)) {
-            out.push(buildMediaEntry("Google Ads（その他）", byMedia["Google Ads"], ""));
+          }
+          // Google P-MAX 独立カード
+          if (hasPmax && (pmaxData.cost > 0 || pmaxData.imp > 0)) {
+            out.push(buildMediaEntry(PMAX_KEY, pmaxData, ""));
           }
         } else {
           out.push(buildMediaEntry(name, { cost: 0, cv: 0, imp: 0, clicks: 0 }, mediaNote));
@@ -674,8 +687,10 @@
     }
 
     const summaryNames = ["Google Ads（合計）", "Yahoo広告（合計）", "Meta（合計）"];
+    // P-MAX はトップレベルカードなので内訳展開から除外
+    const topLevelNames = new Set(["Google P-MAX", ...summaryNames]);
     const channelCheckers = {
-      "Google Ads（合計）": isGoogleChannelMedia,
+      "Google Ads（合計）": (m) => isGoogleChannelMedia(m) && m !== "Google P-MAX",
       "Yahoo広告（合計）": isYahooChannelMedia,
       "Meta（合計）": isMetaChannelMedia,
     };
@@ -683,7 +698,7 @@
     function getBreakdownsFor(summaryName) {
       const checker = channelCheckers[summaryName];
       if (!checker) return [];
-      return md.filter((x) => x.name !== summaryName && !summaryNames.includes(x.name) && checker(x.name) && (x.cost > 0 || x.imp > 0))
+      return md.filter((x) => x.name !== summaryName && !topLevelNames.has(x.name) && checker(x.name) && (x.cost > 0 || x.imp > 0))
         .sort((a, b) => b.cost - a.cost);
     }
 
@@ -2417,7 +2432,7 @@
   let reportAbortController = null;
   /** フロントエンドキャッシュ: SessionStorage に保存、TTL 30分 */
   const FE_CACHE_TTL_MS = 30 * 60 * 1000;
-  const FE_CACHE_VERSION = "v6"; // バージョン変更でキャッシュ無効化
+  const FE_CACHE_VERSION = "v7"; // バージョン変更でキャッシュ無効化
   function getFeCacheKey(params) {
     return "ads_report_" + FE_CACHE_VERSION + "_" + new URLSearchParams(params).toString();
   }
