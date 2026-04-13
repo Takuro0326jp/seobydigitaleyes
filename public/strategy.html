@@ -19,6 +19,9 @@
       .article-body li { margin-bottom: 0.4em; }
       .article-body strong { font-weight: 600; color: #0f172a; }
     </style>
+  <link rel="manifest" href="/manifest.json">
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+  <meta name="theme-color" content="#4f46e5">
 </head>
 <body class="text-slate-900 antialiased bg-slate-50/30 min-h-screen flex flex-col">
 
@@ -180,5 +183,6 @@
 
     <script src="/js/header.js?v=7"></script>
     <script src="/js/strategy.js?v=5"></script>
+<script>if("serviceWorker"in navigator)navigator.serviceWorker.register("/sw.js").catch(()=>{});</script>
 </body>
 </html>

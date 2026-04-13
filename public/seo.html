@@ -15,6 +15,9 @@
         .scrollbar-thin::-webkit-scrollbar { width: 6px; height: 6px; }
         .scrollbar-thin::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
     </style>
+  <link rel="manifest" href="/manifest.json">
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+  <meta name="theme-color" content="#4f46e5">
 </head>
 <body class="min-h-screen flex flex-col">
 
@@ -198,5 +201,6 @@
 
     <script src="/js/header.js?v=7"></script>
     <script type="module" src="/js/seo/scan-list-main.js"></script>
+<script>if("serviceWorker"in navigator)navigator.serviceWorker.register("/sw.js").catch(()=>{});</script>
 </body>
 </html>

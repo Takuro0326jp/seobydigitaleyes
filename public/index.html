@@ -6,6 +6,9 @@
     <title>Login | SEO Scan by DIGITALEYES</title>
     <link rel="stylesheet" href="/css/style.css?v=1">
     <link rel="stylesheet" href="/css/tailwind.css">
+  <link rel="manifest" href="/manifest.json">
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+  <meta name="theme-color" content="#4f46e5">
 </head>
 <body class="min-h-screen flex flex-col">
 
@@ -105,5 +108,6 @@
 
 <script src="/js/header.js?v=7"></script>
 <script src="/js/index.js"></script>
+<script>if("serviceWorker"in navigator)navigator.serviceWorker.register("/sw.js").catch(()=>{});</script>
 </body>
 </html>

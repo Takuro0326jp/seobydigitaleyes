@@ -28,6 +28,9 @@ body{font-family:Inter,sans-serif}
     .flex.justify-between.items-center.mb-8 { flex-direction: column; align-items: flex-start; gap: 1rem; }
 }
 </style>
+  <link rel="manifest" href="/manifest.json">
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+  <meta name="theme-color" content="#4f46e5">
 </head>
 
 <body class="antialiased bg-slate-50">
@@ -699,5 +702,6 @@ class="fixed bottom-8 right-8 w-12 h-12 bg-slate-900 text-white rounded-full sha
 <script src="/js/header.js?v=7"></script>
 <script src="/js/result/export-excel.js"></script>
 <script src="/js/result/ui.js"></script>
+<script>if("serviceWorker"in navigator)navigator.serviceWorker.register("/sw.js").catch(()=>{});</script>
 </body>
 </html>

@@ -119,6 +119,9 @@
             #linkJuiceTable th[style*="width:22%"] { min-width: 120px; }
         }
     </style>
+  <link rel="manifest" href="/manifest.json">
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+  <meta name="theme-color" content="#4f46e5">
 </head>
 <body class="antialiased bg-slate-50">
 
@@ -291,5 +294,6 @@
 <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
 <script src="/js/header.js?v=7"></script>
 <script src="/js/link-structure.js"></script>
+<script>if("serviceWorker"in navigator)navigator.serviceWorker.register("/sw.js").catch(()=>{});</script>
 </body>
 </html>
