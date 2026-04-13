@@ -1,4 +1,4 @@
-const CACHE_NAME = "digitaleyes-v6";
+const CACHE_NAME = "digitaleyes-v7";
 const PRECACHE = [
   "/seo.html",
   "/css/style.css",
