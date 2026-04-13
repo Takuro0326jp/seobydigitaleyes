@@ -264,8 +264,8 @@ class="block px-4 py-3 text-[11px] font-bold text-slate-600 hover:bg-slate-50 ho
     };
 
     const subNavWrapper = (content) => `
-      <div class="px-8 flex items-center bg-slate-50 border-t border-slate-100 overflow-x-auto ${isHideNavPage ? "hidden" : ""}" style="min-height:44px">
-        <div class="flex items-center gap-6 pt-4">
+      <div class="px-3 sm:px-8 flex items-center bg-slate-50 border-t border-slate-100 overflow-x-auto ${isHideNavPage ? "hidden" : ""}" style="min-height:44px;-webkit-overflow-scrolling:touch">
+        <div class="flex items-center gap-4 sm:gap-6 pt-3 sm:pt-4">
           ${content}
         </div>
       </div>`;
@@ -288,29 +288,29 @@ class="block px-4 py-3 text-[11px] font-bold text-slate-600 hover:bg-slate-50 ho
 
     container.innerHTML = `
     <header class="bg-white border-b border-slate-200 sticky top-0 z-40">
-        <div class="h-16 flex items-center justify-between px-8 border-b border-slate-100">
-           <div class="flex items-center gap-6">
-    <div class="flex items-center gap-2 sm:gap-3 shrink-0">
-    <a href="seo.html" class="flex items-center gap-3 hover:opacity-80 transition-opacity">
-        <img src="/img/d_logo.png" alt="Logo" class="w-8 h-8" onerror="this.style.display='none'">
-        <span class="text-lg font-bold text-slate-900">
-            SEO Scan <span class="text-slate-400 font-medium text-[10px] ml-1 uppercase tracking-wider">by DIGITALEYES</span>
+        <div class="flex items-center justify-between px-3 sm:px-8 border-b border-slate-100" style="min-height:56px">
+           <div class="flex items-center gap-2 sm:gap-6 min-w-0">
+    <div class="flex items-center gap-2 shrink-0">
+    <a href="seo.html" class="flex items-center gap-2 hover:opacity-80 transition-opacity">
+        <img src="/img/d_logo.png" alt="Logo" class="w-7 h-7 sm:w-8 sm:h-8" onerror="this.style.display='none'">
+        <span class="text-sm sm:text-lg font-bold text-slate-900 whitespace-nowrap">
+            SEO Scan <span class="text-slate-400 font-medium text-[10px] ml-1 uppercase tracking-wider hidden sm:inline">by DIGITALEYES</span>
         </span>
     </a>
-    <div class="ai-mode-badge" title="AIを活用した分析・提案モード" role="img" aria-label="＋AI mode">
+    <div class="ai-mode-badge hidden sm:inline-flex" title="AIを活用した分析・提案モード" role="img" aria-label="＋AI mode">
         <span class="ai-mode-badge__icon" aria-hidden="true">✦</span>
         <span class="ai-mode-badge__text">＋AI mode</span>
     </div>
     </div>
-    <div id="header-target-domain" class="text-xs font-bold text-slate-500"></div>
-    <div id="header-nav-left"></div>
+    <div id="header-target-domain" class="text-xs font-bold text-slate-500 hidden sm:block truncate"></div>
+    <div id="header-nav-left" class="hidden sm:block shrink-0"></div>
 </div>
-            <div class="flex items-center gap-4">
-                <div id="header-user-nav" class="flex items-center gap-4"></div>
+            <div class="flex items-center gap-2 sm:gap-4 shrink-0">
+                <div id="header-user-nav" class="flex items-center gap-2 sm:gap-4"></div>
             </div>
         </div>
-        <div class="px-8 flex items-center bg-white overflow-x-auto ${isHideNavPage ? "hidden" : ""}" style="scrollbar-gutter:stable">
-            <div class="flex items-center gap-4 sm:gap-6 pt-4">
+        <div class="px-3 sm:px-8 flex items-center bg-white overflow-x-auto ${isHideNavPage ? "hidden" : ""}" style="scrollbar-gutter:stable;-webkit-overflow-scrolling:touch">
+            <div class="flex items-center gap-3 sm:gap-6 pt-3 sm:pt-4" style="padding-bottom:1px">
                 ${mainTab("task",     "TASK",             "gsc-task.html")}
                 ${mainTab("seo",      "SEO",                 "result.html")}
                 ${mainTab("gsc",      "Search Console",      "gsc.html")}
