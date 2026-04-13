@@ -471,6 +471,10 @@ class="block px-4 py-3 text-[11px] font-bold text-slate-600 hover:bg-slate-50 ho
       return "";
     })();
 
+    // scan が指定されていないと TASK/SEO/GSC/その他(Domain等) は使えない
+    const hasScan = /[?&]scan(Id)?=/.test(urlSuffix);
+    const needsScan = (id) => ["task", "seo", "gsc", "more"].includes(id);
+
     const tabs = [
       { id: "home", icon: "⌂", label: "ホーム", href: "seo.html" },
       { id: "task", icon: "✓", label: "TASK", href: "gsc-task.html" + urlSuffix },
@@ -484,24 +488,42 @@ class="block px-4 py-3 text-[11px] font-bold text-slate-600 hover:bg-slate-50 ho
     nav.id = "bottom-nav";
     nav.innerHTML = tabs.map(t => {
       const active = t.id === activeGroup || (t.id === "home" && activeGroup === "home");
-      return `<a href="${t.href}" class="bnav-item${active ? " bnav-active" : ""}" data-bnav="${t.id}">
-        <span class="bnav-icon">${t.icon}</span><span class="bnav-label">${t.label}</span>
+      const disabled = !hasScan && needsScan(t.id);
+      return `<a href="${disabled ? "#" : t.href}" class="bnav-item${active ? " bnav-active" : ""}${disabled ? " bnav-disabled" : ""}" data-bnav="${t.id}"${disabled ? ' aria-disabled="true"' : ""}>
+        <span class="bnav-icon">${t.icon}</span><span class="bnav-label">${t.label}</span>${disabled ? '<span class="bnav-lock">🔒</span>' : ""}
       </a>`;
     }).join("");
+
+    // disabled なタブをタップ時にガイド表示
+    nav.addEventListener("click", (e) => {
+      const item = e.target.closest(".bnav-disabled");
+      if (!item) return;
+      e.preventDefault();
+      // 既存のトーストがあれば消す
+      let toast = document.getElementById("bnav-toast");
+      if (toast) toast.remove();
+      toast = document.createElement("div");
+      toast.id = "bnav-toast";
+      toast.textContent = "ホームから案件を選択してください";
+      document.body.appendChild(toast);
+      requestAnimationFrame(() => toast.classList.add("show"));
+      setTimeout(() => { toast.classList.remove("show"); setTimeout(() => toast.remove(), 300); }, 2500);
+    });
     document.body.appendChild(nav);
 
     // 「その他」メニュー
     const moreItems = [
-      { label: "Domain Authority", href: "domain.html" + urlSuffix, id: "domain" },
-      { label: "Security", href: "security.html" + urlSuffix, id: "security" },
-      { label: "SEO Strategy", href: "strategy.html" + urlSuffix, id: "strategy" },
-      { label: "設定", href: "settings.html", id: "settings" },
+      { label: "Domain Authority", href: "domain.html" + urlSuffix, id: "domain", scan: true },
+      { label: "Security", href: "security.html" + urlSuffix, id: "security", scan: true },
+      { label: "SEO Strategy", href: "strategy.html" + urlSuffix, id: "strategy", scan: true },
+      { label: "設定", href: "settings.html", id: "settings", scan: false },
     ];
     const overlay = document.createElement("div");
     overlay.id = "bnav-more-overlay";
-    overlay.innerHTML = `<div id="bnav-more-menu">${moreItems.map(m =>
-      `<a href="${m.href}" class="bnav-more-item${activeGroup === m.id ? " bnav-more-active" : ""}">${m.label}</a>`
-    ).join("")}</div>`;
+    overlay.innerHTML = `<div id="bnav-more-menu">${moreItems.map(m => {
+      const dis = m.scan && !hasScan;
+      return `<a href="${dis ? "#" : m.href}" class="bnav-more-item${activeGroup === m.id ? " bnav-more-active" : ""}${dis ? " bnav-more-disabled" : ""}">${m.label}${dis ? " 🔒" : ""}</a>`;
+    }).join("")}${!hasScan ? '<div class="bnav-more-hint">ホームから案件を選択すると利用できます</div>' : ""}</div>`;
     document.body.appendChild(overlay);
 
     nav.querySelector('[data-bnav="more"]').addEventListener("click", (e) => {
@@ -531,6 +553,14 @@ class="block px-4 py-3 text-[11px] font-bold text-slate-600 hover:bg-slate-50 ho
       .bnav-more-item{display:block;padding:14px 16px;border-radius:12px;font-size:15px;font-weight:600;color:#334155;text-decoration:none}
       .bnav-more-item:active{background:#f1f5f9}
       .bnav-more-active{color:#4f46e5;background:#eef2ff}
+      .bnav-disabled{opacity:.35;pointer-events:auto;position:relative}
+      .bnav-lock{position:absolute;top:4px;right:50%;transform:translateX(16px);font-size:8px;line-height:1}
+      #bnav-toast{position:fixed;bottom:80px;left:50%;transform:translateX(-50%) translateY(20px);
+        background:#1e293b;color:#fff;font-size:13px;font-weight:600;padding:12px 24px;border-radius:12px;
+        z-index:10000;opacity:0;transition:opacity .25s,transform .25s;pointer-events:none;white-space:nowrap}
+      #bnav-toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+      .bnav-more-disabled{opacity:.4;pointer-events:none}
+      .bnav-more-hint{font-size:12px;color:#94a3b8;text-align:center;padding:12px 0 4px;border-top:1px solid #f1f5f9;margin-top:4px}
     `;
     document.head.appendChild(s);
 
