@@ -671,6 +671,19 @@ app.use((err, req, res, next) => {
       if (e.code !== "ER_NO_SUCH_TABLE") console.warn(`[DB] ${tbl} user_id nullable化スキップ:`, e?.message);
     }
   }
+  // ── 代理店マージン設定テーブル ──
+  try {
+    await pool.execute(`CREATE TABLE IF NOT EXISTS ads_margin_settings (
+      company_url_id BIGINT NOT NULL,
+      margin_pct DECIMAL(5,2) NOT NULL DEFAULT 20,
+      updated_at DATETIME NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+      PRIMARY KEY (company_url_id),
+      CONSTRAINT fk_ads_margin_cu FOREIGN KEY (company_url_id) REFERENCES company_urls(id) ON DELETE CASCADE
+    )`);
+    console.log("[DB] ads_margin_settings 確認OK");
+  } catch (e) {
+    if (e.code !== "ER_TABLE_EXISTS" && e.code !== "ER_TABLE_EXISTS_ERROR") console.warn("[DB] ads_margin_settings スキップ:", e?.message);
+  }
   try {
     await pool.execute(`CREATE TABLE IF NOT EXISTS scan_google_tokens (
       scan_id VARCHAR(36) NOT NULL,

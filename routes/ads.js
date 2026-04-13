@@ -419,17 +419,37 @@ router.get("/report", async (req, res) => {
     }
 
     const result = await fetchAllReports(param, userId, { debug, force, ad_account_id: adAccountId || undefined, company_url_id: companyUrlId || undefined });
+
+    // 代理店マージン適用（master/admin 以外のユーザーに適用）
+    let marginPct = 0;
+    const isMasterOrAdmin = isAdmin(user);
+    if (companyUrlId && !isMasterOrAdmin) {
+      try {
+        const [[marginRow]] = await pool.query(
+          "SELECT margin_pct FROM ads_margin_settings WHERE company_url_id = ?",
+          [parseInt(companyUrlId, 10)]
+        );
+        if (marginRow) marginPct = Number(marginRow.margin_pct) || 0;
+      } catch (_) {}
+    }
+    const marginMultiplier = marginPct > 0 ? (1 + marginPct / 100) : 1;
+    const applyCostMargin = (rows) => {
+      if (marginMultiplier === 1 || !Array.isArray(rows)) return rows;
+      return rows.map((r) => ({ ...r, cost: Math.round((Number(r.cost) || 0) * marginMultiplier) }));
+    };
+
     const adRows = result.adRows ?? [];
     const json = {
-      rows: result.rows ?? [],
-      areaRows: result.areaRows ?? [],
-      hourRows: result.hourRows ?? [],
-      dailyRows: result.dailyRows ?? [],
-      keywordRows: result.keywordRows ?? [],
-      adRows,
+      rows: applyCostMargin(result.rows ?? []),
+      areaRows: applyCostMargin(result.areaRows ?? []),
+      hourRows: applyCostMargin(result.hourRows ?? []),
+      dailyRows: applyCostMargin(result.dailyRows ?? []),
+      keywordRows: applyCostMargin(result.keywordRows ?? []),
+      adRows: applyCostMargin(adRows),
       assetRows: result.assetRows ?? [],
       meta: result.meta ?? {},
     };
+    if (isMasterOrAdmin && marginPct > 0) json.meta._marginPct = marginPct;
     if (result._debug) json._debug = result._debug;
     if (result._hint) json._hint = result._hint;
     if (result._yahooRawSample) json._yahooRawSample = result._yahooRawSample;
@@ -1776,6 +1796,69 @@ router.delete("/admin/auth-sources/:id", async (req, res) => {
     res.json({ success: ok });
   } catch (e) {
     console.error("[ads] admin auth-sources delete error:", e.message);
+    res.status(500).json({ error: "削除に失敗しました" });
+  }
+});
+
+/** GET /api/ads/admin/margin - 代理店マージン設定一覧 */
+router.get("/admin/margin", async (req, res) => {
+  const admin = await requireAdmin(req, res);
+  if (!admin) return;
+  try {
+    const [rows] = await pool.query(
+      `SELECT m.company_url_id, m.margin_pct, m.updated_at, cu.url
+       FROM ads_margin_settings m
+       JOIN company_urls cu ON m.company_url_id = cu.id
+       ORDER BY cu.url`
+    );
+    res.json({ margins: rows || [] });
+  } catch (e) {
+    if (e.code === "ER_NO_SUCH_TABLE") return res.json({ margins: [] });
+    console.error("[ads] admin margin list error:", e.message);
+    res.status(500).json({ error: "取得に失敗しました" });
+  }
+});
+
+/** POST /api/ads/admin/margin - 代理店マージン設定を保存 */
+router.post("/admin/margin", async (req, res) => {
+  const admin = await requireAdmin(req, res);
+  if (!admin) return;
+  const { company_url_id, margin_pct } = req.body || {};
+  const cuId = parseInt(company_url_id, 10);
+  const pct = parseFloat(margin_pct);
+  if (!cuId || Number.isNaN(cuId)) {
+    return res.status(400).json({ error: "Target（company_url_id）を指定してください" });
+  }
+  if (Number.isNaN(pct) || pct < 0 || pct > 999) {
+    return res.status(400).json({ error: "マージン率は 0〜999 の範囲で指定してください" });
+  }
+  try {
+    await pool.query(
+      `INSERT INTO ads_margin_settings (company_url_id, margin_pct, updated_at)
+       VALUES (?, ?, NOW())
+       ON DUPLICATE KEY UPDATE margin_pct = VALUES(margin_pct), updated_at = NOW()`,
+      [cuId, pct]
+    );
+    clearReportResponseCache("margin_updated");
+    res.json({ success: true });
+  } catch (e) {
+    console.error("[ads] admin margin save error:", e.message);
+    res.status(500).json({ error: "保存に失敗しました" });
+  }
+});
+
+/** DELETE /api/ads/admin/margin/:id - 代理店マージン設定を削除 */
+router.delete("/admin/margin/:id", async (req, res) => {
+  const admin = await requireAdmin(req, res);
+  if (!admin) return;
+  const cuId = parseInt(req.params.id, 10);
+  if (!cuId) return res.status(400).json({ error: "無効なIDです" });
+  try {
+    await pool.query("DELETE FROM ads_margin_settings WHERE company_url_id = ?", [cuId]);
+    clearReportResponseCache("margin_deleted");
+    res.json({ success: true });
+  } catch (e) {
+    console.error("[ads] admin margin delete error:", e.message);
     res.status(500).json({ error: "削除に失敗しました" });
   }
 });

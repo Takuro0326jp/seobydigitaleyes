@@ -216,8 +216,21 @@ async function renderPage() {
             </table>`
         }
       </div>
+      <!-- 代理店マージン設定 -->
+      <div class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center justify-between mb-4">
+          <div>
+            <h3 class="text-base font-semibold text-slate-800">代理店マージン設定</h3>
+            <p class="text-xs text-slate-500 mt-1">Target ごとにコスト表示にマージン率を上乗せします。master/admin 以外のユーザーに適用されます。</p>
+          </div>
+        </div>
+        <div id="margin-settings-area"><p class="text-sm text-slate-400">読み込み中...</p></div>
+      </div>
     </div>
   `;
+
+  // ── 代理店マージン設定セクション ──
+  await renderMarginSection(root);
 
   // イベント: Google 連携追加
   document.getElementById("btn-add-google")?.addEventListener("click", () => {
@@ -291,6 +304,133 @@ async function renderPage() {
       if (!confirm("この認証元を削除しますか？関連するアカウントも使用できなくなります。")) return;
       try {
         await fetchJson(`${adsBase}/admin/auth-sources/${id}`, { method: "DELETE" });
+        await renderPage();
+      } catch (e) {
+        alert("削除に失敗しました: " + e.message);
+      }
+    });
+  });
+}
+
+/** 代理店マージン設定セクションのレンダリング */
+async function renderMarginSection(root) {
+  const area = document.getElementById("margin-settings-area");
+  if (!area) return;
+
+  let margins = [];
+  let companyUrls = [];
+  try {
+    const mData = await fetchJson(`${adsBase}/admin/margin`);
+    margins = mData.margins || [];
+  } catch (e) {
+    area.innerHTML = `<p class="text-sm text-red-600">マージン設定の取得に失敗しました: ${escHtml(e.message)}</p>`;
+    return;
+  }
+  try {
+    const cuData = await fetchJson("/api/admin/companies/1/urls");
+    companyUrls = cuData.urls || cuData || [];
+  } catch (_) {}
+
+  // マージン設定済みの company_url_id
+  const marginMap = new Map(margins.map((m) => [m.company_url_id, m]));
+
+  let html = "";
+
+  // 既存のマージン設定一覧
+  if (margins.length > 0) {
+    html += `<table class="w-full text-sm mb-6">
+      <thead><tr class="text-left text-slate-500 border-b border-slate-100">
+        <th class="py-2 font-medium">Target URL</th>
+        <th class="py-2 font-medium">マージン率</th>
+        <th class="py-2 font-medium">更新日</th>
+        <th class="py-2 font-medium"></th>
+      </tr></thead>
+      <tbody>
+        ${margins.map((m) => `
+          <tr class="border-b border-slate-50 hover:bg-slate-50">
+            <td class="py-3 text-slate-800">${escHtml(m.url || "—")}</td>
+            <td class="py-3">
+              <span class="text-slate-700 font-medium">${Number(m.margin_pct)}%</span>
+            </td>
+            <td class="py-3 text-slate-500">${m.updated_at ? new Date(m.updated_at).toLocaleDateString("ja") : "—"}</td>
+            <td class="py-3 text-right">
+              <button class="text-xs text-indigo-600 hover:underline mr-3 margin-edit-btn" data-cu-id="${m.company_url_id}" data-current="${m.margin_pct}">編集</button>
+              <button class="text-xs text-red-500 hover:text-red-700 margin-delete-btn" data-cu-id="${m.company_url_id}">削除</button>
+            </td>
+          </tr>
+        `).join("")}
+      </tbody>
+    </table>`;
+  } else {
+    html += `<p class="text-sm text-slate-400 mb-4">マージン設定はまだありません。</p>`;
+  }
+
+  // 新規追加フォーム
+  const unsetUrls = companyUrls.filter((u) => !marginMap.has(u.id));
+  html += `
+    <div class="flex items-end gap-3 flex-wrap">
+      <div>
+        <label class="block text-xs text-slate-500 mb-1">Target</label>
+        <select id="margin-target-select" class="border border-slate-200 rounded-lg px-3 py-2 text-sm" style="min-width:240px">
+          <option value="">-- Target を選択 --</option>
+          ${unsetUrls.map((u) => `<option value="${u.id}">${escHtml(u.url)}</option>`).join("")}
+        </select>
+      </div>
+      <div>
+        <label class="block text-xs text-slate-500 mb-1">マージン率 (%)</label>
+        <input id="margin-pct-input" type="number" min="0" max="999" step="0.5" value="20" class="border border-slate-200 rounded-lg px-3 py-2 text-sm w-24" />
+      </div>
+      <button id="margin-save-btn" class="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition">
+        追加
+      </button>
+    </div>
+  `;
+
+  area.innerHTML = html;
+
+  // イベント: 追加
+  document.getElementById("margin-save-btn")?.addEventListener("click", async () => {
+    const cuId = document.getElementById("margin-target-select")?.value;
+    const pct = document.getElementById("margin-pct-input")?.value;
+    if (!cuId) { alert("Target を選択してください"); return; }
+    try {
+      await fetchJson(`${adsBase}/admin/margin`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ company_url_id: cuId, margin_pct: pct }),
+      });
+      await renderPage();
+    } catch (e) {
+      alert("保存に失敗しました: " + e.message);
+    }
+  });
+
+  // イベント: 編集
+  area.querySelectorAll(".margin-edit-btn").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const cuId = btn.dataset.cuId;
+      const current = btn.dataset.current || "20";
+      const newPct = prompt("マージン率（%）を入力してください", current);
+      if (newPct === null) return;
+      try {
+        await fetchJson(`${adsBase}/admin/margin`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ company_url_id: cuId, margin_pct: newPct.trim() }),
+        });
+        await renderPage();
+      } catch (e) {
+        alert("更新に失敗しました: " + e.message);
+      }
+    });
+  });
+
+  // イベント: 削除
+  area.querySelectorAll(".margin-delete-btn").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      if (!confirm("このマージン設定を削除しますか？")) return;
+      try {
+        await fetchJson(`${adsBase}/admin/margin/${btn.dataset.cuId}`, { method: "DELETE" });
         await renderPage();
       } catch (e) {
         alert("削除に失敗しました: " + e.message);
