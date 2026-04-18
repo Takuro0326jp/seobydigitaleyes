@@ -86,10 +86,18 @@ router.get("/sites", async (req, res) => {
   const user = await requireAuth(req, res);
   if (!user) return;
 
-  const [rows] = await pool.query(
-    "SELECT id, site_url, site_key, label, is_active, created_at FROM heatmap_sites WHERE company_id = ? ORDER BY created_at DESC",
-    [user.company_id]
-  );
+  let rows;
+  if (user.company_id) {
+    [rows] = await pool.query(
+      "SELECT id, site_url, site_key, label, is_active, created_at FROM heatmap_sites WHERE company_id = ? ORDER BY created_at DESC",
+      [user.company_id]
+    );
+  } else {
+    // master（company_id=NULL）は全サイト表示
+    [rows] = await pool.query(
+      "SELECT id, site_url, site_key, label, is_active, created_at FROM heatmap_sites ORDER BY created_at DESC"
+    );
+  }
   res.json({ sites: rows });
 });
 
@@ -99,6 +107,10 @@ router.post("/sites", async (req, res) => {
   if (!user) return;
   if (!isAdmin(user)) return res.status(403).json({ error: "管理者権限が必要です" });
 
+  // master (company_id=NULL) はリクエストで company_id を指定可能、デフォルトは1
+  const companyId = user.company_id || (req.body.company_id ? parseInt(req.body.company_id, 10) : 1);
+  if (!companyId) return res.status(400).json({ error: "company_id が必要です" });
+
   const siteUrl = (req.body.site_url || "").trim();
   if (!siteUrl) return res.status(400).json({ error: "site_url が必要です" });
 
@@ -106,7 +118,7 @@ router.post("/sites", async (req, res) => {
 
   const [result] = await pool.query(
     "INSERT INTO heatmap_sites (company_id, site_url, site_key, label) VALUES (?, ?, ?, ?)",
-    [user.company_id, siteUrl, siteKey, req.body.label || null]
+    [companyId, siteUrl, siteKey, req.body.label || null]
   );
   res.status(201).json({ id: result.insertId, site_key: siteKey });
 });
