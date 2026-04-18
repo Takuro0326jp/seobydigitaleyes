@@ -20,6 +20,7 @@ const adsRoutes = require("./routes/ads");
 /** Meta Marketing API（/api/meta/adaccounts, insights 等） */
 const metaRoutes = require("./routes/meta");
 const actionItemsRoutes = require("./routes/actionItems");
+const heatmapRoutes = require("./routes/heatmap");
 const { handleSitemapLast, handleSubmitSitemap } = require("./routes/sitemap");
 const handleStart = scanModule.handleStart;
 const handleResult = scanModule.handleResult;
@@ -269,6 +270,7 @@ app.use("/api/strategy", strategyRoutes);
 app.use("/api/ads", adsRoutes);
 app.use("/api/meta", metaRoutes); /* Meta 広告 API ルート */
 app.use("/api/action-items", actionItemsRoutes);
+app.use("/api/heatmap", heatmapRoutes);
 
 // GET /api/link-analysis?scan_id=X — user もアクセス可能（/api/scans/:id/link-analysis へリダイレクト）
 app.get("/api/link-analysis", (req, res) => {

@@ -250,6 +250,7 @@ class="block px-4 py-3 text-[11px] font-bold text-slate-600 hover:bg-slate-50 ho
       if (path.includes("security.html")) return "security";
       if (path.includes("strategy.html")) return "strategy";
       if (path.includes("ads.html")) return "ads";
+      if (path.includes("heatmap.html")) return "heatmap";
       return "";
     })();
 
@@ -318,6 +319,7 @@ class="block px-4 py-3 text-[11px] font-bold text-slate-600 hover:bg-slate-50 ho
                 ${mainTab("security", "Security",            "security.html")}
                 ${mainTab("strategy", "SEO Strategy",        "strategy.html")}
                 ${mainTab("ads",      "ADs",                 "ads.html")}
+                ${mainTab("heatmap", "Heatmap",             "heatmap.html")}
             </div>
         </div>
         ${seoSubNav}
@@ -467,6 +469,7 @@ class="block px-4 py-3 text-[11px] font-bold text-slate-600 hover:bg-slate-50 ho
       if (path.includes("security.html")) return "security";
       if (path.includes("strategy.html")) return "strategy";
       if (path.includes("ads.html")) return "ads";
+      if (path.includes("heatmap.html")) return "heatmap";
       if (path.includes("seo.html") || path.includes("settings.html")) return "home";
       return "";
     })();
@@ -516,6 +519,7 @@ class="block px-4 py-3 text-[11px] font-bold text-slate-600 hover:bg-slate-50 ho
       { label: "Domain Authority", href: "domain.html" + urlSuffix, id: "domain", scan: true },
       { label: "Security", href: "security.html" + urlSuffix, id: "security", scan: true },
       { label: "SEO Strategy", href: "strategy.html" + urlSuffix, id: "strategy", scan: true },
+      { label: "Heatmap", href: "heatmap.html", id: "heatmap", scan: false },
       { label: "設定", href: "settings.html", id: "settings", scan: false },
     ];
     const overlay = document.createElement("div");

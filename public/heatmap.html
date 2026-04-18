@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Heatmap Analysis | SEO Scan</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <link href="/css/tailwind.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap" rel="stylesheet">
+    <style>
+      body { font-family: 'Inter', sans-serif; }
+      .heatmap-wrapper { position: relative; overflow: hidden; background: #e2e8f0; border-radius: 12px; }
+      .heatmap-wrapper iframe { display: block; width: 100%; border: none; pointer-events: none; }
+      .heatmap-wrapper canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
+      .page-list { max-height: calc(100vh - 340px); overflow-y: auto; }
+      .page-item { cursor: pointer; transition: background 0.15s; }
+      .page-item:hover { background: #f1f5f9; }
+      .page-item.active { background: #eff6ff; border-left: 3px solid #3b82f6; }
+      .click-rank-row:nth-child(even) { background: #f8fafc; }
+      .empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 4rem 2rem; color: #94a3b8; }
+    </style>
+  <link rel="manifest" href="/manifest.json">
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+  <meta name="theme-color" content="#4f46e5">
+</head>
+<body class="text-slate-900 antialiased bg-slate-50/30 min-h-screen flex flex-col">
+
+    <div id="header-container"></div>
+
+    <main class="flex-grow max-w-[1600px] mx-auto w-full px-4 sm:px-6 lg:px-8 py-6 lg:py-8">
+        <!-- ヘッダー＆コントロール -->
+        <section class="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-6">
+            <div>
+                <div class="flex items-center gap-3 mb-1">
+                    <span class="px-3 py-1 bg-orange-100 text-orange-700 text-[10px] font-black rounded-md uppercase tracking-widest">Heatmap</span>
+                    <h1 class="text-2xl font-black tracking-tight text-slate-900">Click Heatmap</h1>
+                </div>
+                <p class="text-sm text-slate-500">サイト上のクリック位置をヒートマップで可視化します</p>
+            </div>
+            <div class="flex items-center gap-3 flex-wrap">
+                <select id="siteSelect" class="px-3 py-2 text-sm border border-slate-200 rounded-lg bg-white">
+                    <option value="">サイトを選択...</option>
+                </select>
+                <button id="btnAddSite" class="px-4 py-2 bg-blue-600 text-white text-xs font-bold rounded-lg hover:bg-blue-700 hidden">+ サイト追加</button>
+                <button id="btnShowSnippet" class="px-3 py-2 text-xs font-bold text-slate-500 border border-slate-200 rounded-lg hover:bg-slate-50 hidden">埋め込みコード</button>
+            </div>
+        </section>
+
+        <!-- フィルタ -->
+        <section id="filterBar" class="flex items-center gap-3 mb-4 hidden flex-wrap">
+            <label class="text-xs font-bold text-slate-500">期間:</label>
+            <input type="date" id="dateFrom" class="px-2 py-1 text-sm border border-slate-200 rounded-lg">
+            <span class="text-xs text-slate-400">~</span>
+            <input type="date" id="dateTo" class="px-2 py-1 text-sm border border-slate-200 rounded-lg">
+            <select id="deviceFilter" class="px-2 py-1 text-sm border border-slate-200 rounded-lg">
+                <option value="all">全デバイス</option>
+                <option value="desktop">Desktop</option>
+                <option value="mobile">Mobile</option>
+                <option value="tablet">Tablet</option>
+            </select>
+            <button id="btnApplyFilter" class="px-3 py-1 bg-slate-800 text-white text-xs font-bold rounded-lg hover:bg-slate-700">適用</button>
+        </section>
+
+        <!-- メイン 2カラム -->
+        <div class="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-6">
+            <!-- ページ一覧 -->
+            <div id="pageSidebar" class="bg-white rounded-xl border border-slate-200 p-4 hidden">
+                <h2 class="text-xs font-black uppercase tracking-widest text-slate-400 mb-3">Pages</h2>
+                <div id="pageList" class="page-list space-y-1"></div>
+            </div>
+
+            <!-- ヒートマップ表示エリア -->
+            <div class="space-y-6">
+                <div id="heatmapArea" class="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                    <div id="emptyState" class="empty-state">
+                        <svg class="w-16 h-16 mb-4 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122"/></svg>
+                        <p class="text-sm font-bold mb-1">ヒートマップデータがありません</p>
+                        <p class="text-xs">サイトを登録してトラッキングコードを埋め込んでください</p>
+                    </div>
+                    <div id="heatmapView" class="heatmap-wrapper hidden">
+                        <iframe id="previewFrame" sandbox="allow-same-origin" title="Page Preview"></iframe>
+                        <canvas id="heatmapCanvas"></canvas>
+                    </div>
+                </div>
+
+                <!-- クリック要素ランキング -->
+                <div id="clickRankSection" class="bg-white rounded-xl border border-slate-200 p-6 hidden">
+                    <h2 class="text-xs font-black uppercase tracking-widest text-slate-400 mb-4">Click Ranking</h2>
+                    <table class="w-full text-sm">
+                        <thead><tr class="text-left text-xs font-bold text-slate-400 border-b">
+                            <th class="pb-2 pr-4">#</th>
+                            <th class="pb-2 pr-4">要素</th>
+                            <th class="pb-2 pr-4">テキスト</th>
+                            <th class="pb-2 text-right">クリック数</th>
+                        </tr></thead>
+                        <tbody id="clickRankBody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- サイト追加モーダル -->
+    <div id="addSiteModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white w-full max-w-md rounded-2xl shadow-2xl p-8 relative">
+            <h3 class="text-lg font-black mb-4">サイトを追加</h3>
+            <label class="block text-xs font-bold text-slate-500 mb-1">サイトURL</label>
+            <input id="newSiteUrl" type="url" placeholder="https://example.com" class="w-full px-3 py-2 border border-slate-200 rounded-lg mb-3 text-sm">
+            <label class="block text-xs font-bold text-slate-500 mb-1">ラベル（任意）</label>
+            <input id="newSiteLabel" type="text" placeholder="メインサイト" class="w-full px-3 py-2 border border-slate-200 rounded-lg mb-4 text-sm">
+            <div class="flex items-center gap-3 justify-end">
+                <button id="btnCancelAdd" class="px-4 py-2 text-sm text-slate-500 hover:text-slate-700">キャンセル</button>
+                <button id="btnConfirmAdd" class="px-4 py-2 bg-blue-600 text-white text-sm font-bold rounded-lg hover:bg-blue-700">追加</button>
+            </div>
+            <button id="btnCloseAddModal" class="absolute top-4 right-4 text-slate-400 hover:text-slate-900">&#10005;</button>
+        </div>
+    </div>
+
+    <!-- 埋め込みコードモーダル -->
+    <div id="snippetModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white w-full max-w-lg rounded-2xl shadow-2xl p-8 relative">
+            <h3 class="text-lg font-black mb-2">埋め込みコード</h3>
+            <p class="text-xs text-slate-500 mb-4">以下のコードを対象サイトの &lt;/body&gt; 直前に追加してください</p>
+            <pre id="snippetCode" class="bg-slate-900 text-green-400 text-xs p-4 rounded-lg overflow-x-auto select-all whitespace-pre-wrap"></pre>
+            <button id="btnCopySnippet" class="mt-4 px-4 py-2 bg-slate-800 text-white text-xs font-bold rounded-lg hover:bg-slate-700">コピー</button>
+            <button id="btnCloseSnippet" class="absolute top-4 right-4 text-slate-400 hover:text-slate-900">&#10005;</button>
+        </div>
+    </div>
+
+    <script src="/js/header.js?v=12"></script>
+    <script src="/js/heatmap.js"></script>
+<script>if("serviceWorker"in navigator)navigator.serviceWorker.register("/sw.js").catch(()=>{});</script>
+</body>
+</html>
