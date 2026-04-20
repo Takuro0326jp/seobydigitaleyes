@@ -60,7 +60,7 @@
     return {
       site_key: SITE_KEY,
       session_token: sessionToken,
-      page_url: location.href,
+      page_url: location.origin + location.pathname,
       viewport_w: window.innerWidth || 0,
       viewport_h: window.innerHeight || 0,
       page_h: getPageHeight(),
