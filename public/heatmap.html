@@ -56,7 +56,6 @@
             </div>
             <div class="flex items-center gap-3 flex-wrap">
                 <span id="currentSiteLabel" class="px-3 py-2 text-sm font-bold text-slate-700"></span>
-                <button id="btnAddSite" class="px-4 py-2 bg-blue-600 text-white text-xs font-bold rounded-lg hover:bg-blue-700 hidden">+ サイト追加</button>
                 <button id="btnShowSnippet" class="px-3 py-2 text-xs font-bold text-slate-500 border border-slate-200 rounded-lg hover:bg-slate-50 hidden">埋め込みコード</button>
             </div>
         </section>
@@ -118,22 +117,6 @@
             </div>
         </div>
     </main>
-
-    <!-- サイト追加モーダル -->
-    <div id="addSiteModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
-        <div class="bg-white w-full max-w-md rounded-2xl shadow-2xl p-8 relative">
-            <h3 class="text-lg font-black mb-4">サイトを追加</h3>
-            <label class="block text-xs font-bold text-slate-500 mb-1">サイトURL</label>
-            <input id="newSiteUrl" type="url" placeholder="https://example.com" class="w-full px-3 py-2 border border-slate-200 rounded-lg mb-3 text-sm">
-            <label class="block text-xs font-bold text-slate-500 mb-1">ラベル（任意）</label>
-            <input id="newSiteLabel" type="text" placeholder="メインサイト" class="w-full px-3 py-2 border border-slate-200 rounded-lg mb-4 text-sm">
-            <div class="flex items-center gap-3 justify-end">
-                <button id="btnCancelAdd" class="px-4 py-2 text-sm text-slate-500 hover:text-slate-700">キャンセル</button>
-                <button id="btnConfirmAdd" class="px-4 py-2 bg-blue-600 text-white text-sm font-bold rounded-lg hover:bg-blue-700">追加</button>
-            </div>
-            <button id="btnCloseAddModal" class="absolute top-4 right-4 text-slate-400 hover:text-slate-900">&#10005;</button>
-        </div>
-    </div>
 
     <!-- 埋め込みコードモーダル -->
     <div id="snippetModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">

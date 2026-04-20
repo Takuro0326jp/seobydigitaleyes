@@ -2,8 +2,6 @@
   "use strict";
 
   /* ── DOM refs ── */
-  var siteSelect = document.getElementById("siteSelect");
-  var btnAddSite = document.getElementById("btnAddSite");
   var btnShowSnippet = document.getElementById("btnShowSnippet");
   var filterBar = document.getElementById("filterBar");
   var pageSidebar = document.getElementById("pageSidebar");
@@ -16,7 +14,6 @@
   var clickRankSection = document.getElementById("clickRankSection");
   var clickRankBody = document.getElementById("clickRankBody");
 
-  var addSiteModal = document.getElementById("addSiteModal");
   var snippetModal = document.getElementById("snippetModal");
   var snippetCode = document.getElementById("snippetCode");
 
@@ -41,7 +38,6 @@
     try {
       var data = await api("/api/heatmap/sites");
       sites = data.sites || [];
-      btnAddSite.classList.remove("hidden");
 
       if (sites.length > 0) {
         // 自動的に最初のサイトを選択（ドメインはヘッダーに表示済み）
@@ -225,31 +221,6 @@
       clickRankBody.appendChild(tr);
     });
   }
-
-  /* ── サイト追加 ── */
-  btnAddSite.addEventListener("click", function () { addSiteModal.classList.remove("hidden"); });
-  document.getElementById("btnCancelAdd").addEventListener("click", closeAddModal);
-  document.getElementById("btnCloseAddModal").addEventListener("click", closeAddModal);
-  function closeAddModal() { addSiteModal.classList.add("hidden"); }
-
-  document.getElementById("btnConfirmAdd").addEventListener("click", async function () {
-    var url = document.getElementById("newSiteUrl").value.trim();
-    var label = document.getElementById("newSiteLabel").value.trim();
-    if (!url) return;
-    try {
-      await api("/api/heatmap/sites", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ site_url: url, label: label || null })
-      });
-      closeAddModal();
-      document.getElementById("newSiteUrl").value = "";
-      document.getElementById("newSiteLabel").value = "";
-      await loadSites();
-    } catch (e) {
-      alert("追加に失敗しました: " + e.message);
-    }
-  });
 
   /* ── 埋め込みコード表示 ── */
   btnShowSnippet.addEventListener("click", function () {

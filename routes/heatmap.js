@@ -82,19 +82,44 @@ async function assertSiteAccess(siteId, user) {
 
 /* ─────────────── サイト管理 CRUD（セッション認証） ─────────────── */
 
-// GET /api/heatmap/sites — 自社サイト一覧
+// GET /api/heatmap/sites — 自社サイト一覧（company_urls から自動同期）
 router.get("/sites", async (req, res) => {
   const user = await requireAuth(req, res);
   if (!user) return;
 
+  const companyId = user.company_id;
+
+  // company_urls から heatmap_sites へ自動同期
+  if (companyId) {
+    const [companyUrls] = await pool.query(
+      "SELECT url FROM company_urls WHERE company_id = ?",
+      [companyId]
+    );
+    const [existingSites] = await pool.query(
+      "SELECT site_url FROM heatmap_sites WHERE company_id = ?",
+      [companyId]
+    );
+    const existingSet = new Set(existingSites.map(s => s.site_url.replace(/\/+$/, "")));
+
+    for (const cu of companyUrls) {
+      const normalized = cu.url.replace(/\/+$/, "");
+      if (!existingSet.has(normalized)) {
+        const siteKey = crypto.randomBytes(32).toString("hex");
+        await pool.query(
+          "INSERT INTO heatmap_sites (company_id, site_url, site_key, label) VALUES (?, ?, ?, ?)",
+          [companyId, normalized, siteKey, null]
+        );
+      }
+    }
+  }
+
   let rows;
-  if (user.company_id) {
+  if (companyId) {
     [rows] = await pool.query(
       "SELECT id, site_url, site_key, label, is_active, created_at FROM heatmap_sites WHERE company_id = ? ORDER BY created_at DESC",
-      [user.company_id]
+      [companyId]
     );
   } else {
-    // master（company_id=NULL）は全サイト表示
     [rows] = await pool.query(
       "SELECT id, site_url, site_key, label, is_active, created_at FROM heatmap_sites ORDER BY created_at DESC"
     );
