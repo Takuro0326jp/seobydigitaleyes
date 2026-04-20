@@ -34,6 +34,12 @@ const port = process.env.PORT ? Number(process.env.PORT) : 3000;
 app.set("trust proxy", 1);
 
 app.use(helmet({ contentSecurityPolicy: false })); // CSP はフロントの都合で無効
+
+// トラッカーJS は外部サイトから読み込まれるため CORP を cross-origin に緩和
+app.use("/js/seoscan-tracker.js", (req, res, next) => {
+  res.set("Cross-Origin-Resource-Policy", "cross-origin");
+  next();
+});
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
