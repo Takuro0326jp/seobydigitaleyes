@@ -41,37 +41,29 @@
     try {
       var data = await api("/api/heatmap/sites");
       sites = data.sites || [];
-      renderSiteSelect();
-      // admin向けボタン表示（サーバー側で権限チェックするのでここでは常に表示）
       btnAddSite.classList.remove("hidden");
+
+      if (sites.length > 0) {
+        // 自動的に最初のサイトを選択（ドメインはヘッダーに表示済み）
+        selectSite(sites[0]);
+      }
     } catch (e) {
       console.error("Failed to load sites:", e);
     }
   }
 
-  function renderSiteSelect() {
-    siteSelect.innerHTML = '<option value="">サイトを選択...</option>';
-    sites.forEach(function (s) {
-      var opt = document.createElement("option");
-      opt.value = s.id;
-      opt.textContent = s.label || s.site_url;
-      siteSelect.appendChild(opt);
-    });
-  }
-
-  siteSelect.addEventListener("change", function () {
-    var id = parseInt(siteSelect.value, 10);
-    if (!id) {
-      currentSiteId = null;
-      hidePanels();
-      return;
+  function selectSite(site) {
+    currentSiteId = site.id;
+    // サイト名をラベルとして表示
+    var siteLabel = document.getElementById("currentSiteLabel");
+    if (siteLabel) {
+      siteLabel.textContent = site.label || new URL(site.site_url).hostname;
     }
-    currentSiteId = id;
     btnShowSnippet.classList.remove("hidden");
     filterBar.classList.remove("hidden");
     pageSidebar.classList.remove("hidden");
-    loadPages(id);
-  });
+    loadPages(site.id);
+  }
 
   /* ── ページ一覧 ── */
   async function loadPages(siteId) {
