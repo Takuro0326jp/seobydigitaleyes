@@ -10,8 +10,9 @@
   var pageList = document.getElementById("pageList");
   var emptyState = document.getElementById("emptyState");
   var heatmapView = document.getElementById("heatmapView");
-  var previewFrame = document.getElementById("previewFrame");
+  var previewImage = document.getElementById("previewImage");
   var heatmapCanvas = document.getElementById("heatmapCanvas");
+  var screenshotLoading = document.getElementById("screenshotLoading");
   var clickRankSection = document.getElementById("clickRankSection");
   var clickRankBody = document.getElementById("clickRankBody");
 
@@ -119,8 +120,8 @@
     if (dt) params.set("date_to", dt);
     if (dv !== "all") params.set("device_type", dv);
 
-    // iframe にページロード（proxy経由・デスクトップUA）
-    previewFrame.src = "/api/proxy?ua=desktop&url=" + encodeURIComponent(pageUrl);
+    // スクリーンショット + ヒートマップデータを並列取得
+    screenshotLoading.style.display = "";
 
     try {
       var [heatData, clickData] = await Promise.all([
@@ -128,29 +129,21 @@
         api("/api/heatmap/sites/" + siteId + "/clicks?" + params.toString())
       ]);
 
-      // iframe ロード後にcanvas描画
-      previewFrame.onload = function () {
-        // iframe 内の高さを取得（クロスオリジンでも同一オリジンproxyなのでアクセス可能）
-        var h;
-        try {
-          h = previewFrame.contentDocument.documentElement.scrollHeight;
-        } catch (e) {
-          h = 3000;
-        }
-        // meta の avg_page_h があればそちらを優先（実際のユーザー環境に近い）
-        var meta = heatData.meta || {};
-        if (meta.avg_page_h && meta.avg_page_h > 100) {
-          // iframe幅とユーザー平均ビューポート幅の比率でスケール
-          var wrapperW = heatmapView.offsetWidth;
-          var avgW = meta.avg_w || 1920;
-          h = Math.round(meta.avg_page_h * (wrapperW / avgW));
-        }
-        previewFrame.style.height = h + "px";
-        renderHeatmap(heatData.points || [], meta);
+      // スクリーンショット画像をロード
+      var imgUrl = "/api/heatmap/screenshot?url=" + encodeURIComponent(pageUrl);
+      previewImage.onload = function () {
+        screenshotLoading.style.display = "none";
+        renderHeatmap(heatData.points || [], heatData.meta || {});
       };
+      previewImage.onerror = function () {
+        screenshotLoading.style.display = "none";
+        console.error("Screenshot load failed");
+      };
+      previewImage.src = imgUrl;
 
       renderClickRank(clickData.clicks || []);
     } catch (e) {
+      screenshotLoading.style.display = "none";
       console.error("Failed to load heatmap data:", e);
     }
   }

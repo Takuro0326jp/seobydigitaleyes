@@ -10,7 +10,7 @@
     <style>
       body { font-family: 'Inter', sans-serif; }
       .heatmap-wrapper { position: relative; overflow: hidden; background: #e2e8f0; border-radius: 12px; }
-      .heatmap-wrapper iframe { display: block; width: 100%; border: none; pointer-events: none; }
+      .heatmap-wrapper img { display: block; width: 100%; height: auto; pointer-events: none; }
       .heatmap-wrapper canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
       .page-list { max-height: calc(100vh - 340px); overflow-y: auto; }
       .page-item { cursor: pointer; transition: background 0.15s; }
@@ -95,8 +95,12 @@
                         <p class="text-xs">サイトを登録してトラッキングコードを埋め込んでください</p>
                     </div>
                     <div id="heatmapView" class="heatmap-wrapper hidden">
-                        <iframe id="previewFrame" sandbox="allow-same-origin allow-scripts" title="Page Preview"></iframe>
+                        <img id="previewImage" alt="Page Preview" style="display:block;width:100%;height:auto;">
                         <canvas id="heatmapCanvas"></canvas>
+                        <div id="screenshotLoading" class="empty-state" style="position:absolute;inset:0;background:rgba(255,255,255,0.9);">
+                            <div style="width:40px;height:40px;border:4px solid #e2e8f0;border-top-color:#3b82f6;border-radius:50%;animation:spin 1s linear infinite"></div>
+                            <p class="text-xs mt-4">スクリーンショットを取得中...</p>
+                        </div>
                     </div>
                 </div>
 

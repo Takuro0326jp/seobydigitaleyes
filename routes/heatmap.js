@@ -9,6 +9,7 @@ const crypto = require("crypto");
 const pool = require("../db");
 const { getUserWithContext, isAdmin } = require("../services/accessControl");
 const { findSiteByKey, resolveSession, insertEvents } = require("../services/heatmapCollect");
+const { captureScreenshot } = require("../services/screenshot");
 
 const router = express.Router();
 
@@ -257,6 +258,26 @@ router.get("/sites/:id/clicks", async (req, res) => {
     [site.id, pageUrl]
   );
   res.json({ clicks: rows });
+});
+
+// GET /api/heatmap/screenshot?url= — ページスクリーンショット取得
+router.get("/screenshot", async (req, res) => {
+  const user = await requireAuth(req, res);
+  if (!user) return;
+
+  const url = (req.query.url || "").trim();
+  if (!url) return res.status(400).json({ error: "url が必要です" });
+
+  try {
+    const result = await captureScreenshot(url);
+    res.set("Cache-Control", "public, max-age=3600");
+    res.set("X-Page-Height", String(result.pageHeight));
+    res.set("X-Page-Width", String(result.pageWidth));
+    res.sendFile(result.imagePath);
+  } catch (e) {
+    console.error("[screenshot] error:", e.message);
+    res.status(500).json({ error: "スクリーンショット取得に失敗しました" });
+  }
 });
 
 module.exports = router;
