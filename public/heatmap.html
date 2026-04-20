@@ -18,6 +18,23 @@
       .page-item.active { background: #eff6ff; border-left: 3px solid #3b82f6; }
       .click-rank-row:nth-child(even) { background: #f8fafc; }
       .empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 4rem 2rem; color: #94a3b8; }
+
+      /* Tailwindビルドに含まれないクラスを補完 */
+      .bg-slate-50\/30 { background-color: rgb(248 250 252 / 0.3); }
+      .bg-orange-100 { background-color: #ffedd5; }
+      .text-orange-700 { color: #c2410c; }
+      .bg-slate-800 { --tw-bg-opacity:1; background-color: rgb(30 41 59 / var(--tw-bg-opacity)); }
+      .hover\:bg-slate-700:hover { background-color: #334155; }
+      .space-y-1 > :not([hidden]) ~ :not([hidden]) { margin-top: 0.25rem; }
+      .select-all { user-select: all; -webkit-user-select: all; }
+      .whitespace-pre-wrap { white-space: pre-wrap; }
+      .max-w-\[300px\] { max-width: 300px; }
+      @media (min-width: 1024px) {
+        .lg\:grid-cols-\[280px_1fr\] { grid-template-columns: 280px 1fr; }
+        .lg\:py-8 { padding-top: 2rem; padding-bottom: 2rem; }
+      }
+      .backdrop-blur-sm { backdrop-filter: blur(4px); }
+      .bg-slate-900\/60 { background-color: rgb(15 23 42 / 0.6); }
     </style>
   <link rel="manifest" href="/manifest.json">
   <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
