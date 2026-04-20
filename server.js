@@ -149,8 +149,12 @@ app.get("/api/proxy", async (req, res) => {
     if (isPrivateOrInternalAddress(hostname, resolvedIp)) {
       return res.status(403).send('<html><body style="font-family:sans-serif;padding:2rem;color:#dc2626"><p>内部アドレスへのアクセスは許可されていません。</p></body></html>');
     }
+    const uaParam = req.query.ua;
+    const userAgent = uaParam === "desktop"
+      ? "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
+      : "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15";
     const resp = await fetch(targetUrl, {
-      headers: { "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15" },
+      headers: { "User-Agent": userAgent },
       redirect: "follow",
     });
     let html = await resp.text();
@@ -172,7 +176,8 @@ app.get("/api/proxy", async (req, res) => {
       /(<img[^>]+src=)(["'])(?!https?:|\/\/|data:)([^"']+)\2/gi,
       (_, p1, q, path) => p1 + q + new URL(path, baseHref).href + q
     );
-    const injectTags = `<base href="${safeHref}"><meta name="viewport" content="width=320, initial-scale=1">`;
+    const viewportWidth = uaParam === "desktop" ? "width=device-width, initial-scale=1" : "width=320, initial-scale=1";
+    const injectTags = `<base href="${safeHref}"><meta name="viewport" content="${viewportWidth}">`;
     if (/<head(\s[^>]*)?>/i.test(html)) {
       html = html.replace(/<head(\s[^>]*)?>/i, `<head$1>${injectTags}`);
     } else {

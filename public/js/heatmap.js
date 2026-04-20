@@ -119,8 +119,8 @@
     if (dt) params.set("date_to", dt);
     if (dv !== "all") params.set("device_type", dv);
 
-    // iframe にページロード（proxy経由）
-    previewFrame.src = "/api/proxy?url=" + encodeURIComponent(pageUrl);
+    // iframe にページロード（proxy経由・デスクトップUA）
+    previewFrame.src = "/api/proxy?ua=desktop&url=" + encodeURIComponent(pageUrl);
 
     try {
       var [heatData, clickData] = await Promise.all([
@@ -130,13 +130,23 @@
 
       // iframe ロード後にcanvas描画
       previewFrame.onload = function () {
+        // iframe 内の高さを取得（クロスオリジンでも同一オリジンproxyなのでアクセス可能）
+        var h;
         try {
-          var h = previewFrame.contentDocument.documentElement.scrollHeight;
-          previewFrame.style.height = h + "px";
+          h = previewFrame.contentDocument.documentElement.scrollHeight;
         } catch (e) {
-          previewFrame.style.height = "2000px";
+          h = 3000;
         }
-        renderHeatmap(heatData.points || [], heatData.meta || {});
+        // meta の avg_page_h があればそちらを優先（実際のユーザー環境に近い）
+        var meta = heatData.meta || {};
+        if (meta.avg_page_h && meta.avg_page_h > 100) {
+          // iframe幅とユーザー平均ビューポート幅の比率でスケール
+          var wrapperW = heatmapView.offsetWidth;
+          var avgW = meta.avg_w || 1920;
+          h = Math.round(meta.avg_page_h * (wrapperW / avgW));
+        }
+        previewFrame.style.height = h + "px";
+        renderHeatmap(heatData.points || [], meta);
       };
 
       renderClickRank(clickData.clicks || []);
