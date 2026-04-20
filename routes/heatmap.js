@@ -113,15 +113,35 @@ router.get("/sites", async (req, res) => {
     }
   }
 
+  // データがあるサイトを優先して返す（event_count DESC）
   let rows;
   if (companyId) {
     [rows] = await pool.query(
-      "SELECT id, site_url, site_key, label, is_active, created_at FROM heatmap_sites WHERE company_id = ? ORDER BY created_at DESC",
+      `SELECT hs.id, hs.site_url, hs.site_key, hs.label, hs.is_active, hs.created_at,
+              IFNULL(cnt.event_count, 0) AS event_count
+       FROM heatmap_sites hs
+       LEFT JOIN (
+         SELECT s.site_id, COUNT(e.id) AS event_count
+         FROM heatmap_sessions s
+         JOIN heatmap_events e ON e.session_id = s.id
+         GROUP BY s.site_id
+       ) cnt ON cnt.site_id = hs.id
+       WHERE hs.company_id = ?
+       ORDER BY event_count DESC, hs.created_at DESC`,
       [companyId]
     );
   } else {
     [rows] = await pool.query(
-      "SELECT id, site_url, site_key, label, is_active, created_at FROM heatmap_sites ORDER BY created_at DESC"
+      `SELECT hs.id, hs.site_url, hs.site_key, hs.label, hs.is_active, hs.created_at,
+              IFNULL(cnt.event_count, 0) AS event_count
+       FROM heatmap_sites hs
+       LEFT JOIN (
+         SELECT s.site_id, COUNT(e.id) AS event_count
+         FROM heatmap_sessions s
+         JOIN heatmap_events e ON e.session_id = s.id
+         GROUP BY s.site_id
+       ) cnt ON cnt.site_id = hs.id
+       ORDER BY event_count DESC, hs.created_at DESC`
     );
   }
   res.json({ sites: rows });
