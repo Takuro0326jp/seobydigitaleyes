@@ -8,7 +8,9 @@
   "use strict";
 
   /* ── 設定読み取り ── */
-  var scriptEl = document.currentScript;
+  // document.currentScript は GTM 等の動的挿入では null になるため fallback
+  var scriptEl = document.currentScript ||
+    document.querySelector('script[data-site-key][src*="seoscan-tracker"]');
   if (!scriptEl) return;
   var SITE_KEY = scriptEl.getAttribute("data-site-key");
   if (!SITE_KEY) return;
