@@ -76,6 +76,22 @@ async function captureScreenshot(url, width = 1280) {
 
     await page.goto(url, { waitUntil: "networkidle2", timeout: 30000 });
 
+    // lazy-load / スクロールアニメーション対応: ページ全体をスクロールして描画を発火
+    await page.evaluate(async () => {
+      const distance = 400;
+      const delay = 200;
+      const pageH = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
+      for (let pos = 0; pos < pageH; pos += distance) {
+        window.scrollTo(0, pos);
+        await new Promise(r => setTimeout(r, delay));
+      }
+      // 最後まで到達後、トップに戻して少し待つ
+      window.scrollTo(0, pageH);
+      await new Promise(r => setTimeout(r, 500));
+      window.scrollTo(0, 0);
+      await new Promise(r => setTimeout(r, 300));
+    });
+
     // ページの実際のサイズを取得
     const dimensions = await page.evaluate(() => ({
       pageHeight: Math.max(
