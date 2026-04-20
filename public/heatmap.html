@@ -9,32 +9,59 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap" rel="stylesheet">
     <style>
       body { font-family: 'Inter', sans-serif; }
-      .heatmap-wrapper { position: relative; overflow: hidden; background: #e2e8f0; border-radius: 12px; }
-      .heatmap-wrapper img { display: block; width: 100%; height: auto; pointer-events: none; }
-      .heatmap-wrapper canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
-      .page-list { max-height: calc(100vh - 340px); overflow-y: auto; }
-      .page-item { cursor: pointer; transition: background 0.15s; }
-      .page-item:hover { background: #f1f5f9; }
-      .page-item.active { background: #eff6ff; border-left: 3px solid #3b82f6; }
-      .click-rank-row:nth-child(even) { background: #f8fafc; }
-      .empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 4rem 2rem; color: #94a3b8; }
 
-      /* Tailwindビルドに含まれないクラスを補完 */
+      /* レイアウト */
+      .hm-layout { display: grid; grid-template-columns: 320px 1fr; gap: 1.5rem; }
+      @media (max-width: 1023px) { .hm-layout { grid-template-columns: 1fr; } }
+
+      /* ページカード */
+      .page-card { cursor: pointer; transition: all 0.15s; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 14px; }
+      .page-card:hover { background: #f8fafc; border-color: #cbd5e1; }
+      .page-card.active { background: #eff6ff; border-color: #3b82f6; box-shadow: 0 0 0 2px rgba(59,130,246,0.15); }
+      .page-card .path { font-size: 13px; font-weight: 600; color: #1e293b; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .page-card .meta { font-size: 11px; color: #94a3b8; margin-top: 4px; display: flex; gap: 12px; }
+      .page-card .clicks-badge { display: inline-flex; align-items: center; gap: 3px; font-size: 11px; font-weight: 700; color: #3b82f6; background: #eff6ff; padding: 2px 8px; border-radius: 99px; }
+      .page-list { max-height: calc(100vh - 260px); overflow-y: auto; display: flex; flex-direction: column; gap: 6px; padding-right: 4px; }
+      .page-list::-webkit-scrollbar { width: 4px; }
+      .page-list::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+
+      /* ヒートマップ */
+      .heatmap-wrapper { position: relative; overflow: hidden; background: #f1f5f9; border-radius: 12px; min-height: 400px; }
+      .heatmap-wrapper img { display: block; width: 100%; height: auto; }
+      .heatmap-wrapper canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
+
+      /* ローディング */
+      .hm-loading { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(255,255,255,0.92); }
+      .hm-spinner { width: 36px; height: 36px; border: 3px solid #e2e8f0; border-top-color: #3b82f6; border-radius: 50%; animation: spin 0.8s linear infinite; }
+      @keyframes spin { to { transform: rotate(360deg); } }
+
+      /* プレースホルダー */
+      .hm-placeholder { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 400px; color: #94a3b8; }
+
+      /* クリックランキング */
+      .rank-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+      .rank-table th { text-align: left; font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; padding: 8px 12px; border-bottom: 1px solid #e2e8f0; }
+      .rank-table td { padding: 8px 12px; border-bottom: 1px solid #f1f5f9; }
+      .rank-table tr:hover { background: #f8fafc; }
+      .rank-tag { display: inline-block; font-family: monospace; font-size: 11px; background: #f1f5f9; color: #475569; padding: 2px 6px; border-radius: 4px; }
+
+      /* フィルタバー */
+      .filter-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 8px 12px; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0; }
+      .filter-bar input, .filter-bar select { font-size: 12px; padding: 4px 8px; border: 1px solid #e2e8f0; border-radius: 6px; background: white; }
+      .filter-bar .btn { font-size: 11px; font-weight: 700; padding: 5px 12px; background: #1e293b; color: white; border: none; border-radius: 6px; cursor: pointer; }
+      .filter-bar .btn:hover { background: #334155; }
+
+      /* 補完クラス */
       .bg-slate-50\/30 { background-color: rgb(248 250 252 / 0.3); }
       .bg-orange-100 { background-color: #ffedd5; }
       .text-orange-700 { color: #c2410c; }
-      .bg-slate-800 { --tw-bg-opacity:1; background-color: rgb(30 41 59 / var(--tw-bg-opacity)); }
-      .hover\:bg-slate-700:hover { background-color: #334155; }
-      .space-y-1 > :not([hidden]) ~ :not([hidden]) { margin-top: 0.25rem; }
-      .select-all { user-select: all; -webkit-user-select: all; }
-      .whitespace-pre-wrap { white-space: pre-wrap; }
-      .max-w-\[300px\] { max-width: 300px; }
       @media (min-width: 1024px) {
-        .lg\:grid-cols-\[280px_1fr\] { grid-template-columns: 280px 1fr; }
         .lg\:py-8 { padding-top: 2rem; padding-bottom: 2rem; }
       }
-      .backdrop-blur-sm { backdrop-filter: blur(4px); }
       .bg-slate-900\/60 { background-color: rgb(15 23 42 / 0.6); }
+      .backdrop-blur-sm { backdrop-filter: blur(4px); }
+      .select-all { user-select: all; -webkit-user-select: all; }
+      .whitespace-pre-wrap { white-space: pre-wrap; }
     </style>
   <link rel="manifest" href="/manifest.json">
   <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
@@ -45,71 +72,74 @@
     <div id="header-container"></div>
 
     <main class="flex-grow max-w-[1600px] mx-auto w-full px-4 sm:px-6 lg:px-8 py-6 lg:py-8">
-        <!-- ヘッダー＆コントロール -->
+        <!-- ヘッダー -->
         <section class="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-6">
             <div>
                 <div class="flex items-center gap-3 mb-1">
                     <span class="px-3 py-1 bg-orange-100 text-orange-700 text-[10px] font-black rounded-md uppercase tracking-widest">Heatmap</span>
                     <h1 class="text-2xl font-black tracking-tight text-slate-900">Click Heatmap</h1>
                 </div>
-                <p class="text-sm text-slate-500">サイト上のクリック位置をヒートマップで可視化します</p>
+                <p id="currentSiteLabel" class="text-sm text-slate-500">サイト上のクリック位置をヒートマップで可視化します</p>
             </div>
-            <div class="flex items-center gap-3 flex-wrap">
-                <span id="currentSiteLabel" class="px-3 py-2 text-sm font-bold text-slate-700"></span>
+            <div class="flex items-center gap-3">
                 <button id="btnShowSnippet" class="px-3 py-2 text-xs font-bold text-slate-500 border border-slate-200 rounded-lg hover:bg-slate-50 hidden">埋め込みコード</button>
             </div>
         </section>
 
-        <!-- フィルタ -->
-        <section id="filterBar" class="flex items-center gap-3 mb-4 hidden flex-wrap">
-            <label class="text-xs font-bold text-slate-500">期間:</label>
-            <input type="date" id="dateFrom" class="px-2 py-1 text-sm border border-slate-200 rounded-lg">
-            <span class="text-xs text-slate-400">~</span>
-            <input type="date" id="dateTo" class="px-2 py-1 text-sm border border-slate-200 rounded-lg">
-            <select id="deviceFilter" class="px-2 py-1 text-sm border border-slate-200 rounded-lg">
-                <option value="all">全デバイス</option>
-                <option value="desktop">Desktop</option>
-                <option value="mobile">Mobile</option>
-                <option value="tablet">Tablet</option>
-            </select>
-            <button id="btnApplyFilter" class="px-3 py-1 bg-slate-800 text-white text-xs font-bold rounded-lg hover:bg-slate-700">適用</button>
-        </section>
-
         <!-- メイン 2カラム -->
-        <div class="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-6">
-            <!-- ページ一覧 -->
-            <div id="pageSidebar" class="bg-white rounded-xl border border-slate-200 p-4 hidden">
-                <h2 class="text-xs font-black uppercase tracking-widest text-slate-400 mb-3">Pages</h2>
-                <div id="pageList" class="page-list space-y-1"></div>
+        <div class="hm-layout">
+            <!-- 左: ページ一覧 -->
+            <div>
+                <div class="flex items-center justify-between mb-3">
+                    <h2 class="text-xs font-black uppercase tracking-widest text-slate-400">Pages</h2>
+                    <span id="pageCount" class="text-[11px] text-slate-400"></span>
+                </div>
+                <!-- フィルタ -->
+                <div class="filter-bar mb-3" id="filterBar">
+                    <input type="date" id="dateFrom" title="開始日">
+                    <span style="color:#94a3b8;font-size:11px">~</span>
+                    <input type="date" id="dateTo" title="終了日">
+                    <select id="deviceFilter">
+                        <option value="all">全デバイス</option>
+                        <option value="desktop">Desktop</option>
+                        <option value="mobile">Mobile</option>
+                        <option value="tablet">Tablet</option>
+                    </select>
+                    <button class="btn" id="btnApplyFilter">適用</button>
+                </div>
+                <div id="pageList" class="page-list">
+                    <div class="hm-placeholder" style="min-height:200px">
+                        <p style="font-size:12px">読み込み中...</p>
+                    </div>
+                </div>
             </div>
 
-            <!-- ヒートマップ表示エリア -->
-            <div class="space-y-6">
-                <div id="heatmapArea" class="bg-white rounded-xl border border-slate-200 overflow-hidden">
-                    <div id="emptyState" class="empty-state">
-                        <svg class="w-16 h-16 mb-4 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122"/></svg>
-                        <p class="text-sm font-bold mb-1">ヒートマップデータがありません</p>
-                        <p class="text-xs">サイトを登録してトラッキングコードを埋め込んでください</p>
+            <!-- 右: ヒートマップ + ランキング -->
+            <div>
+                <!-- ヒートマップ表示 -->
+                <div id="heatmapArea" class="heatmap-wrapper">
+                    <div id="heatmapPlaceholder" class="hm-placeholder">
+                        <svg style="width:48px;height:48px;margin-bottom:12px;color:#cbd5e1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5"/></svg>
+                        <p style="font-size:13px;font-weight:600;color:#64748b">ページを選択してください</p>
+                        <p style="font-size:12px;color:#94a3b8;margin-top:4px">左のリストからページをクリックするとヒートマップが表示されます</p>
                     </div>
-                    <div id="heatmapView" class="heatmap-wrapper hidden">
-                        <img id="previewImage" alt="Page Preview" style="display:block;width:100%;height:auto;">
-                        <canvas id="heatmapCanvas"></canvas>
-                        <div id="screenshotLoading" class="empty-state" style="position:absolute;inset:0;background:rgba(255,255,255,0.9);">
-                            <div style="width:40px;height:40px;border:4px solid #e2e8f0;border-top-color:#3b82f6;border-radius:50%;animation:spin 1s linear infinite"></div>
-                            <p class="text-xs mt-4">スクリーンショットを取得中...</p>
-                        </div>
+                    <img id="previewImage" alt="Page Preview" style="display:none;width:100%;height:auto;">
+                    <canvas id="heatmapCanvas" style="display:none"></canvas>
+                    <div id="screenshotLoading" class="hm-loading" style="display:none">
+                        <div class="hm-spinner"></div>
+                        <p style="font-size:12px;color:#64748b;margin-top:12px">スクリーンショットを取得中...</p>
                     </div>
                 </div>
 
                 <!-- クリック要素ランキング -->
-                <div id="clickRankSection" class="bg-white rounded-xl border border-slate-200 p-6 hidden">
-                    <h2 class="text-xs font-black uppercase tracking-widest text-slate-400 mb-4">Click Ranking</h2>
-                    <table class="w-full text-sm">
-                        <thead><tr class="text-left text-xs font-bold text-slate-400 border-b">
-                            <th class="pb-2 pr-4">#</th>
-                            <th class="pb-2 pr-4">要素</th>
-                            <th class="pb-2 pr-4">テキスト</th>
-                            <th class="pb-2 text-right">クリック数</th>
+                <div id="clickRankSection" class="bg-white rounded-xl border border-slate-200 p-5 mt-4" style="display:none">
+                    <h2 class="text-xs font-black uppercase tracking-widest text-slate-400 mb-3">Click Ranking</h2>
+                    <table class="rank-table">
+                        <thead><tr>
+                            <th style="width:40px">#</th>
+                            <th>要素</th>
+                            <th>テキスト</th>
+                            <th style="text-align:right">クリック数</th>
                         </tr></thead>
                         <tbody id="clickRankBody"></tbody>
                     </table>
@@ -130,7 +160,7 @@
     </div>
 
     <script src="/js/header.js?v=12"></script>
-    <script src="/js/heatmap.js"></script>
+    <script src="/js/heatmap.js?v=2"></script>
 <script>if("serviceWorker"in navigator)navigator.serviceWorker.register("/sw.js").catch(()=>{});</script>
 </body>
 </html>

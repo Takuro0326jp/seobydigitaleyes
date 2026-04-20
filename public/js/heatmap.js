@@ -3,17 +3,14 @@
 
   /* ── DOM refs ── */
   var btnShowSnippet = document.getElementById("btnShowSnippet");
-  var filterBar = document.getElementById("filterBar");
-  var pageSidebar = document.getElementById("pageSidebar");
   var pageList = document.getElementById("pageList");
-  var emptyState = document.getElementById("emptyState");
-  var heatmapView = document.getElementById("heatmapView");
+  var pageCount = document.getElementById("pageCount");
+  var heatmapPlaceholder = document.getElementById("heatmapPlaceholder");
   var previewImage = document.getElementById("previewImage");
   var heatmapCanvas = document.getElementById("heatmapCanvas");
   var screenshotLoading = document.getElementById("screenshotLoading");
   var clickRankSection = document.getElementById("clickRankSection");
   var clickRankBody = document.getElementById("clickRankBody");
-
   var snippetModal = document.getElementById("snippetModal");
   var snippetCode = document.getElementById("snippetCode");
 
@@ -22,7 +19,7 @@
   var currentSiteId = null;
   var currentPageUrl = null;
 
-  /* ── API helpers ── */
+  /* ── API ── */
   function api(path, opts) {
     return fetch(path, Object.assign({ credentials: "same-origin" }, opts)).then(function (r) {
       if (r.status === 204) return {};
@@ -38,50 +35,64 @@
     try {
       var data = await api("/api/heatmap/sites");
       sites = data.sites || [];
-
       if (sites.length > 0) {
-        // 自動的に最初のサイトを選択（ドメインはヘッダーに表示済み）
         selectSite(sites[0]);
+      } else {
+        pageList.innerHTML = '<div class="hm-placeholder" style="min-height:200px"><p style="font-size:12px">登録サイトがありません</p></div>';
       }
     } catch (e) {
       console.error("Failed to load sites:", e);
+      pageList.innerHTML = '<div class="hm-placeholder" style="min-height:200px"><p style="font-size:12px;color:#ef4444">読み込み失敗</p></div>';
     }
   }
 
   function selectSite(site) {
     currentSiteId = site.id;
-    // サイト名をラベルとして表示
     var siteLabel = document.getElementById("currentSiteLabel");
     if (siteLabel) {
-      siteLabel.textContent = site.label || new URL(site.site_url).hostname;
+      try {
+        siteLabel.textContent = new URL(site.site_url).hostname + " のクリックデータ";
+      } catch (_) {
+        siteLabel.textContent = site.site_url;
+      }
     }
     btnShowSnippet.classList.remove("hidden");
-    filterBar.classList.remove("hidden");
-    pageSidebar.classList.remove("hidden");
     loadPages(site.id);
   }
 
   /* ── ページ一覧 ── */
   async function loadPages(siteId) {
-    pageList.innerHTML = '<p class="text-xs text-slate-400 py-4 text-center">読み込み中...</p>';
+    pageList.innerHTML = '<div class="hm-placeholder" style="min-height:120px"><div class="hm-spinner"></div></div>';
     try {
       var data = await api("/api/heatmap/sites/" + siteId + "/pages");
       var pages = data.pages || [];
+      pageCount.textContent = pages.length + " ページ";
+
       if (pages.length === 0) {
-        pageList.innerHTML = '<p class="text-xs text-slate-400 py-4 text-center">データなし</p>';
-        showEmpty();
+        pageList.innerHTML = '<div class="hm-placeholder" style="min-height:120px"><p style="font-size:12px">クリックデータがありません</p><p style="font-size:11px;color:#94a3b8;margin-top:4px">トラッキングコードを設置してください</p></div>';
         return;
       }
+
       pageList.innerHTML = "";
       pages.forEach(function (p) {
         var div = document.createElement("div");
-        div.className = "page-item px-3 py-2 rounded-lg";
-        var shortUrl = p.page_url.replace(/^https?:\/\/[^/]+/, "");
+        div.className = "page-card";
+        var shortUrl = p.page_url.replace(/^https?:\/\/[^/]+/, "") || "/";
+        var count = parseInt(p.click_count, 10) || 0;
+        var lastDate = p.last_event ? new Date(p.last_event).toLocaleDateString("ja-JP") : "-";
+
         div.innerHTML =
-          '<div class="text-xs font-medium text-slate-700 truncate">' + escHtml(shortUrl || "/") + "</div>" +
-          '<div class="text-[10px] text-slate-400 mt-0.5">' + (p.click_count || 0) + " clicks</div>";
+          '<div class="path" title="' + escHtml(p.page_url) + '">' + escHtml(shortUrl) + '</div>' +
+          '<div class="meta">' +
+            '<span class="clicks-badge">' +
+              '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 15l-2 5L9 9l11 4-5 2z"/></svg>' +
+              count + ' clicks' +
+            '</span>' +
+            '<span>最終: ' + lastDate + '</span>' +
+          '</div>';
+
         div.addEventListener("click", function () {
-          document.querySelectorAll(".page-item.active").forEach(function (el) { el.classList.remove("active"); });
+          document.querySelectorAll(".page-card.active").forEach(function (el) { el.classList.remove("active"); });
           div.classList.add("active");
           currentPageUrl = p.page_url;
           loadHeatmap(currentSiteId, p.page_url);
@@ -89,17 +100,18 @@
         pageList.appendChild(div);
       });
     } catch (e) {
-      pageList.innerHTML = '<p class="text-xs text-red-400 py-4 text-center">読み込み失敗</p>';
+      pageList.innerHTML = '<div class="hm-placeholder" style="min-height:120px"><p style="font-size:12px;color:#ef4444">読み込み失敗</p></div>';
     }
   }
 
   /* ── ヒートマップ描画 ── */
   async function loadHeatmap(siteId, pageUrl) {
-    emptyState.classList.add("hidden");
-    heatmapView.classList.remove("hidden");
-    clickRankSection.classList.remove("hidden");
+    heatmapPlaceholder.style.display = "none";
+    previewImage.style.display = "none";
+    heatmapCanvas.style.display = "none";
+    screenshotLoading.style.display = "";
+    clickRankSection.style.display = "";
 
-    // フィルタ
     var params = new URLSearchParams({ page_url: pageUrl });
     var df = document.getElementById("dateFrom").value;
     var dt = document.getElementById("dateTo").value;
@@ -108,36 +120,36 @@
     if (dt) params.set("date_to", dt);
     if (dv !== "all") params.set("device_type", dv);
 
-    // スクリーンショット + ヒートマップデータを並列取得
-    screenshotLoading.style.display = "";
-
     try {
       var [heatData, clickData] = await Promise.all([
         api("/api/heatmap/sites/" + siteId + "/data?" + params.toString()),
         api("/api/heatmap/sites/" + siteId + "/clicks?" + params.toString())
       ]);
 
-      // スクリーンショット画像をロード
       var imgUrl = "/api/heatmap/screenshot?url=" + encodeURIComponent(pageUrl);
       previewImage.onload = function () {
         screenshotLoading.style.display = "none";
+        previewImage.style.display = "";
+        heatmapCanvas.style.display = "";
         renderHeatmap(heatData.points || [], heatData.meta || {});
       };
       previewImage.onerror = function () {
         screenshotLoading.style.display = "none";
-        console.error("Screenshot load failed");
+        heatmapPlaceholder.style.display = "";
+        heatmapPlaceholder.innerHTML = '<p style="font-size:13px;color:#ef4444;font-weight:600">スクリーンショットの取得に失敗しました</p>';
       };
       previewImage.src = imgUrl;
 
       renderClickRank(clickData.clicks || []);
     } catch (e) {
       screenshotLoading.style.display = "none";
+      heatmapPlaceholder.style.display = "";
       console.error("Failed to load heatmap data:", e);
     }
   }
 
   function renderHeatmap(points, meta) {
-    var wrapper = heatmapView;
+    var wrapper = document.getElementById("heatmapArea");
     var w = wrapper.offsetWidth;
     var h = wrapper.offsetHeight;
     heatmapCanvas.width = w;
@@ -145,18 +157,15 @@
 
     var ctx = heatmapCanvas.getContext("2d");
     ctx.clearRect(0, 0, w, h);
-
     if (points.length === 0) return;
 
     var maxCount = Math.max.apply(null, points.map(function (p) { return p.count; }));
     var radius = Math.max(20, Math.min(40, w / 30));
 
-    // Pass 1: グレースケール intensity 描画
     points.forEach(function (p) {
       var x = (p.x / 100) * w;
       var y = (p.y / 100) * h;
       var intensity = Math.min(1, p.count / maxCount);
-
       var grad = ctx.createRadialGradient(x, y, 0, x, y, radius);
       grad.addColorStop(0, "rgba(0,0,0," + intensity + ")");
       grad.addColorStop(1, "rgba(0,0,0,0)");
@@ -164,41 +173,35 @@
       ctx.fillRect(x - radius, y - radius, radius * 2, radius * 2);
     });
 
-    // Pass 2: カラー化
     colorize(ctx, w, h);
   }
 
   function colorize(ctx, w, h) {
     var imgData = ctx.getImageData(0, 0, w, h);
     var data = imgData.data;
-
-    // グラデーションパレット生成（256段階）
     var palette = createPalette();
-
     for (var i = 0; i < data.length; i += 4) {
-      var alpha = data[i + 3]; // グレースケールのalpha = intensity
+      var alpha = data[i + 3];
       if (alpha === 0) continue;
-      var idx = alpha;
-      data[i] = palette[idx * 4];
-      data[i + 1] = palette[idx * 4 + 1];
-      data[i + 2] = palette[idx * 4 + 2];
-      data[i + 3] = Math.min(255, alpha + 80); // 半透明オーバーレイ
+      data[i] = palette[alpha * 4];
+      data[i + 1] = palette[alpha * 4 + 1];
+      data[i + 2] = palette[alpha * 4 + 2];
+      data[i + 3] = Math.min(255, alpha + 80);
     }
     ctx.putImageData(imgData, 0, 0);
   }
 
   function createPalette() {
-    var canvas = document.createElement("canvas");
-    canvas.width = 256;
-    canvas.height = 1;
-    var ctx = canvas.getContext("2d");
-    var grad = ctx.createLinearGradient(0, 0, 256, 0);
-    grad.addColorStop(0, "rgba(0,0,255,1)");
-    grad.addColorStop(0.25, "rgba(0,255,255,1)");
-    grad.addColorStop(0.5, "rgba(0,255,0,1)");
-    grad.addColorStop(0.75, "rgba(255,255,0,1)");
-    grad.addColorStop(1, "rgba(255,0,0,1)");
-    ctx.fillStyle = grad;
+    var c = document.createElement("canvas");
+    c.width = 256; c.height = 1;
+    var ctx = c.getContext("2d");
+    var g = ctx.createLinearGradient(0, 0, 256, 0);
+    g.addColorStop(0, "rgba(0,0,255,1)");
+    g.addColorStop(0.25, "rgba(0,255,255,1)");
+    g.addColorStop(0.5, "rgba(0,255,0,1)");
+    g.addColorStop(0.75, "rgba(255,255,0,1)");
+    g.addColorStop(1, "rgba(255,0,0,1)");
+    ctx.fillStyle = g;
     ctx.fillRect(0, 0, 256, 1);
     return ctx.getImageData(0, 0, 256, 1).data;
   }
@@ -207,39 +210,38 @@
   function renderClickRank(clicks) {
     clickRankBody.innerHTML = "";
     if (clicks.length === 0) {
-      clickRankBody.innerHTML = '<tr><td colspan="4" class="py-4 text-center text-xs text-slate-400">データなし</td></tr>';
+      clickRankBody.innerHTML = '<tr><td colspan="4" style="padding:16px;text-align:center;font-size:12px;color:#94a3b8">データなし</td></tr>';
       return;
     }
     clicks.forEach(function (c, i) {
       var tr = document.createElement("tr");
-      tr.className = "click-rank-row border-b border-slate-100";
       tr.innerHTML =
-        '<td class="py-2 pr-4 text-xs text-slate-400">' + (i + 1) + "</td>" +
-        '<td class="py-2 pr-4"><span class="px-2 py-0.5 bg-slate-100 text-slate-600 text-[10px] font-mono rounded">' + escHtml(c.element_tag || "-") + "</span></td>" +
-        '<td class="py-2 pr-4 text-xs text-slate-600 truncate max-w-[300px]">' + escHtml(c.element_text || "-") + "</td>" +
-        '<td class="py-2 text-right text-xs font-bold text-slate-700">' + c.count + "</td>";
+        '<td style="color:#94a3b8;font-weight:700">' + (i + 1) + '</td>' +
+        '<td><span class="rank-tag">' + escHtml(c.element_tag || "-") + '</span></td>' +
+        '<td style="color:#475569;max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escHtml(c.element_text || "-") + '</td>' +
+        '<td style="text-align:right;font-weight:700;color:#1e293b">' + c.count + '</td>';
       clickRankBody.appendChild(tr);
     });
   }
 
-  /* ── 埋め込みコード表示 ── */
+  /* ── 埋め込みコード ── */
   btnShowSnippet.addEventListener("click", function () {
     var site = sites.find(function (s) { return s.id === currentSiteId; });
     if (!site) return;
-    var host = location.origin;
     snippetCode.textContent =
-      '<script src="' + host + '/js/seoscan-tracker.js" data-site-key="' + site.site_key + '" async><\/script>';
+      '<script src="' + location.origin + '/js/seoscan-tracker.js" data-site-key="' + site.site_key + '" async><\/script>';
     snippetModal.classList.remove("hidden");
   });
   document.getElementById("btnCloseSnippet").addEventListener("click", function () { snippetModal.classList.add("hidden"); });
   document.getElementById("btnCopySnippet").addEventListener("click", function () {
     navigator.clipboard.writeText(snippetCode.textContent).then(function () {
-      document.getElementById("btnCopySnippet").textContent = "コピーしました!";
-      setTimeout(function () { document.getElementById("btnCopySnippet").textContent = "コピー"; }, 2000);
+      var btn = document.getElementById("btnCopySnippet");
+      btn.textContent = "コピーしました!";
+      setTimeout(function () { btn.textContent = "コピー"; }, 2000);
     });
   });
 
-  /* ── フィルタ適用 ── */
+  /* ── フィルタ ── */
   document.getElementById("btnApplyFilter").addEventListener("click", function () {
     if (currentSiteId && currentPageUrl) {
       loadHeatmap(currentSiteId, currentPageUrl);
@@ -247,19 +249,6 @@
   });
 
   /* ── ユーティリティ ── */
-  function hidePanels() {
-    btnShowSnippet.classList.add("hidden");
-    filterBar.classList.add("hidden");
-    pageSidebar.classList.add("hidden");
-    clickRankSection.classList.add("hidden");
-    showEmpty();
-  }
-
-  function showEmpty() {
-    heatmapView.classList.add("hidden");
-    emptyState.classList.remove("hidden");
-  }
-
   function escHtml(s) {
     var d = document.createElement("div");
     d.textContent = s;
