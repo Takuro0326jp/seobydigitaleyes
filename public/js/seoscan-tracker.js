@@ -123,6 +123,39 @@
     true
   );
 
+  /* ── 閲覧位置トラッキング（熟読エリア用） ── */
+  var VIEW_SAMPLE_INTERVAL = 2000; // 2秒ごとにサンプリング
+  var lastViewTs = Date.now();
+
+  setInterval(function () {
+    if (document.visibilityState === "hidden") return;
+    var now = Date.now();
+    var elapsed = now - lastViewTs;
+    lastViewTs = now;
+
+    var scrollTop = window.pageYOffset || document.documentElement.scrollTop || 0;
+    var viewportH = window.innerHeight || 0;
+    var pageH = getPageHeight() || 1;
+
+    // 表示中のエリアの中央位置を y_pct に記録、滞在ms を x_px に格納
+    var viewCenter = scrollTop + viewportH / 2;
+    var centerPct = (viewCenter / pageH) * 100;
+
+    queue.push({
+      type: "view",
+      x_pct: 0,
+      y_pct: +centerPct.toFixed(4),
+      x_px: Math.min(elapsed, VIEW_SAMPLE_INTERVAL + 500), // 滞在時間ms
+      y_px: 0,
+      tag: "",
+      text: "",
+      scroll_depth: +getScrollDepth().toFixed(2),
+      ts: now
+    });
+
+    scheduleFlush();
+  }, VIEW_SAMPLE_INTERVAL);
+
   /* ── ページ離脱時に残りを送信 ── */
   document.addEventListener("visibilitychange", function () {
     if (document.visibilityState === "hidden") flush();

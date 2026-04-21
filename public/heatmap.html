@@ -51,6 +51,12 @@
       .filter-bar .btn { font-size: 11px; font-weight: 700; padding: 5px 12px; background: #1e293b; color: white; border: none; border-radius: 6px; cursor: pointer; }
       .filter-bar .btn:hover { background: #334155; }
 
+      /* ビューモードタブ */
+      .hm-view-tabs { display: flex; gap: 4px; background: #f1f5f9; border-radius: 10px; padding: 4px; }
+      .hm-tab { font-size: 12px; font-weight: 700; padding: 6px 14px; border: none; border-radius: 7px; background: transparent; color: #64748b; cursor: pointer; transition: all 0.15s; }
+      .hm-tab:hover { color: #1e293b; }
+      .hm-tab.active { background: white; color: #1e293b; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+
       /* 補完クラス */
       .bg-slate-50\/30 { background-color: rgb(248 250 252 / 0.3); }
       .bg-orange-100 { background-color: #ffedd5; }
@@ -116,6 +122,13 @@
 
             <!-- 右: ヒートマップ + ランキング -->
             <div>
+                <!-- ビューモードタブ -->
+                <div class="hm-view-tabs mb-3">
+                    <button data-hm-view="click" class="hm-tab active">クリック</button>
+                    <button data-hm-view="scroll" class="hm-tab">スクロール到達</button>
+                    <button data-hm-view="attention" class="hm-tab">熟読エリア</button>
+                </div>
+
                 <!-- ヒートマップ表示 -->
                 <div id="heatmapArea" class="heatmap-wrapper">
                     <div id="heatmapPlaceholder" class="hm-placeholder">
@@ -125,6 +138,8 @@
                     </div>
                     <img id="previewImage" alt="Page Preview" style="display:none;width:100%;height:auto;">
                     <canvas id="heatmapCanvas" style="display:none"></canvas>
+                    <div id="scrollOverlay" style="display:none;position:absolute;inset:0;pointer-events:none;"></div>
+                    <div id="attentionOverlay" style="display:none;position:absolute;inset:0;pointer-events:none;"></div>
                     <div id="screenshotLoading" class="hm-loading" style="display:none">
                         <div class="hm-spinner"></div>
                         <p style="font-size:12px;color:#64748b;margin-top:12px">スクリーンショットを取得中...</p>

@@ -13,11 +13,23 @@
   var clickRankBody = document.getElementById("clickRankBody");
   var snippetModal = document.getElementById("snippetModal");
   var snippetCode = document.getElementById("snippetCode");
+  var scrollOverlay = document.getElementById("scrollOverlay");
+  var attentionOverlay = document.getElementById("attentionOverlay");
 
   /* ── State ── */
   var sites = [];
   var currentSiteId = null;
   var currentPageUrl = null;
+  var currentViewMode = "click"; // "click" | "scroll" | "attention"
+
+  /* ── デフォルト期間: 当月 ── */
+  (function setDefaultDates() {
+    var now = new Date();
+    var y = now.getFullYear();
+    var m = String(now.getMonth() + 1).padStart(2, "0");
+    document.getElementById("dateFrom").value = y + "-" + m + "-01";
+    document.getElementById("dateTo").value = y + "-" + m + "-" + String(now.getDate()).padStart(2, "0");
+  })();
 
   /* ── API ── */
   function api(path, opts) {
@@ -104,11 +116,31 @@
     }
   }
 
+  /* ── ビューモード切り替え ── */
+  var viewTabs = document.querySelectorAll("[data-hm-view]");
+  viewTabs.forEach(function (tab) {
+    tab.addEventListener("click", function () {
+      viewTabs.forEach(function (t) { t.classList.remove("active"); });
+      tab.classList.add("active");
+      currentViewMode = tab.getAttribute("data-hm-view");
+      if (currentSiteId && currentPageUrl) {
+        loadHeatmap(currentSiteId, currentPageUrl);
+      }
+    });
+  });
+
   /* ── ヒートマップ描画 ── */
+  var cachedScrollData = null;
+  var cachedAttentionData = null;
+  var cachedHeatData = null;
+  var cachedClickData = null;
+
   async function loadHeatmap(siteId, pageUrl) {
     heatmapPlaceholder.style.display = "none";
     previewImage.style.display = "none";
     heatmapCanvas.style.display = "none";
+    scrollOverlay.style.display = "none";
+    attentionOverlay.style.display = "none";
     screenshotLoading.style.display = "";
     clickRankSection.style.display = "";
 
@@ -121,17 +153,23 @@
     if (dv !== "all") params.set("device_type", dv);
 
     try {
-      var [heatData, clickData] = await Promise.all([
+      var [heatData, clickData, scrollData, attentionData] = await Promise.all([
         api("/api/heatmap/sites/" + siteId + "/data?" + params.toString()),
-        api("/api/heatmap/sites/" + siteId + "/clicks?" + params.toString())
+        api("/api/heatmap/sites/" + siteId + "/clicks?" + params.toString()),
+        api("/api/heatmap/sites/" + siteId + "/scroll?" + params.toString()),
+        api("/api/heatmap/sites/" + siteId + "/attention?" + params.toString())
       ]);
+
+      cachedHeatData = heatData;
+      cachedClickData = clickData;
+      cachedScrollData = scrollData;
+      cachedAttentionData = attentionData;
 
       var imgUrl = "/api/heatmap/screenshot?url=" + encodeURIComponent(pageUrl);
       previewImage.onload = function () {
         screenshotLoading.style.display = "none";
         previewImage.style.display = "";
-        heatmapCanvas.style.display = "";
-        renderHeatmap(heatData.points || [], heatData.meta || {});
+        applyViewMode();
       };
       previewImage.onerror = function () {
         screenshotLoading.style.display = "none";
@@ -145,6 +183,23 @@
       screenshotLoading.style.display = "none";
       heatmapPlaceholder.style.display = "";
       console.error("Failed to load heatmap data:", e);
+    }
+  }
+
+  function applyViewMode() {
+    heatmapCanvas.style.display = "none";
+    scrollOverlay.style.display = "none";
+    attentionOverlay.style.display = "none";
+
+    if (currentViewMode === "click") {
+      heatmapCanvas.style.display = "";
+      renderHeatmap((cachedHeatData && cachedHeatData.points) || [], (cachedHeatData && cachedHeatData.meta) || {});
+    } else if (currentViewMode === "scroll") {
+      scrollOverlay.style.display = "";
+      renderScrollMap((cachedScrollData && cachedScrollData.bands) || [], (cachedScrollData && cachedScrollData.total_sessions) || 0);
+    } else if (currentViewMode === "attention") {
+      attentionOverlay.style.display = "";
+      renderAttentionMap((cachedAttentionData && cachedAttentionData.bands) || []);
     }
   }
 
@@ -204,6 +259,93 @@
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, 256, 1);
     return ctx.getImageData(0, 0, 256, 1).data;
+  }
+
+  /* ── スクロール到達マップ ── */
+  function renderScrollMap(bands, totalSessions) {
+    scrollOverlay.innerHTML = "";
+    if (!bands.length || !totalSessions) {
+      scrollOverlay.innerHTML = '<div style="padding:40px;text-align:center;color:#94a3b8;font-size:12px">スクロールデータなし</div>';
+      return;
+    }
+    var wrapper = document.getElementById("heatmapArea");
+    var h = wrapper.offsetHeight;
+
+    bands.forEach(function (band) {
+      var pct = band.reach_pct; // % of sessions that reached this depth
+      var yStart = (band.depth_from / 100) * h;
+      var bandH = ((band.depth_to - band.depth_from) / 100) * h;
+
+      var div = document.createElement("div");
+      div.className = "scroll-band";
+      div.style.position = "absolute";
+      div.style.left = "0";
+      div.style.right = "0";
+      div.style.top = yStart + "px";
+      div.style.height = bandH + "px";
+
+      // Color: green (100%) → yellow (50%) → red (0%)
+      var r, g;
+      if (pct >= 50) {
+        r = Math.round(255 * (1 - (pct - 50) / 50));
+        g = 200;
+      } else {
+        r = 255;
+        g = Math.round(200 * (pct / 50));
+      }
+      div.style.background = "rgba(" + r + "," + g + ",0,0.35)";
+
+      // Label at band boundary
+      if (band.depth_from > 0 && band.depth_from % 10 === 0) {
+        var label = document.createElement("div");
+        label.className = "scroll-label";
+        label.style.cssText = "position:absolute;top:0;right:8px;font-size:11px;font-weight:700;color:#1e293b;background:rgba(255,255,255,0.85);padding:1px 6px;border-radius:4px;pointer-events:none;";
+        label.textContent = Math.round(pct) + "%";
+        div.appendChild(label);
+      }
+
+      scrollOverlay.appendChild(div);
+    });
+  }
+
+  /* ── 熟読エリアマップ ── */
+  function renderAttentionMap(bands) {
+    attentionOverlay.innerHTML = "";
+    if (!bands.length) {
+      attentionOverlay.innerHTML = '<div style="padding:40px;text-align:center;color:#94a3b8;font-size:12px">閲覧データなし</div>';
+      return;
+    }
+    var wrapper = document.getElementById("heatmapArea");
+    var h = wrapper.offsetHeight;
+
+    var maxTime = Math.max.apply(null, bands.map(function (b) { return b.avg_time; }));
+    if (maxTime <= 0) maxTime = 1;
+
+    bands.forEach(function (band) {
+      var intensity = band.avg_time / maxTime;
+      var yStart = (band.depth_from / 100) * h;
+      var bandH = ((band.depth_to - band.depth_from) / 100) * h;
+
+      var div = document.createElement("div");
+      div.style.position = "absolute";
+      div.style.left = "0";
+      div.style.right = "0";
+      div.style.top = yStart + "px";
+      div.style.height = bandH + "px";
+
+      // Color: transparent (low) → red (high attention)
+      var alpha = 0.1 + intensity * 0.5;
+      div.style.background = "rgba(239,68,68," + alpha.toFixed(2) + ")";
+
+      if (band.depth_from % 20 === 0) {
+        var label = document.createElement("div");
+        label.style.cssText = "position:absolute;top:2px;right:8px;font-size:10px;font-weight:600;color:#1e293b;background:rgba(255,255,255,0.85);padding:1px 5px;border-radius:3px;pointer-events:none;";
+        label.textContent = (band.avg_time / 1000).toFixed(1) + "s";
+        div.appendChild(label);
+      }
+
+      attentionOverlay.appendChild(div);
+    });
   }
 
   /* ── クリックランキング ── */

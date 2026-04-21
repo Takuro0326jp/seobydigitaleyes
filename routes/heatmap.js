@@ -305,6 +305,108 @@ router.get("/sites/:id/clicks", async (req, res) => {
   res.json({ clicks: rows });
 });
 
+// GET /api/heatmap/sites/:id/scroll — スクロール到達率（5%刻みバンド）
+router.get("/sites/:id/scroll", async (req, res) => {
+  const user = await requireAuth(req, res);
+  if (!user) return;
+
+  const site = await assertSiteAccess(req.params.id, user);
+  if (!site) return res.status(404).json({ error: "サイトが見つかりません" });
+
+  const pageUrl = (req.query.page_url || "").trim();
+  if (!pageUrl) return res.status(400).json({ error: "page_url が必要です" });
+
+  const conditions = ["s.site_id = ?", "s.page_url = ?"];
+  const params = [site.id, pageUrl];
+
+  if (req.query.date_from) {
+    conditions.push("s.created_at >= ?");
+    params.push(req.query.date_from);
+  }
+  if (req.query.date_to) {
+    conditions.push("s.created_at <= ?");
+    params.push(req.query.date_to + " 23:59:59");
+  }
+  if (req.query.device_type && req.query.device_type !== "all") {
+    conditions.push("s.device_type = ?");
+    params.push(req.query.device_type);
+  }
+
+  // セッションごとの最大スクロール深度を取得し、各バンドの到達率を計算
+  const [rows] = await pool.query(
+    `SELECT s.id AS session_id, MAX(e.scroll_depth_pct) AS max_depth
+     FROM heatmap_sessions s
+     JOIN heatmap_events e ON e.session_id = s.id
+     WHERE ${conditions.join(" AND ")} AND e.scroll_depth_pct IS NOT NULL
+     GROUP BY s.id`,
+    params
+  );
+
+  const totalSessions = rows.length;
+  const bands = [];
+  for (let d = 0; d < 100; d += 5) {
+    const reached = rows.filter(r => r.max_depth >= d).length;
+    bands.push({
+      depth_from: d,
+      depth_to: d + 5,
+      reach_pct: totalSessions > 0 ? Math.round((reached / totalSessions) * 100) : 0
+    });
+  }
+
+  res.json({ bands, total_sessions: totalSessions });
+});
+
+// GET /api/heatmap/sites/:id/attention — 熟読エリア（閲覧時間ベース）
+router.get("/sites/:id/attention", async (req, res) => {
+  const user = await requireAuth(req, res);
+  if (!user) return;
+
+  const site = await assertSiteAccess(req.params.id, user);
+  if (!site) return res.status(404).json({ error: "サイトが見つかりません" });
+
+  const pageUrl = (req.query.page_url || "").trim();
+  if (!pageUrl) return res.status(400).json({ error: "page_url が必要です" });
+
+  const conditions = ["s.site_id = ?", "s.page_url = ?", "e.event_type = 'view'"];
+  const params = [site.id, pageUrl];
+
+  if (req.query.date_from) {
+    conditions.push("e.created_at >= ?");
+    params.push(req.query.date_from);
+  }
+  if (req.query.date_to) {
+    conditions.push("e.created_at <= ?");
+    params.push(req.query.date_to + " 23:59:59");
+  }
+  if (req.query.device_type && req.query.device_type !== "all") {
+    conditions.push("s.device_type = ?");
+    params.push(req.query.device_type);
+  }
+
+  // view イベントの y_pct を 5%刻みバンドに集計、x_px に滞在ms が入っている
+  const [rows] = await pool.query(
+    `SELECT
+       FLOOR(e.y_pct / 5) * 5 AS band,
+       AVG(e.x_px) AS avg_time,
+       COUNT(*) AS sample_count
+     FROM heatmap_events e
+     JOIN heatmap_sessions s ON s.id = e.session_id
+     WHERE ${conditions.join(" AND ")}
+     GROUP BY band
+     ORDER BY band ASC`,
+    params
+  );
+
+  const bands = rows.map(r => ({
+    depth_from: r.band,
+    depth_to: r.band + 5,
+    avg_time: Math.round(r.avg_time || 0),
+    sample_count: r.sample_count
+  }));
+
+  res.json({ bands });
+});
+
 // GET /api/heatmap/screenshot?url= — ページスクリーンショット取得
 router.get("/screenshot", async (req, res) => {
   const user = await requireAuth(req, res);
