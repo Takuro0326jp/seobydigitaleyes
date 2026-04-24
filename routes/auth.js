@@ -141,8 +141,11 @@ router.post("/send-code", async (req, res) => {
         .json({ success: false, error: "パスワード違い" });
     }
 
-    // 6桁コード生成
-    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    // 6桁コード生成（デモアカウントは固定）
+    const code =
+      email === "demo@seoscan.jp"
+        ? "123456"
+        : Math.floor(100000 + Math.random() * 900000).toString();
     const oneTimeToken = crypto.randomBytes(32).toString("hex");
     const baseUrl = (process.env.APP_URL || `${req.protocol}://${req.get("host")}`).replace(/\/+$/, "");
     const loginUrl = `${baseUrl}/api/auth/verify?token=${encodeURIComponent(oneTimeToken)}`;
@@ -252,17 +255,22 @@ router.post("/verify-code", async (req, res) => {
       [email]
     );
 
-    if (!rows.length) {
-      return res
-        .status(401)
-        .json({ success: false, error: "コード期限切れ" });
-    }
+    // デモアカウントは固定コード 123456 で常にログイン可能
+    const isDemoBypass = email === "demo@seoscan.jp" && normalizedCode === "123456";
 
-    const savedCode = normalizeCode(rows[0].code);
-    if (normalizedCode !== savedCode) {
-      return res
-        .status(401)
-        .json({ success: false, error: "コード違い" });
+    if (!isDemoBypass) {
+      if (!rows.length) {
+        return res
+          .status(401)
+          .json({ success: false, error: "コード期限切れ" });
+      }
+
+      const savedCode = normalizeCode(rows[0].code);
+      if (normalizedCode !== savedCode) {
+        return res
+          .status(401)
+          .json({ success: false, error: "コード違い" });
+      }
     }
 
     // usersからuser_id取得
