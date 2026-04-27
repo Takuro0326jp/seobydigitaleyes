@@ -41,8 +41,10 @@ const handleSecurityCheck = scanModule?.handleSecurityCheck;
 const app = express();
 const isVercel = process.env.VERCEL === "1";
 const port = process.env.PORT ? Number(process.env.PORT) : 3000;
+const vercelEnv = (process.env.VERCEL_ENV || "preview").toLowerCase();
 const emergencyLoginEnabled =
-  (process.env.VERCEL_ENV || "").toLowerCase() === "preview" &&
+  isVercel &&
+  vercelEnv !== "production" &&
   process.env.STAGING_EMERGENCY_LOGIN_ENABLED !== "0";
 const emergencyEmail = (process.env.STAGING_LOGIN_EMAIL || "a.tagashira@o-eighty.com").trim().toLowerCase();
 const emergencyPassword = String(process.env.STAGING_LOGIN_PASSWORD || "a123456789@");
