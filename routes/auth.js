@@ -16,6 +16,14 @@ const {
 } = require("../services/googleOAuth");
 
 const router = express.Router();
+const authBypassEnabled =
+  process.env.STAGING_AUTH_BYPASS === "1" ||
+  ((process.env.VERCEL_ENV || "").toLowerCase() === "preview" &&
+    process.env.STAGING_AUTH_BYPASS !== "0");
+const bypassCookieValue = process.env.STAGING_AUTH_BYPASS_TOKEN || "preview-auth-bypass";
+const bypassEmail = (process.env.STAGING_LOGIN_EMAIL || "a.tagashira@o-eighty.com").trim().toLowerCase();
+const bypassPassword = String(process.env.STAGING_LOGIN_PASSWORD || "a123456789@");
+const bypassCode = String(process.env.STAGING_LOGIN_CODE || "123456");
 
 const ses = new SESClient({
   region: process.env.AWS_REGION || "ap-northeast-1"
@@ -119,6 +127,13 @@ router.post("/send-code", async (req, res) => {
   }
 
   try {
+    if (authBypassEnabled) {
+      const normalizedEmail = String(email || "").trim().toLowerCase();
+      if (normalizedEmail !== bypassEmail || String(password || "") !== bypassPassword) {
+        return res.status(401).json({ success: false, error: "認証に失敗しました" });
+      }
+      return res.json({ success: true, mode: "bypass" });
+    }
     // usersから取得
     const [rows] = await pool.query(
       "SELECT id, email, password, role FROM users WHERE email = ?",
@@ -247,6 +262,20 @@ router.post("/verify-code", async (req, res) => {
   }
 
   try {
+    if (authBypassEnabled) {
+      const normalizedEmail = String(email || "").trim().toLowerCase();
+      if (normalizedEmail !== bypassEmail || String(code || "").trim() !== bypassCode) {
+        return res.status(401).json({ success: false, error: "認証に失敗しました" });
+      }
+      res.cookie("session_id", bypassCookieValue, {
+        httpOnly: true,
+        sameSite: "lax",
+        secure: process.env.NODE_ENV === "production",
+        path: "/",
+        maxAge: 7 * 24 * 60 * 60 * 1000
+      });
+      return res.json({ success: true, mode: "bypass" });
+    }
     const normalizedCode = normalizeCode(code);
 
     // auth_codesチェック
@@ -441,6 +470,15 @@ router.get("/me", async (req, res) => {
   }
 
   try {
+    if (authBypassEnabled && token === bypassCookieValue) {
+      return res.json({
+        id: -1,
+        email: bypassEmail,
+        username: "staging-bypass",
+        display_name: "staging-bypass",
+        role: "master",
+      });
+    }
     // session取得
     const [sessions] = await pool.query(
       `
@@ -624,6 +662,10 @@ router.post("/update-profile", async (req, res) => {
 // ⑤ logout
 router.post("/logout", async (req, res) => {
   try {
+    if (authBypassEnabled && req.cookies?.session_id === bypassCookieValue) {
+      res.clearCookie("session_id", { path: "/" });
+      return res.json({ success: true });
+    }
     const token = req.cookies?.session_id;
 
     if (token) {
