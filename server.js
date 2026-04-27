@@ -268,6 +268,25 @@ if (!isProduction) {
 
 // staging のDB不通時フォールバック（Previewのみ）
 if (emergencyLoginEnabled) {
+  let emergencyUserSeq = 1;
+  const emergencyUsers = [];
+  function ensureEmergencyOwner(payload) {
+    const existing = emergencyUsers.find((u) => u.email === payload.email);
+    if (existing) return existing;
+    const owner = {
+      id: emergencyUserSeq++,
+      email: payload.email,
+      username: "staging-emergency",
+      role: "master",
+      created_at: new Date().toISOString(),
+      company_id: null,
+      first_access_at: null,
+      last_access_at: null,
+      url_list: null
+    };
+    emergencyUsers.push(owner);
+    return owner;
+  }
   app.post("/api/auth/send-code", async (req, res) => {
     const email = String(req.body?.email || "").trim().toLowerCase();
     const password = String(req.body?.password || "");
@@ -313,25 +332,63 @@ if (emergencyLoginEnabled) {
   app.get("/api/admin/dashboard", async (req, res) => {
     const payload = readEmergencyToken(req);
     if (!payload) return res.status(403).json({ error: "管理者権限が必要です" });
-    return res.json({ users: 1, scans: 0, companies: 0, pages: 0, mode: "emergency" });
+    ensureEmergencyOwner(payload);
+    return res.json({ users: emergencyUsers.length, scans: 0, companies: 0, pages: 0, mode: "emergency" });
   });
 
   app.get("/api/admin/users", async (req, res) => {
     const payload = readEmergencyToken(req);
     if (!payload) return res.status(403).json({ error: "管理者権限が必要です" });
-    return res.json([
-      {
-        id: -1,
-        email: payload.email,
-        username: "staging-emergency",
-        role: "master",
-        created_at: new Date().toISOString(),
-        company_id: null,
-        first_access_at: null,
-        last_access_at: null,
-        url_list: null
-      }
-    ]);
+    ensureEmergencyOwner(payload);
+    return res.json(emergencyUsers);
+  });
+
+  app.post("/api/admin/users", async (req, res) => {
+    const payload = readEmergencyToken(req);
+    if (!payload) return res.status(403).json({ error: "管理者権限が必要です" });
+    ensureEmergencyOwner(payload);
+    const email = String(req.body?.email || "").trim().toLowerCase();
+    if (!email) return res.status(400).json({ error: "email が必要です" });
+    if (emergencyUsers.some((u) => u.email === email)) {
+      return res.status(400).json({ error: "このメールアドレスは既に登録されています" });
+    }
+    const user = {
+      id: emergencyUserSeq++,
+      email,
+      username: String(req.body?.username || "").trim() || null,
+      role: String(req.body?.role || "user"),
+      created_at: new Date().toISOString(),
+      company_id: req.body?.company_id || null,
+      first_access_at: null,
+      last_access_at: null,
+      url_list: null
+    };
+    emergencyUsers.push(user);
+    return res.status(201).json(user);
+  });
+
+  app.patch("/api/admin/users/:id", async (req, res) => {
+    const payload = readEmergencyToken(req);
+    if (!payload) return res.status(403).json({ error: "管理者権限が必要です" });
+    ensureEmergencyOwner(payload);
+    const id = Number(req.params.id);
+    const user = emergencyUsers.find((u) => u.id === id);
+    if (!user) return res.status(404).json({ error: "ユーザーが見つかりません" });
+    if (req.body?.username !== undefined) user.username = req.body.username || null;
+    if (req.body?.role !== undefined) user.role = req.body.role || "user";
+    if (req.body?.company_id !== undefined) user.company_id = req.body.company_id || null;
+    return res.json(user);
+  });
+
+  app.delete("/api/admin/users/:id", async (req, res) => {
+    const payload = readEmergencyToken(req);
+    if (!payload) return res.status(403).json({ error: "管理者権限が必要です" });
+    ensureEmergencyOwner(payload);
+    const id = Number(req.params.id);
+    const idx = emergencyUsers.findIndex((u) => u.id === id);
+    if (idx < 0) return res.status(404).json({ error: "ユーザーが見つかりません" });
+    emergencyUsers.splice(idx, 1);
+    return res.json({ success: true });
   });
 
   app.get("/api/admin/companies", async (req, res) => {
@@ -341,6 +398,12 @@ if (emergencyLoginEnabled) {
   });
 
   app.get("/api/admin/users/:id/url-access", async (req, res) => {
+    const payload = readEmergencyToken(req);
+    if (!payload) return res.status(403).json({ error: "管理者権限が必要です" });
+    return res.json([]);
+  });
+
+  app.get("/api/admin/companies/:id/urls", async (req, res) => {
     const payload = readEmergencyToken(req);
     if (!payload) return res.status(403).json({ error: "管理者権限が必要です" });
     return res.json([]);
