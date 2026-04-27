@@ -11,22 +11,32 @@ const express = require("express");
 const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
 const cookieParser = require("cookie-parser");
-const authRoutes = require("./routes/auth");
-const adminRoutes = require("./routes/admin");
-const scanRoutes = require("./routes/scans");
-const scanModule = require("./routes/scan");
-const gscRoutes = require("./routes/gsc");
-const strategyRoutes = require("./routes/strategy");
-const adsRoutes = require("./routes/ads");
+function safeRequire(modulePath, label) {
+  try {
+    return require(modulePath);
+  } catch (e) {
+    console.error(`[BOOT] failed to load ${label}:`, e?.message || e);
+    return null;
+  }
+}
+
+const authRoutes = safeRequire("./routes/auth", "routes/auth");
+const adminRoutes = safeRequire("./routes/admin", "routes/admin");
+const scanRoutes = safeRequire("./routes/scans", "routes/scans");
+const scanModule = safeRequire("./routes/scan", "routes/scan");
+const gscRoutes = safeRequire("./routes/gsc", "routes/gsc");
+const strategyRoutes = safeRequire("./routes/strategy", "routes/strategy");
+const adsRoutes = safeRequire("./routes/ads", "routes/ads");
 /** Meta Marketing API（/api/meta/adaccounts, insights 等） */
-const metaRoutes = require("./routes/meta");
-const actionItemsRoutes = require("./routes/actionItems");
-const heatmapRoutes = require("./routes/heatmap");
-const { handleSitemapLast, handleSubmitSitemap } = require("./routes/sitemap");
-const handleStart = scanModule.handleStart;
-const handleResult = scanModule.handleResult;
-const handleTrends = scanModule.handleTrends;
-const handleSecurityCheck = scanModule.handleSecurityCheck;
+const metaRoutes = safeRequire("./routes/meta", "routes/meta");
+const actionItemsRoutes = safeRequire("./routes/actionItems", "routes/actionItems");
+const heatmapRoutes = safeRequire("./routes/heatmap", "routes/heatmap");
+const sitemapRoutes = safeRequire("./routes/sitemap", "routes/sitemap") || {};
+const { handleSitemapLast, handleSubmitSitemap } = sitemapRoutes;
+const handleStart = scanModule?.handleStart;
+const handleResult = scanModule?.handleResult;
+const handleTrends = scanModule?.handleTrends;
+const handleSecurityCheck = scanModule?.handleSecurityCheck;
 
 const app = express();
 const isVercel = process.env.VERCEL === "1";
@@ -116,26 +126,32 @@ app.get("/api/db-check", async (req, res) => {
 });
 
 // trends API — /api/scans より先に登録（/:scanId に奪われないよう最優先）
-app.get("/api/scans/trends", (req, res, next) =>
-  handleTrends(req, res).catch(next)
-);
-app.get("/api/scan/trends", (req, res, next) =>
-  handleTrends(req, res).catch(next)
-);
+app.get("/api/scans/trends", (req, res, next) => {
+  if (!handleTrends) return res.status(503).json({ error: "trends handler unavailable" });
+  return handleTrends(req, res).catch(next);
+});
+app.get("/api/scan/trends", (req, res, next) => {
+  if (!handleTrends) return res.status(503).json({ error: "trends handler unavailable" });
+  return handleTrends(req, res).catch(next);
+});
 
 // sitemap API（他ルートより先に登録。ハイフン path で問題が出る環境向けに sitemap_last も用意）
-app.get("/api/sitemap-last", (req, res, next) =>
-  handleSitemapLast(req, res).catch(next)
-);
-app.get("/api/sitemap_last", (req, res, next) =>
-  handleSitemapLast(req, res).catch(next)
-);
-app.post("/api/submit-sitemap", (req, res, next) =>
-  handleSubmitSitemap(req, res).catch(next)
-);
-app.post("/api/submit_sitemap", (req, res, next) =>
-  handleSubmitSitemap(req, res).catch(next)
-);
+app.get("/api/sitemap-last", (req, res, next) => {
+  if (!handleSitemapLast) return res.status(503).json({ error: "sitemap handler unavailable" });
+  return handleSitemapLast(req, res).catch(next);
+});
+app.get("/api/sitemap_last", (req, res, next) => {
+  if (!handleSitemapLast) return res.status(503).json({ error: "sitemap handler unavailable" });
+  return handleSitemapLast(req, res).catch(next);
+});
+app.post("/api/submit-sitemap", (req, res, next) => {
+  if (!handleSubmitSitemap) return res.status(503).json({ error: "sitemap handler unavailable" });
+  return handleSubmitSitemap(req, res).catch(next);
+});
+app.post("/api/submit_sitemap", (req, res, next) => {
+  if (!handleSubmitSitemap) return res.status(503).json({ error: "sitemap handler unavailable" });
+  return handleSubmitSitemap(req, res).catch(next);
+});
 
 // SSRF 対策: プライベート・内部 IP へのアクセスを拒否
 function isPrivateOrInternalAddress(hostname, ip) {
@@ -330,10 +346,10 @@ if (emergencyLoginEnabled) {
 }
 
 // 認証API
-app.use("/api/auth", authRoutes);
+if (authRoutes) app.use("/api/auth", authRoutes);
 
 // 管理API（admin/master のみ）
-app.use("/api/admin", adminRoutes);
+if (adminRoutes) app.use("/api/admin", adminRoutes);
 
 // GET /api/companies — クライアント一覧（seo.html の Client 選択用）
 // admin/master: 全件、user: 自社のみ
@@ -376,26 +392,30 @@ const scanStartLimiter = rateLimit({
 });
 
 // POST /api/scans/start, GET /api/scans/result/:id を先に登録
-app.post("/api/scan-start", scanStartLimiter, (req, res, next) =>
-  handleStart(req, res).catch(next)
-);
-app.get("/api/scans/result/:id/security-check", (req, res, next) =>
-  handleSecurityCheck(req, res).catch(next)
-);
-app.get("/api/scans/result/:id", (req, res, next) =>
-  handleResult(req, res).catch(next)
-);
+app.post("/api/scan-start", scanStartLimiter, (req, res, next) => {
+  if (!handleStart) return res.status(503).json({ error: "scan handler unavailable" });
+  return handleStart(req, res).catch(next);
+});
+app.get("/api/scans/result/:id/security-check", (req, res, next) => {
+  if (!handleSecurityCheck) return res.status(503).json({ error: "scan handler unavailable" });
+  return handleSecurityCheck(req, res).catch(next);
+});
+app.get("/api/scans/result/:id", (req, res, next) => {
+  if (!handleResult) return res.status(503).json({ error: "scan handler unavailable" });
+  return handleResult(req, res).catch(next);
+});
 // GET /api/scans/:scanId/link-edges — ルート競合を避け明示登録
-app.get("/api/scans/:scanId/link-edges", (req, res, next) =>
-  scanRoutes.handleLinkEdges(req, res).catch(next)
-);
-app.use("/api/scans", scanRoutes);
-app.use("/api/gsc", gscRoutes);
-app.use("/api/strategy", strategyRoutes);
-app.use("/api/ads", adsRoutes);
-app.use("/api/meta", metaRoutes); /* Meta 広告 API ルート */
-app.use("/api/action-items", actionItemsRoutes);
-app.use("/api/heatmap", heatmapRoutes);
+app.get("/api/scans/:scanId/link-edges", (req, res, next) => {
+  if (!scanRoutes?.handleLinkEdges) return res.status(503).json({ error: "scan routes unavailable" });
+  return scanRoutes.handleLinkEdges(req, res).catch(next);
+});
+if (scanRoutes) app.use("/api/scans", scanRoutes);
+if (gscRoutes) app.use("/api/gsc", gscRoutes);
+if (strategyRoutes) app.use("/api/strategy", strategyRoutes);
+if (adsRoutes) app.use("/api/ads", adsRoutes);
+if (metaRoutes) app.use("/api/meta", metaRoutes); /* Meta 広告 API ルート */
+if (actionItemsRoutes) app.use("/api/action-items", actionItemsRoutes);
+if (heatmapRoutes) app.use("/api/heatmap", heatmapRoutes);
 
 // GET /api/link-analysis?scan_id=X — user もアクセス可能（/api/scans/:id/link-analysis へリダイレクト）
 app.get("/api/link-analysis", (req, res) => {
