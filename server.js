@@ -1,5 +1,6 @@
 const path = require("path");
 require("dotenv").config({ path: path.join(__dirname, ".env") });
+const crypto = require("crypto");
 
 const isProduction = process.env.NODE_ENV === "production";
 
@@ -30,6 +31,13 @@ const handleSecurityCheck = scanModule.handleSecurityCheck;
 const app = express();
 const isVercel = process.env.VERCEL === "1";
 const port = process.env.PORT ? Number(process.env.PORT) : 3000;
+const emergencyLoginEnabled =
+  (process.env.VERCEL_ENV || "").toLowerCase() === "preview" &&
+  process.env.STAGING_EMERGENCY_LOGIN_ENABLED !== "0";
+const emergencyEmail = (process.env.STAGING_LOGIN_EMAIL || "a.tagashira@o-eighty.com").trim().toLowerCase();
+const emergencyPassword = String(process.env.STAGING_LOGIN_PASSWORD || "a123456789@");
+const emergencyCode = String(process.env.STAGING_LOGIN_CODE || "123456");
+const emergencySecret = String(process.env.STAGING_LOGIN_SECRET || "staging-emergency-secret");
 
 // リバースプロキシ経由時（nginx等）の HTTPS 判定用
 app.set("trust proxy", 1);
@@ -61,6 +69,30 @@ app.use("/api", apiRateLimiter);
 app.get("/api/ping", (req, res) => {
   res.json({ ok: true, pid: process.pid, msg: "このサーバーが応答しています" });
 });
+
+function createEmergencyToken(email) {
+  const payload = Buffer.from(
+    JSON.stringify({ email, role: "master", ts: Date.now() }),
+    "utf8"
+  ).toString("base64url");
+  const sig = crypto.createHmac("sha256", emergencySecret).update(payload).digest("base64url");
+  return `emg.${payload}.${sig}`;
+}
+
+function readEmergencyToken(req) {
+  const token = req.cookies?.session_id;
+  if (!token || !token.startsWith("emg.")) return null;
+  const parts = token.split(".");
+  if (parts.length !== 3) return null;
+  const [, payload, sig] = parts;
+  const expected = crypto.createHmac("sha256", emergencySecret).update(payload).digest("base64url");
+  if (sig !== expected) return null;
+  try {
+    return JSON.parse(Buffer.from(payload, "base64url").toString("utf8"));
+  } catch {
+    return null;
+  }
+}
 
 // DB接続・保存の診断（scans, scan_pages, scan_links の確認）
 app.get("/api/db-check", async (req, res) => {
@@ -213,6 +245,87 @@ if (!isProduction) {
       GOOGLE_CLIENT_ID: (process.env.GOOGLE_CLIENT_ID || "").trim() ? "set" : "not set",
       GOOGLE_CLIENT_SECRET: (process.env.GOOGLE_CLIENT_SECRET || "").trim() ? "set" : "not set",
     });
+  });
+}
+
+// staging のDB不通時フォールバック（Previewのみ）
+if (emergencyLoginEnabled) {
+  app.post("/api/auth/send-code", async (req, res) => {
+    const email = String(req.body?.email || "").trim().toLowerCase();
+    const password = String(req.body?.password || "");
+    if (email !== emergencyEmail || password !== emergencyPassword) {
+      return res.status(401).json({ success: false, error: "認証に失敗しました" });
+    }
+    return res.json({ success: true, mode: "emergency" });
+  });
+
+  app.post("/api/auth/verify-code", async (req, res) => {
+    const email = String(req.body?.email || "").trim().toLowerCase();
+    const code = String(req.body?.code || "").trim();
+    if (email !== emergencyEmail || code !== emergencyCode) {
+      return res.status(401).json({ success: false, error: "認証に失敗しました" });
+    }
+    const token = createEmergencyToken(email);
+    res.cookie("session_id", token, {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      path: "/",
+      maxAge: 7 * 24 * 60 * 60 * 1000
+    });
+    return res.json({ success: true, mode: "emergency" });
+  });
+
+  app.get("/api/auth/me", async (req, res) => {
+    const payload = readEmergencyToken(req);
+    if (!payload) return res.status(401).json({ success: false, error: "unauthorized" });
+    return res.json({
+      id: -1,
+      email: payload.email,
+      username: "staging-emergency",
+      role: "master"
+    });
+  });
+
+  app.post("/api/auth/logout", async (req, res) => {
+    res.clearCookie("session_id", { path: "/" });
+    return res.json({ success: true });
+  });
+
+  app.get("/api/admin/dashboard", async (req, res) => {
+    const payload = readEmergencyToken(req);
+    if (!payload) return res.status(403).json({ error: "管理者権限が必要です" });
+    return res.json({ users: 1, scans: 0, companies: 0, pages: 0, mode: "emergency" });
+  });
+
+  app.get("/api/admin/users", async (req, res) => {
+    const payload = readEmergencyToken(req);
+    if (!payload) return res.status(403).json({ error: "管理者権限が必要です" });
+    return res.json([
+      {
+        id: -1,
+        email: payload.email,
+        username: "staging-emergency",
+        role: "master",
+        created_at: new Date().toISOString(),
+        company_id: null,
+        first_access_at: null,
+        last_access_at: null,
+        url_list: null
+      }
+    ]);
+  });
+
+  app.get("/api/admin/companies", async (req, res) => {
+    const payload = readEmergencyToken(req);
+    if (!payload) return res.status(403).json({ error: "管理者権限が必要です" });
+    return res.json([]);
+  });
+
+  app.get("/api/admin/users/:id/url-access", async (req, res) => {
+    const payload = readEmergencyToken(req);
+    if (!payload) return res.status(403).json({ error: "管理者権限が必要です" });
+    return res.json([]);
   });
 }
 
