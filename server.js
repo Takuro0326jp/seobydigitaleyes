@@ -28,6 +28,7 @@ const handleTrends = scanModule.handleTrends;
 const handleSecurityCheck = scanModule.handleSecurityCheck;
 
 const app = express();
+const isVercel = process.env.VERCEL === "1";
 const port = process.env.PORT ? Number(process.env.PORT) : 3000;
 
 // リバースプロキシ経由時（nginx等）の HTTPS 判定用
@@ -308,7 +309,7 @@ app.use((err, req, res, next) => {
   res.status(500).json({ success: false, error: msg });
 });
 
-(async () => {
+async function bootstrapAndListen() {
   try {
     await pool.query("SELECT 1");
     console.log("[DB] 接続OK");
@@ -920,5 +921,13 @@ app.use((err, req, res, next) => {
     }
     process.exit(1);
   });
-})();
+}
+
+if (!isVercel) {
+  bootstrapAndListen();
+} else {
+  console.log("[BOOT] Vercel runtime detected: skip app.listen and startup migrations");
+}
+
+module.exports = app;
 
