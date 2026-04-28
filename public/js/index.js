@@ -76,10 +76,16 @@ document.addEventListener("DOMContentLoaded", () => {
           credentials: "include",
           body: JSON.stringify({ email, password })
         });
+        const payload = await response.json().catch(() => ({}));
 
         if (!response.ok) {
-          const error = await response.json().catch(() => ({}));
+          const error = payload || {};
           throw new Error(error.error || "認証に失敗しました");
+        }
+
+        if (payload?.skip2fa) {
+          window.location.href = "/seo.html";
+          return;
         }
 
         isCodeSent = true;

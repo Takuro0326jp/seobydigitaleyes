@@ -16,6 +16,13 @@ const {
 } = require("../services/googleOAuth");
 
 const router = express.Router();
+const vercelEnv = (process.env.VERCEL_ENV || "").toLowerCase();
+const vercelRef = (process.env.VERCEL_GIT_COMMIT_REF || "").toLowerCase();
+const isStagingEnv =
+  vercelEnv === "preview" ||
+  vercelRef === "staging" ||
+  vercelRef.startsWith("staging/");
+const stagingDisable2fa = isStagingEnv && process.env.STAGING_DISABLE_2FA !== "0";
 
 const ses = new SESClient({
   region: process.env.AWS_REGION || "ap-northeast-1"
@@ -139,6 +146,29 @@ router.post("/send-code", async (req, res) => {
       return res
         .status(401)
         .json({ success: false, error: "パスワード違い" });
+    }
+
+    // staging では二段階認証をスキップして即ログイン
+    if (stagingDisable2fa) {
+      const token = crypto.randomBytes(32).toString("hex");
+      const expires = new Date();
+      expires.setDate(expires.getDate() + 7);
+      await pool.query(
+        "INSERT INTO sessions (session_token, user_id, expires_at) VALUES (?, ?, ?)",
+        [token, user.id, expires]
+      );
+      await pool.query(
+        "UPDATE users SET first_access_at = COALESCE(first_access_at, NOW()), last_access_at = NOW() WHERE id = ?",
+        [user.id]
+      );
+      res.cookie("session_id", token, {
+        httpOnly: true,
+        sameSite: "lax",
+        secure: process.env.NODE_ENV === "production",
+        path: "/",
+        maxAge: 7 * 24 * 60 * 60 * 1000
+      });
+      return res.json({ success: true, skip2fa: true });
     }
 
     // 6桁コード生成（デモアカウントは固定）
