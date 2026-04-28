@@ -19,7 +19,8 @@ function safeRequire(modulePath, label) {
   }
 }
 
-const authRoutes = safeRequire("./routes/auth", "routes/auth");
+// 認証ルートは未マウントだとログインが404になるため、起動時に必須として扱う
+const authRoutes = require("./routes/auth");
 const adminRoutes = safeRequire("./routes/admin", "routes/admin");
 const scanRoutes = safeRequire("./routes/scans", "routes/scans");
 const scanModule = safeRequire("./routes/scan", "routes/scan");
