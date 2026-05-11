@@ -191,11 +191,11 @@ function buildExecutiveSummary(summary) {
 }
 
 /** 単発JSONの行上限（ページあたりのJSONが肥大しやすいため控えめ。超えると chunk + /pages） */
-const RESULT_PAGES_SINGLE_RESPONSE_CAP = Number(process.env.RESULT_PAGES_SINGLE_RESPONSE_CAP || 160);
+const RESULT_PAGES_SINGLE_RESPONSE_CAP = Number(process.env.RESULT_PAGES_SINGLE_RESPONSE_CAP || 100);
 /** チャンク1回あたりの最大行（転送途切れ・関数ペイロード上限対策） */
 const RESULT_PAGES_CHUNK_SIZE = Math.min(
   300,
-  Math.max(80, Number(process.env.RESULT_PAGES_CHUNK_SIZE || 220))
+  Math.max(40, Number(process.env.RESULT_PAGES_CHUNK_SIZE || 100))
 );
 
 function scanResultApiNoCacheHeaders(res) {
@@ -233,7 +233,7 @@ function scanResultSendJson(res, req, branch, payload, statusCode) {
   const buf = Buffer.from(json, "utf8");
   const bytes = buf.length;
   dbgScanResultLog({
-    hypothesisId: "H6,H7",
+    hypothesisId: "H6,H7,H9",
     location: "scanResultSendJson:beforeSend",
     message: branch,
     runId: process.env.SEO_DEBUG_RUN_ID || "post-fix",
@@ -244,10 +244,14 @@ function scanResultSendJson(res, req, branch, payload, statusCode) {
       pageRows: Array.isArray(payload.pages) ? payload.pages.length : -1,
       overview: !!payload.overview,
       chunked: !!(payload.pagination && payload.pagination.chunked),
+      transferEncoding: "chunked",
     },
   });
   res.status(code);
   res.setHeader("Content-Type", "application/json; charset=utf-8");
+  // Content-Length 固定だと nginx 等で本文切り詰め＋ブラウザ ERR_CONTENT_LENGTH_MISMATCH となる事例があるためチャンク転送にする
+  res.setHeader("Transfer-Encoding", "chunked");
+  res.removeHeader("Content-Length");
   res.on("finish", () => {
     dbgScanResultLog({
       hypothesisId: "H7",
@@ -268,7 +272,8 @@ function scanResultSendJson(res, req, branch, payload, statusCode) {
       });
     }
   });
-  res.send(buf);
+  res.write(buf);
+  res.end();
 }
 // #endregion
 

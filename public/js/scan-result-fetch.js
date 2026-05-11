@@ -26,7 +26,7 @@
       return data;
     }
     const total = Number(pag.total) || 0;
-    const pageSize = Number(pag.pageSize) || 220;
+    const pageSize = Number(pag.pageSize) || 100;
     const pages = Array.isArray(data.pages) ? [...data.pages] : [];
     while (pages.length < total) {
       const cr = await fetch(
