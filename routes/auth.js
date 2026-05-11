@@ -148,9 +148,8 @@ router.post("/send-code", async (req, res) => {
         .json({ success: false, error: "パスワード違い" });
     }
 
-    // staging または demo アカウントは二段階認証をスキップして即ログイン
-    const isDemoAccount = email === "demo@seoscan.jp";
-    if (stagingDisable2fa || isDemoAccount) {
+    // staging では二段階認証をスキップして即ログイン
+    if (stagingDisable2fa) {
       const token = crypto.randomBytes(32).toString("hex");
       const expires = new Date();
       expires.setDate(expires.getDate() + 7);
