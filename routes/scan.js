@@ -4,6 +4,8 @@
  */
 const express = require("express");
 const crypto = require("crypto");
+const fs = require("fs");
+const path = require("path");
 const { getUserIdFromRequest } = require("../services/session");
 const {
   getUserWithContext,
@@ -198,7 +200,77 @@ const RESULT_PAGES_CHUNK_SIZE = Math.min(
 
 function scanResultApiNoCacheHeaders(res) {
   res.setHeader("Cache-Control", "private, no-store");
+  // nginx が upstream 応答を過剰バッファして本文が切り詰められる事例への対策（ブラウザ ERR_CONTENT_LENGTH_MISMATCH と整合）
+  res.setHeader("X-Accel-Buffering", "no");
 }
+
+// #region agent log
+const __DBG_SCAN_LOG = path.join(__dirname, "..", "debug-3a8ba6.log");
+
+function dbgScanResultLog(payload) {
+  const line =
+    JSON.stringify(
+      Object.assign(
+        {
+          sessionId: "3a8ba6",
+          timestamp: Date.now(),
+        },
+        payload
+      )
+    ) + "\n";
+  for (const target of [__DBG_SCAN_LOG, path.join(process.cwd(), "debug-3a8ba6.log")]) {
+    try {
+      fs.appendFileSync(target, line);
+      return;
+    } catch (_) {}
+  }
+}
+
+/** 診断: ペイロード長と finish / 早期 close（プロキシ切り捨て疑い） */
+function scanResultSendJson(res, req, branch, payload, statusCode) {
+  const code = statusCode == null ? 200 : statusCode;
+  const json = JSON.stringify(payload);
+  const buf = Buffer.from(json, "utf8");
+  const bytes = buf.length;
+  dbgScanResultLog({
+    hypothesisId: "H6,H7",
+    location: "scanResultSendJson:beforeSend",
+    message: branch,
+    runId: process.env.SEO_DEBUG_RUN_ID || "post-fix",
+    data: {
+      path: req.originalUrl || req.url,
+      method: req.method,
+      bytes,
+      pageRows: Array.isArray(payload.pages) ? payload.pages.length : -1,
+      overview: !!payload.overview,
+      chunked: !!(payload.pagination && payload.pagination.chunked),
+    },
+  });
+  res.status(code);
+  res.setHeader("Content-Type", "application/json; charset=utf-8");
+  res.on("finish", () => {
+    dbgScanResultLog({
+      hypothesisId: "H7",
+      location: "scanResultSendJson:finish",
+      message: branch,
+      runId: process.env.SEO_DEBUG_RUN_ID || "post-fix",
+      data: { bytes, writableEnded: res.writableEnded },
+    });
+  });
+  res.on("close", () => {
+    if (!res.writableEnded) {
+      dbgScanResultLog({
+        hypothesisId: "H8",
+        location: "scanResultSendJson:closeBeforeEnd",
+        message: branch,
+        runId: process.env.SEO_DEBUG_RUN_ID || "post-fix",
+        data: { bytes },
+      });
+    }
+  });
+  res.send(buf);
+}
+// #endregion
 
 async function duplicateTitleLowerSet(scanId) {
   const [rows] = await pool.query(
@@ -722,7 +794,7 @@ async function handleResult(req, res) {
           ? "まだページが取得されていません。"
           : `クロール処理中です（取得済み ${pageTotal} ページ）。`;
 
-    return res.json({
+    return scanResultSendJson(res, req, "overview", {
       scan: scanPayload,
       overview: true,
       pageTotal,
@@ -754,7 +826,7 @@ async function handleResult(req, res) {
     const pagesRaw = await fetchScanPageRows(scanId, 0, null);
     const pages = mapScanRowsToPages(pagesRaw, null);
     const summary = buildSummaryFromPages(pages, scanRow);
-    return res.json({
+    return scanResultSendJson(res, req, "single", {
       scan: scanPayload,
       pages,
       summary,
@@ -767,7 +839,7 @@ async function handleResult(req, res) {
   const pagesRawChunk = await fetchScanPageRows(scanId, 0, RESULT_PAGES_CHUNK_SIZE);
   const pages = mapScanRowsToPages(pagesRawChunk, dupSet);
 
-  return res.json({
+  return scanResultSendJson(res, req, "chunkedHead", {
     scan: scanPayload,
     pages,
     summary,
@@ -808,7 +880,7 @@ async function handleResultPages(req, res) {
   const pagesRaw = await fetchScanPageRows(scanId, offset, limit);
   const pages = mapScanRowsToPages(pagesRaw, dupSet);
 
-  return res.json({
+  return scanResultSendJson(res, req, "chunkPage", {
     pages,
     pagination: {
       offset,

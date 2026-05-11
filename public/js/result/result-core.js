@@ -23,6 +23,33 @@ function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
+// #region agent log
+/** @typedef {{hypothesisId?:string,message?:string,location?:string,data?:object,runId?:string}} __DbgPayload */
+function __seoDbg(/** __DbgPayload */ p) {
+  fetch("http://127.0.0.1:7746/ingest/b51285b8-f343-4145-a584-bc496191010c", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Debug-Session-Id": "3a8ba6",
+    },
+    body: JSON.stringify(
+      Object.assign(
+        {
+          sessionId: "3a8ba6",
+          timestamp: Date.now(),
+          location: p.location || "result-core.js",
+          message: p.message || "",
+          hypothesisId: p.hypothesisId || "",
+          runId: p.runId || "pre",
+          data: p.data || {},
+        },
+        {}
+      )
+    ),
+  }).catch(function () {});
+}
+// #endregion
+
 function showLoading(msg) {
   const o = document.getElementById("loadingOverlay");
   const t = document.getElementById("loadingStatus");
@@ -40,6 +67,19 @@ async function fetchFullScanResultForResultPage(scanId) {
   const enc = encodeURIComponent(scanId);
   const cred = { credentials: "include" };
   const res = await fetch(`/api/scans/result/${enc}`, cred);
+  // #region agent log
+  __seoDbg({
+    hypothesisId: "H1",
+    location: "fetchFull:firstResponse",
+    message: "scan result primary fetch",
+    data: {
+      status: res.status,
+      ok: res.ok,
+      ct: res.headers && res.headers.get ? res.headers.get("content-type") : "",
+      cl: res.headers && res.headers.get ? res.headers.get("content-length") : "",
+    },
+  });
+  // #endregion
   if (res.status === 401) throw Object.assign(new Error("unauthorized"), { status: 401 });
   if (res.status === 404) throw Object.assign(new Error("not found"), { status: 404 });
   if (!res.ok) {
@@ -52,8 +92,34 @@ async function fetchFullScanResultForResultPage(scanId) {
       body,
     });
   }
-  const data = await res.json();
+  let data;
+  try {
+    data = await res.json();
+  } catch (ej) {
+    // #region agent log
+    __seoDbg({
+      hypothesisId: "H1",
+      location: "fetchFull:primaryJsonFail",
+      message: String(ej && ej.message ? ej.message : ej),
+      data: { phase: "primary" },
+    });
+    // #endregion
+    throw ej;
+  }
   const pag = data.pagination;
+  // #region agent log
+  __seoDbg({
+    hypothesisId: "H1,H4",
+    location: "fetchFull:afterPrimaryJson",
+    message: "parsed primary body",
+    data: {
+      chunked: !!(pag && pag.chunked),
+      total: pag && pag.total,
+      pageSize: pag && pag.pageSize,
+      firstPagesLen: Array.isArray(data.pages) ? data.pages.length : -1,
+    },
+  });
+  // #endregion
   if (!pag || !pag.chunked) return data;
 
   const total = Number(pag.total) || 0;
@@ -75,6 +141,14 @@ async function fetchFullScanResultForResultPage(scanId) {
     }
     const part = await cr.json();
     const add = Array.isArray(part.pages) ? part.pages : [];
+    // #region agent log
+    __seoDbg({
+      hypothesisId: "H1,H4",
+      location: "fetchFull:chunk",
+      message: "chunk received",
+      data: { loops, crOk: cr.ok, crStatus: cr.status, addLen: add.length, pagesLenAfter: pages.length + add.length, total },
+    });
+    // #endregion
     if (add.length === 0) break;
     pages.push(...add);
   }
@@ -124,6 +198,20 @@ async function initializeResultPage() {
         { credentials: "include" }
       );
 
+      // #region agent log
+      __seoDbg({
+        hypothesisId: "H2,H5",
+        location: "init:overviewFetch",
+        message: "overview response",
+        data: {
+          tryN: tries,
+          status: res.status,
+          ok: res.ok,
+          ct: res.headers && res.headers.get ? res.headers.get("content-type") : "",
+        },
+      });
+      // #endregion
+
       if (res.status === 401) {
         window.location.replace("/");
         return;
@@ -138,7 +226,32 @@ async function initializeResultPage() {
         return;
       }
 
-      const data = await res.json();
+      let data;
+      try {
+        data = await res.json();
+      } catch (eo) {
+        // #region agent log
+        __seoDbg({
+          hypothesisId: "H5",
+          location: "init:overviewJsonFail",
+          message: String(eo && eo.message ? eo.message : eo),
+          data: { tryN: tries },
+        });
+        // #endregion
+        throw eo;
+      }
+      // #region agent log
+      __seoDbg({
+        hypothesisId: "H2",
+        location: "init:overviewParsed",
+        message: "overview parsed",
+        data: {
+          scanStatus: data.scan && data.scan.status,
+          pageTotal: data.pageTotal,
+          overviewFlag: !!data.overview,
+        },
+      });
+      // #endregion
       SEOState.scan = data.scan;
       SEOState.scanInfo = {
         ...data.scan,
@@ -181,7 +294,29 @@ async function initializeResultPage() {
         SEOState.allCrawlData = full.pages || [];
         SEOState.summary = full.summary || {};
         SEOState.scanHistory = full.history || [];
+        // #region agent log
+        __seoDbg({
+          hypothesisId: "H4",
+          location: "init:afterFullMerge",
+          message: "full bundle merged",
+          data: {
+            mergedPages: SEOState.allCrawlData.length,
+            mergedStatus: full.scan && full.scan.status,
+          },
+        });
+        // #endregion
       } catch (e) {
+        // #region agent log
+        __seoDbg({
+          hypothesisId: "H1",
+          location: "init:fetchFullRejected",
+          message: e && e.message ? e.message : String(e),
+          data: {
+            status: e && e.status,
+            stackSnippet: e && e.stack ? String(e.stack).slice(0, 400) : "",
+          },
+        });
+        // #endregion
         if (e.status === 401) {
           window.location.replace("/");
           return;
@@ -197,8 +332,32 @@ async function initializeResultPage() {
             SEOState.summary?.executiveSummary || "サマリーがありません";
       }
 
-      calculateMetrics();
-      if (typeof renderAll === "function") renderAll();
+      // #region agent log
+      __seoDbg({
+        hypothesisId: "H3,H4",
+        location: "init:beforeRender",
+        message: "about to metrics+renderAll",
+        data: { mergedSt, crawlPages: (SEOState.allCrawlData && SEOState.allCrawlData.length) || 0 },
+      });
+      // #endregion
+
+      try {
+        calculateMetrics();
+        if (typeof renderAll === "function") renderAll();
+      } catch (rendErr) {
+        // #region agent log
+        __seoDbg({
+          hypothesisId: "H3",
+          location: "init:renderOrMetricsFail",
+          message: rendErr && rendErr.message ? rendErr.message : String(rendErr),
+          data: {
+            stackSnippet:
+              rendErr && rendErr.stack ? String(rendErr.stack).slice(0, 420) : "",
+          },
+        });
+        // #endregion
+        throw rendErr;
+      }
       if (mergedSt === "failed") {
         break;
       }
@@ -211,6 +370,18 @@ async function initializeResultPage() {
       alert("スキャンがタイムアウトしました。一覧から再度開いてください。");
     }
   } catch (e) {
+    // #region agent log
+    __seoDbg({
+      hypothesisId: "H1,H3",
+      location: "init:catch",
+      message: e && e.message ? e.message : String(e),
+      data: {
+        name: e && e.name,
+        status: e && e.status,
+        stackSnippet: e && e.stack ? String(e.stack).slice(0, 480) : "",
+      },
+    });
+    // #endregion
     console.error("[result-page]", e && e.message ? e.message : e, e && e.stack ? e.stack : "");
     showErrorAndBack(
       typeof e !== "undefined" && e && e.message
