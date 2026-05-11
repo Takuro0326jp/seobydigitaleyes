@@ -98,7 +98,7 @@ const LABEL_POINT_MAP = {
   "内部リンクやや少ない": 2,
   "PageRank低": 10,
   "PageRank中": 5,
-  "GSC順位圏外": 10,
+  "GSC順位圈外": 10,
   "GSC順位低い": 5,
   "CTRゼロ": 10,
   "CTR低い": 5,
@@ -194,7 +194,7 @@ async function handleStart(req, res) {
     return res.status(401).json({ error: "unauthorized" });
   }
   if (!canWrite(user)) {
-    return res.status(403).json({ error: "閲覧権限のみです。スキャン作成は管理者に依頼してください。" });
+    return res.status(403).json({ error: "魧覧権限のみです。スキャン作成は管理者に依頼してください。" });
   }
 
   const target_url = (
@@ -458,14 +458,12 @@ async function handleResult(req, res) {
       title_char_count: titleStr.length,
       score: scoreFromDeductions,
       score_breakdown: scoreBreakdown,
-      issues,
       depth: r.depth,
       status: r.status_code,
       index_status: noindex ? "noindex" : "index",
       h1_count: r.h1_count ?? 0,
       word_count: wordCount,
       internal_links: r.internal_links,
-      external_links: r.external_links,
       deductions,
       deduction_total: deductionTotal,
       page_rank: r.page_rank != null ? Number(r.page_rank) : null,
@@ -473,7 +471,6 @@ async function handleResult(req, res) {
       outbound_link_count: r.outbound_link_count != null ? Number(r.outbound_link_count) : (r.internal_links ?? null),
       juice_received: r.juice_received != null ? Number(r.juice_received) : null,
       juice_sent: r.juice_sent != null ? Number(r.juice_sent) : null,
-      crawl_depth: r.depth ?? null,
       is_orphan: r.is_orphan ? true : false,
     };
   });
@@ -496,11 +493,9 @@ async function handleResult(req, res) {
     indexablePages: pages.filter((p) => p.index_status === "index").length,
     noindexPages: pages.filter((p) => p.index_status === "noindex").length,
     duplicateTitlePages: pages.filter((p) =>
-      p.issues.some((i) => i.code === "dup_title")
+      p.deductions.some((d) => d.label === "タイトル重複")
     ).length,
-    orphanPages: pages.filter((p) =>
-      p.issues.some((i) => i.code === "orphan")
-    ).length,
+    orphanPages: pages.filter((p) => p.is_orphan === true).length,
     executiveSummary: "",
   };
   summary.executiveSummary = buildExecutiveSummary(summary);
