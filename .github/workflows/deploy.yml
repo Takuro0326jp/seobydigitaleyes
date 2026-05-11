@@ -25,18 +25,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # 複数行の DEPLOY_SSH_KEY を ${{ secrets.* }} で run スクリプトへ直展開するとシェルが構文エラーになり即終了することがあるため、env 経由でのみ参照する。
-      - name: Require deploy secrets
-        env:
-          _H: ${{ secrets.DEPLOY_HOST }}
-          _U: ${{ secrets.DEPLOY_USER }}
-          _K: ${{ secrets.DEPLOY_SSH_KEY }}
-        run: |
-          if [ -z "$_H" ] || [ -z "$_U" ] || [ -z "$_K" ]; then
-            echo "::error::DEPLOY_HOST / DEPLOY_USER / DEPLOY_SSH_KEY のいずれかが Secret に未設定です（または無効です）"
-            exit 1
-          fi
-
+      # 「Secret 検証」を env で行うと、複数行の DEPLOY_SSH_KEY が環境により空になり偽の未設定となることがあるため、検証ステップは置かず appleboy が失敗したらログを見る運用とする。
+      # 設定場所：リポジトリ Settings → Secrets and variables → Actions（Environment 側だけに設定していると名前が異なり、この job には届かない）
       # デプロイは SSH 先で npm ci のみ実行。Runner 側の npm ci は不要。
 
       - name: Deploy via SSH
