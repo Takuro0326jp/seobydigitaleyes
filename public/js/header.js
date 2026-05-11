@@ -317,14 +317,14 @@ class="block px-4 py-3 text-[11px] font-bold text-slate-600 hover:bg-slate-50 ho
         </div>
         <div class="px-3 sm:px-8 flex items-center bg-white overflow-x-auto ${isHideNavPage ? "hidden" : ""}" style="scrollbar-gutter:stable;-webkit-overflow-scrolling:touch">
             <div class="flex items-center gap-3 sm:gap-6 pt-3 sm:pt-4" style="padding-bottom:1px">
-                ${mainTab("task",     "TASK",             "gsc-task.html")}
-                ${mainTab("seo",      "SEO",                 "result.html")}
-                ${mainTab("gsc",      "Search Console",      "gsc.html")}
-                ${mainTab("domain",   "Domain Authority",    "domain.html")}
-                ${mainTab("security", "Security",            "security.html")}
-                ${mainTab("strategy", "SEO Strategy",        "strategy.html")}
-                ${mainTab("ads",      "ADs",                 "ads.html")}
-                ${mainTab("heatmap", "Heatmap",             "heatmap.html")}
+                ${mainTab("task",     "タスク",               "gsc-task.html")}
+                ${mainTab("seo",      "SEO",                   "result.html")}
+                ${mainTab("gsc",      "サーチコンソール",      "gsc.html")}
+                ${mainTab("domain",   "ドメインオーソリティ",  "domain.html")}
+                ${mainTab("security", "セキュリティ",          "security.html")}
+                ${mainTab("strategy", "SEO戦略",               "strategy.html")}
+                ${mainTab("ads",      "広告",                  "ads.html")}
+                ${mainTab("heatmap",  "ヒートマップ",          "heatmap.html")}
             </div>
         </div>
         ${seoSubNav}
@@ -485,10 +485,10 @@ class="block px-4 py-3 text-[11px] font-bold text-slate-600 hover:bg-slate-50 ho
 
     const tabs = [
       { id: "home", icon: "⌂", label: "ホーム", href: "seo.html" },
-      { id: "task", icon: "✓", label: "TASK", href: "gsc-task.html" + urlSuffix },
+      { id: "task", icon: "✓", label: "タスク", href: "gsc-task.html" + urlSuffix },
       { id: "seo", icon: "◉", label: "SEO", href: "result.html" + urlSuffix },
       { id: "gsc", icon: "◎", label: "GSC", href: "gsc.html" + urlSuffix },
-      { id: "ads", icon: "▣", label: "ADs", href: "ads.html" + urlSuffix },
+      { id: "ads", icon: "▣", label: "広告", href: "ads.html" + urlSuffix },
       { id: "more", icon: "⋯", label: "その他", href: "#" },
     ];
 
@@ -521,10 +521,10 @@ class="block px-4 py-3 text-[11px] font-bold text-slate-600 hover:bg-slate-50 ho
 
     // 「その他」メニュー
     const moreItems = [
-      { label: "Domain Authority", href: "domain.html" + urlSuffix, id: "domain", scan: true },
-      { label: "Security", href: "security.html" + urlSuffix, id: "security", scan: true },
-      { label: "SEO Strategy", href: "strategy.html" + urlSuffix, id: "strategy", scan: true },
-      { label: "Heatmap", href: "heatmap.html", id: "heatmap", scan: false },
+      { label: "ドメインオーソリティ", href: "domain.html" + urlSuffix, id: "domain", scan: true },
+      { label: "セキュリティ", href: "security.html" + urlSuffix, id: "security", scan: true },
+      { label: "SEO戦略", href: "strategy.html" + urlSuffix, id: "strategy", scan: true },
+      { label: "ヒートマップ", href: "heatmap.html", id: "heatmap", scan: false },
       { label: "設定", href: "settings.html", id: "settings", scan: false },
     ];
     const overlay = document.createElement("div");
