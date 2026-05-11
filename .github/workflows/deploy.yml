@@ -52,8 +52,8 @@ jobs:
               cd "${{ env.DEPLOY_DIR }}"
             fi
             echo "Deploy dir: $(pwd)"
-            command -v git >/dev/null || { echo "::error::git が見つかりません"; exit 1; }
-            command -v npm >/dev/null || { echo "::error::npm が見つかりません（Node を PATH に載せてください）"; exit 1; }
+            command -v git >/dev/null || { echo "ERROR: git が見つかりません"; exit 1; }
+            command -v npm >/dev/null || { echo "ERROR: npm が見つかりません（Node を PATH に載せてください）"; exit 1; }
             git fetch origin main && git reset --hard origin/main
             npm ci --omit=dev
             if command -v pm2 >/dev/null 2>&1; then
@@ -63,6 +63,6 @@ jobs:
               "$HOME/.npm-global/bin/pm2" restart seoscan 2>/dev/null || "$HOME/.npm-global/bin/pm2" start server.js --name seoscan
               "$HOME/.npm-global/bin/pm2" save
             else
-              echo "::error::pm2 が見つかりません（グローバル install か PATH を確認してください）"
+              echo "ERROR: pm2 が見つかりません（グローバル install か PATH を確認してください）"
               exit 1
             fi
