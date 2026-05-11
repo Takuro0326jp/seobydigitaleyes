@@ -23,8 +23,9 @@ function safeRequire(modulePath, label) {
 const authRoutes = require("./routes/auth");
 // 管理ルートは未マウントだと画面が404で停止するため必須として扱う
 const adminRoutes = require("./routes/admin/index");
-const scanRoutes = safeRequire("./routes/scans", "routes/scans");
-const scanModule = safeRequire("./routes/scan", "routes/scan");
+// nft の静的解析のために文字列リテラルで直接 require（safeRequire の変数引数は追跡不可）
+const scanRoutes = require("./routes/scans");
+const scanModule = require("./routes/scan");
 const gscRoutes = safeRequire("./routes/gsc", "routes/gsc");
 const strategyRoutes = safeRequire("./routes/strategy", "routes/strategy");
 const adsRoutes = safeRequire("./routes/ads", "routes/ads");
@@ -203,7 +204,7 @@ app.get("/api/proxy", async (req, res) => {
     );
     const viewportWidth = uaParam === "desktop" ? "width=device-width, initial-scale=1" : "width=320, initial-scale=1";
     const injectTags = `<base href="${safeHref}"><meta name="viewport" content="${viewportWidth}">`;
-    if (/<head(\s[^>]*)?>/i.test(html)) {
+    if (/<head(\s[^>]*)?>/.test(html)) {
       html = html.replace(/<head(\s[^>]*)?>/i, `<head$1>${injectTags}`);
     } else {
       html = html.replace(/<html(\s[^>]*)?>/i, `<html$1><head>${injectTags}</head>`);
