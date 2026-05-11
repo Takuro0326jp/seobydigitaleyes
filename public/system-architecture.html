@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>システム構成図 | SEO Scan by DIGITALEYES</title>
+  <link href="/css/tailwind.css" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=Noto+Sans+JP:wght@400;500;700;900&display=swap" rel="stylesheet">
+  <style>
+    body { font-family: 'Inter', 'Noto Sans JP', sans-serif; background: #f8fafc; }
+
+    .arch-card {
+      background: #fff;
+      border: 1px solid #e2e8f0;
+      border-radius: 16px;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.04);
+      padding: 28px 32px;
+    }
+    .section-title {
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: #94a3b8;
+      margin-bottom: 20px;
+    }
+
+    /* ── ボックス ── */
+    .arch-box {
+      border: 1.5px solid;
+      border-radius: 10px;
+      padding: 12px 16px;
+      font-size: 13px;
+      font-weight: 600;
+    }
+    /* 意味のある色: 本番=オレンジ / ステージング=ブルー / DB=グリーン */
+    .arch-box.prod    { border-color: #f97316; background: #fff7ed; color: #c2410c; }
+    .arch-box.staging { border-color: #3b82f6; background: #eff6ff; color: #1d4ed8; }
+    .arch-box.db      { border-color: #22c55e; background: #f0fdf4; color: #15803d; }
+    /* その他はすべて neutral */
+    .arch-box.neutral { border-color: #cbd5e1; background: #f8fafc; color: #334155; }
+
+    .arch-label {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      padding: 3px 8px;
+      border-radius: 4px;
+      display: inline-block;
+      margin-bottom: 8px;
+    }
+
+    .flow-arrow {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #cbd5e1;
+      font-size: 20px;
+      font-weight: 300;
+      margin: 4px 0;
+    }
+    .flow-step {
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+    }
+
+    /* ── バッジ ── */
+    .badge {
+      font-size: 10px;
+      font-weight: 700;
+      padding: 2px 7px;
+      border-radius: 99px;
+      display: inline-block;
+    }
+    .badge-prod    { background: #ffedd5; color: #c2410c; }
+    .badge-staging { background: #dbeafe; color: #1d4ed8; }
+    .badge-db      { background: #dcfce7; color: #15803d; }
+    .badge-neutral { background: #f1f5f9; color: #475569; }
+
+    /* ── 外部連携グリッド ── */
+    .ext-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+      gap: 10px;
+    }
+    .ext-item {
+      border: 1px solid #e2e8f0;
+      border-radius: 10px;
+      padding: 12px;
+      text-align: center;
+      font-size: 12px;
+      font-weight: 600;
+      color: #334155;
+      background: #fff;
+    }
+    .ext-item .icon { font-size: 22px; display: block; margin-bottom: 6px; }
+    .ext-item .sub  { font-size: 10px; color: #94a3b8; font-weight: 400; margin-top: 2px; }
+
+    /* ── インフラレイアウト ── */
+    .infra-wrapper {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+    @media (max-width: 768px) {
+      .infra-wrapper { grid-template-columns: 1fr; }
+      .ext-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+
+    /* ── テーブル ── */
+    .env-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .env-table th { text-align: left; font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.06em; padding: 8px 12px; border-bottom: 2px solid #f1f5f9; }
+    .env-table td { padding: 9px 12px; border-bottom: 1px solid #f8fafc; vertical-align: top; }
+    .env-table tr:hover td { background: #f8fafc; }
+    .env-table td:first-child { font-family: monospace; font-size: 12px; color: #475569; white-space: nowrap; }
+    .env-table td:last-child { color: #64748b; }
+  </style>
+</head>
+<body class="min-h-screen">
+
+  <div id="header-container"></div>
+
+  <main class="max-w-5xl mx-auto px-4 sm:px-6 py-10 space-y-8">
+
+    <!-- タイトル -->
+    <div style="padding-top: 2rem;">
+      <h1 class="text-2xl font-black text-slate-900">システム構成図</h1>
+      <p class="text-sm text-slate-500 mt-1">SEO Scan by DIGITALEYES — アーキテクチャ全体像</p>
+    </div>
+
+    <!-- ① インフラ構成 -->
+    <div class="arch-card">
+      <p class="section-title">Infrastructure</p>
+      <div class="infra-wrapper">
+
+        <!-- 本番 -->
+        <div>
+          <div class="arch-label badge badge-prod mb-3">本番 (Production)</div>
+          <div class="arch-box prod">
+            <div class="text-xs font-bold mb-2">AWS EC2 — digital-eyes.site</div>
+            <div class="space-y-1 text-xs font-normal text-orange-900/70">
+              <div>52.195.168.63 · ap-northeast-1</div>
+              <div class="flex gap-2 flex-wrap mt-2">
+                <span class="badge badge-prod">nginx (リバースプロキシ)</span>
+                <span class="badge badge-prod">PM2 (seoscan プロセス)</span>
+              </div>
+              <div class="mt-2 font-semibold">Node.js + Express (port 3000)</div>
+            </div>
+          </div>
+          <div class="flow-arrow">↓</div>
+          <div class="arch-box neutral text-xs">
+            <span class="font-bold">デプロイ：</span>git pull origin main &amp;&amp; pm2 restart seoscan
+          </div>
+        </div>
+
+        <!-- ステージング -->
+        <div>
+          <div class="arch-label badge badge-staging mb-3">ステージング (Staging)</div>
+          <div class="arch-box staging">
+            <div class="text-xs font-bold mb-2">Vercel — staging ブランチ自動デプロイ</div>
+            <div class="space-y-1 text-xs font-normal text-blue-900/70">
+              <div>seoscan-git-staging-*.vercel.app</div>
+              <div class="flex gap-2 flex-wrap mt-2">
+                <span class="badge badge-staging">静的ファイル (HTML/CSS/JS)</span>
+                <span class="badge badge-staging">Serverless Functions</span>
+              </div>
+              <div class="mt-2 font-semibold">git push → 自動ビルド・デプロイ</div>
+            </div>
+          </div>
+          <div class="flow-arrow">↓</div>
+          <div class="arch-box neutral text-xs">
+            <span class="font-bold">確認後：</span>PR → main merge → EC2 反映
+          </div>
+        </div>
+
+      </div>
+
+      <!-- ブランチ戦略 -->
+      <div class="mt-6 p-4 bg-slate-50 rounded-xl">
+        <p class="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">Git ブランチ戦略</p>
+        <div class="flex items-center gap-2 flex-wrap text-xs">
+          <span class="arch-box neutral px-3 py-2 text-xs">feature/xxx</span>
+          <span class="text-slate-400">→</span>
+          <span class="arch-box neutral px-3 py-2 text-xs">develop</span>
+          <span class="text-slate-400">→</span>
+          <span class="arch-box staging px-3 py-2 text-xs">staging (Vercel自動)</span>
+          <span class="text-slate-400">→</span>
+          <span class="arch-box prod px-3 py-2 text-xs">main (EC2本番)</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ② アプリケーション構成 -->
+    <div class="arch-card">
+      <p class="section-title">Application Architecture</p>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+
+        <div class="arch-box neutral">
+          <div class="arch-label badge badge-neutral mb-2">Frontend</div>
+          <ul class="text-xs space-y-1 font-normal text-slate-600">
+            <li>public/*.html（各機能ページ）</li>
+            <li>public/js/*.js（機能別スクリプト）</li>
+            <li>public/css/tailwind.css + style.css</li>
+            <li>header.js（共通ナビ）</li>
+            <li class="font-semibold mt-2 text-slate-700">PWA対応（manifest + sw.js）</li>
+          </ul>
+        </div>
+
+        <div class="arch-box neutral">
+          <div class="arch-label badge badge-neutral mb-2">Backend (Express)</div>
+          <ul class="text-xs space-y-1 font-normal text-slate-600">
+            <li>server.js（エントリーポイント）</li>
+            <li>routes/auth.js（認証）</li>
+            <li>routes/scan.js + scans.js（SEO診断）</li>
+            <li>routes/gsc.js（Search Console）</li>
+            <li>routes/ads.js / meta.js（広告）</li>
+            <li>routes/heatmap.js（ヒートマップ）</li>
+            <li>routes/strategy.js（AIアドバイス）</li>
+            <li>services/（共通ロジック）</li>
+          </ul>
+        </div>
+
+        <div class="arch-box db">
+          <div class="arch-label badge badge-db mb-2">Database</div>
+          <ul class="text-xs space-y-1 font-normal text-green-900/80">
+            <li>MySQL（mysql2）</li>
+            <li class="font-semibold mt-1">主要テーブル：</li>
+            <li>users / companies</li>
+            <li>scans / scan_pages / scan_links</li>
+            <li>gsc_tokens / google_ads_tokens</li>
+            <li>heatmap_sites / heatmap_events</li>
+            <li>action_items</li>
+          </ul>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ③ SEOスキャン フロー -->
+    <div class="arch-card">
+      <p class="section-title">SEO Scan Flow (Puppeteer クロール)</p>
+      <div class="flex flex-col items-center gap-1 max-w-md mx-auto">
+        <div class="arch-box neutral w-full text-center text-xs">ユーザーが対象URLを入力 → POST /api/scans/start</div>
+        <div class="flow-arrow">↓</div>
+        <div class="arch-box neutral w-full text-xs">
+          <div class="font-bold mb-1">services/crawlQueue.js + scanCrawl.js</div>
+          <div class="font-normal">Puppeteer でページクロール・レンダリング</div>
+          <div class="font-normal">内部リンク抽出・再帰クロール</div>
+        </div>
+        <div class="flow-arrow">↓</div>
+        <div class="arch-box neutral w-full text-xs">
+          <div class="font-bold mb-1">解析項目</div>
+          <div class="flex gap-2 flex-wrap font-normal">
+            <span class="badge badge-neutral">タイトル/メタ</span>
+            <span class="badge badge-neutral">見出し構造</span>
+            <span class="badge badge-neutral">画像alt</span>
+            <span class="badge badge-neutral">リンク構造</span>
+            <span class="badge badge-neutral">セキュリティ</span>
+            <span class="badge badge-neutral">モバイル対応</span>
+            <span class="badge badge-neutral">サイトマップ</span>
+          </div>
+        </div>
+        <div class="flow-arrow">↓</div>
+        <div class="arch-box db w-full text-center text-xs">MySQL に保存 → GET /api/scans/result/:id で結果取得</div>
+        <div class="flow-arrow">↓</div>
+        <div class="arch-box neutral w-full text-xs">
+          <div class="font-bold">Gemini AI (services/actionItemGeneration.js)</div>
+          <div class="font-normal">スキャン結果をもとに改善アクションアイテム生成</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ④ ヒートマップ フロー -->
+    <div class="arch-card">
+      <p class="section-title">Heatmap Tracking Flow</p>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div class="flow-step gap-1">
+          <div class="arch-label badge badge-neutral mb-1">データ収集</div>
+          <div class="arch-box neutral text-xs">
+            <div class="font-bold mb-1">外部サイト（クライアントのHP）</div>
+            <code class="text-[11px] block bg-slate-100 rounded p-2 mt-1 text-slate-600 font-normal">&lt;script src="/js/seoscan-tracker.js"<br>&nbsp;&nbsp;data-site-key="YOUR_KEY" async&gt;</code>
+          </div>
+          <div class="flow-arrow">↓</div>
+          <div class="arch-box neutral text-xs">
+            <div class="font-bold mb-1">seoscan-tracker.js</div>
+            <ul class="font-normal space-y-1 text-slate-600">
+              <li>・visitor_id 生成（localStorage永続化）</li>
+              <li>・クリック/スクロールイベント収集</li>
+              <li>・POST /api/heatmap/collect でビーコン送信</li>
+            </ul>
+          </div>
+          <div class="flow-arrow">↓</div>
+          <div class="arch-box db text-xs">
+            <div class="font-bold">MySQL 保存</div>
+            <div class="font-normal">heatmap_sites / heatmap_events</div>
+          </div>
+        </div>
+        <div class="flow-step gap-1">
+          <div class="arch-label badge badge-neutral mb-1">可視化</div>
+          <div class="arch-box neutral text-xs">
+            <div class="font-bold mb-1">GET /api/heatmap/sites/:id/data</div>
+            <div class="font-normal">ページ別クリックポイント集計</div>
+          </div>
+          <div class="flow-arrow">↓</div>
+          <div class="arch-box neutral text-xs">
+            <div class="font-bold mb-1">services/screenshot.js</div>
+            <div class="font-normal">Puppeteer でスクリーンショット取得<br>ヒートマップオーバーレイ生成</div>
+          </div>
+          <div class="flow-arrow">↓</div>
+          <div class="arch-box neutral text-xs">
+            <div class="font-bold">heatmap.html</div>
+            <div class="font-normal">Canvas でクリック密度を可視化<br>スクロール到達率・熟読エリア表示</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ⑤ 外部連携 -->
+    <div class="arch-card">
+      <p class="section-title">External Integrations</p>
+      <div class="ext-grid">
+        <div class="ext-item">
+          <span class="icon">🔍</span>
+          <div>Google Search Console</div>
+          <div class="sub">OAuth2 / googleapis</div>
+        </div>
+        <div class="ext-item">
+          <span class="icon">📊</span>
+          <div>Google Ads</div>
+          <div class="sub">OAuth2 / Google Ads API</div>
+        </div>
+        <div class="ext-item">
+          <span class="icon">📘</span>
+          <div>Meta Marketing API</div>
+          <div class="sub">Meta OAuth2</div>
+        </div>
+        <div class="ext-item">
+          <span class="icon">🟡</span>
+          <div>Yahoo Ads</div>
+          <div class="sub">Yahoo OAuth2</div>
+        </div>
+        <div class="ext-item">
+          <span class="icon">✨</span>
+          <div>Gemini AI</div>
+          <div class="sub">アクションアイテム生成</div>
+        </div>
+        <div class="ext-item">
+          <span class="icon">📧</span>
+          <div>AWS SES</div>
+          <div class="sub">メール通知 / 招待</div>
+        </div>
+        <div class="ext-item">
+          <span class="icon">🤖</span>
+          <div>Puppeteer</div>
+          <div class="sub">クロール / スクリーンショット</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ⑥ 認証・アクセス制御 -->
+    <div class="arch-card">
+      <p class="section-title">Auth & Access Control</p>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div class="arch-box neutral text-xs">
+          <div class="font-bold mb-2">セッション認証 (services/session.js)</div>
+          <ul class="space-y-1 font-normal text-slate-600">
+            <li>・JWT Cookie ベース認証</li>
+            <li>・/api/auth/* でログイン/ログアウト</li>
+            <li>・ロール: admin / user</li>
+          </ul>
+        </div>
+        <div class="arch-box neutral text-xs">
+          <div class="font-bold mb-2">アクセス制御 (services/accessControl.js)</div>
+          <ul class="space-y-1 font-normal text-slate-600">
+            <li>・会社 (company) 単位でのデータ分離</li>
+            <li>・ユーザー URL アクセス権管理</li>
+            <li>・ヒートマップ: site_key 認証</li>
+          </ul>
+        </div>
+        <div class="arch-box neutral text-xs">
+          <div class="font-bold mb-2">レート制限</div>
+          <ul class="space-y-1 font-normal text-slate-600">
+            <li>・/api/* — 400 req/分</li>
+            <li>・express-rate-limit 使用</li>
+          </ul>
+        </div>
+        <div class="arch-box neutral text-xs">
+          <div class="font-bold mb-2">セキュリティ</div>
+          <ul class="space-y-1 font-normal text-slate-600">
+            <li>・helmet.js（HTTPヘッダー強化）</li>
+            <li>・CORS: tracker は cross-origin 許可</li>
+            <li>・nginx: HTTPS終端（本番）</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- ⑦ 環境変数 -->
+    <div class="arch-card">
+      <p class="section-title">Environment Variables</p>
+      <table class="env-table">
+        <thead>
+          <tr>
+            <th>変数名</th>
+            <th>用途</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td>DATABASE_URL</td><td>MySQL 接続文字列</td></tr>
+          <tr><td>PORT</td><td>Express リスニングポート（デフォルト: 3000）</td></tr>
+          <tr><td>JWT_SECRET</td><td>セッション JWT 署名キー</td></tr>
+          <tr><td>GOOGLE_CLIENT_ID / SECRET</td><td>Google OAuth2（GSC / Google Ads）</td></tr>
+          <tr><td>META_APP_ID / SECRET</td><td>Meta Marketing API OAuth2</td></tr>
+          <tr><td>YAHOO_CLIENT_ID / SECRET</td><td>Yahoo Ads API OAuth2</td></tr>
+          <tr><td>GEMINI_API_KEY</td><td>Gemini AI（アクションアイテム生成）</td></tr>
+          <tr><td>SES_FROM / AWS_REGION</td><td>AWS SES メール送信</td></tr>
+          <tr><td>RATE_LIMIT_MAX</td><td>API レート制限（req/分、デフォルト: 400）</td></tr>
+          <tr><td>NODE_ENV</td><td>production / development 切り替え</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="text-center text-xs text-slate-400 pb-6">
+      SEO Scan by DIGITALEYES — Internal Documentation
+    </div>
+
+  </main>
+
+  <script src="/js/header.js?v=12"></script>
+</body>
+</html>
