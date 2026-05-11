@@ -29,17 +29,20 @@ jobs:
 
       # DEPLOY_SSH_KEY は run スクリプトへ直書きしない（複数行で壊れる）。
       # 「サーバーホストが見つかりません」= DEPLOY_HOST Secret が空（appleboy / drone-ssh の典型メッセージ）
-      # 設定場所：リポジトリ Settings → Secrets and variables → Actions（Environment だけではこの job には届かない）
+      # 設定場所：このワークフローが走るリポジトリの Settings → Secrets and variables → Actions → Repository secrets
+      # （フォークに push している場合は「フォーク側」、本家に push している場合は「本家側」に同じ名前で必要）
+      # Environment のみに Secret があるとこの job には届かない（workflow に environment: が無いため）
       # デプロイは SSH 先で npm ci のみ実行。
 
       - name: Require DEPLOY_HOST and DEPLOY_USER
+        env:
+          _CHECK_HOST: ${{ secrets.DEPLOY_HOST }}
+          _CHECK_USER: ${{ secrets.DEPLOY_USER }}
         run: |
-          if [ -z "${{ secrets.DEPLOY_HOST }}" ]; then
-            echo "::error::DEPLOY_HOST が未設定または空です → appleboy は「サーバーホストが見つかりません」で失敗します。Settings → Secrets and variables → Actions に EC2 の IP または公開 DNS を登録してください。"
-            exit 1
-          fi
-          if [ -z "${{ secrets.DEPLOY_USER }}" ]; then
-            echo "::error::DEPLOY_USER が未設定または空です。"
+          echo "Running in repository: $GITHUB_REPOSITORY"
+          if [ -z "$_CHECK_HOST" ] || [ -z "$_CHECK_USER" ]; then
+            echo "::error::DEPLOY_HOST または DEPLOY_USER が、このリポジトリの Actions から参照できていません（空です）。"
+            echo "::error::上記 Running in repository と同じ URL の Settings → Secrets and variables → Actions で、名前を正確に DEPLOY_HOST / DEPLOY_USER / DEPLOY_SSH_KEY として登録してください。"
             exit 1
           fi
 
