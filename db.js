@@ -29,6 +29,13 @@ const pool = mysql.createPool({
   keepAliveInitialDelay: 10000,
   connectTimeout: 15000,
 });
+pool.__resolvedDbConfig = {
+  hostValue: DB_HOST || null,
+  databaseName: DB_NAME || null,
+  portValue: DB_PORT ? Number(DB_PORT) : 3306,
+  userSet: Boolean(DB_USER),
+  passwordSet: Boolean(DB_PASSWORD),
+};
 
 // 未処理の接続エラーをキャッチ（EHOSTUNREACH, ECONNRESET 等）
 let _lastTransientLog = 0;
@@ -47,4 +54,3 @@ pool.on("error", (err) => {
 });
 
 module.exports = pool;
-
