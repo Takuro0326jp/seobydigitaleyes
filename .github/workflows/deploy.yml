@@ -25,11 +25,17 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # 複数行の DEPLOY_SSH_KEY を ${{ secrets.* }} で run スクリプトへ直展開するとシェルが構文エラーになり即終了することがあるため、env 経由でのみ参照する。
       - name: Require deploy secrets
+        env:
+          _H: ${{ secrets.DEPLOY_HOST }}
+          _U: ${{ secrets.DEPLOY_USER }}
+          _K: ${{ secrets.DEPLOY_SSH_KEY }}
         run: |
-          if [ -z "${{ secrets.DEPLOY_HOST }}" ]; then echo "::error::Secret DEPLOY_HOST が未設定です"; exit 1; fi
-          if [ -z "${{ secrets.DEPLOY_USER }}" ]; then echo "::error::Secret DEPLOY_USER が未設定です"; exit 1; fi
-          if [ -z "${{ secrets.DEPLOY_SSH_KEY }}" ]; then echo "::error::Secret DEPLOY_SSH_KEY が未設定です"; exit 1; fi
+          if [ -z "$_H" ] || [ -z "$_U" ] || [ -z "$_K" ]; then
+            echo "::error::DEPLOY_HOST / DEPLOY_USER / DEPLOY_SSH_KEY のいずれかが Secret に未設定です（または無効です）"
+            exit 1
+          fi
 
       # デプロイは SSH 先で npm ci のみ実行。Runner 側の npm ci は不要。
 
