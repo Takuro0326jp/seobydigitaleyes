@@ -18,11 +18,20 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    env:
+      SSH_PORT: ${{ secrets.DEPLOY_PORT }}
+      DEPLOY_DIR: ${{ secrets.DEPLOY_PATH }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # デプロイは SSH 先で npm ci のみ実行。Runner 側の npm ci は本番コードに不要かつ時間がかかり、失敗ポイントになるため省略。
+      - name: Require deploy secrets
+        run: |
+          if [ -z "${{ secrets.DEPLOY_HOST }}" ]; then echo "::error::Secret DEPLOY_HOST が未設定です"; exit 1; fi
+          if [ -z "${{ secrets.DEPLOY_USER }}" ]; then echo "::error::Secret DEPLOY_USER が未設定です"; exit 1; fi
+          if [ -z "${{ secrets.DEPLOY_SSH_KEY }}" ]; then echo "::error::Secret DEPLOY_SSH_KEY が未設定です"; exit 1; fi
+
+      # デプロイは SSH 先で npm ci のみ実行。Runner 側の npm ci は不要。
 
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.2.4
@@ -30,12 +39,30 @@ jobs:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
-          port: ${{ secrets.DEPLOY_PORT != '' && secrets.DEPLOY_PORT || '22' }}
+          port: ${{ env.SSH_PORT || '22' }}
           command_timeout: 30m
           script: |
             set -e
-            cd ${{ secrets.DEPLOY_PATH != '' && secrets.DEPLOY_PATH || '~/seoscan' }}
+            if [ -f "$HOME/.nvm/nvm.sh" ]; then
+              . "$HOME/.nvm/nvm.sh"
+            fi
+            if [ -z "${{ env.DEPLOY_DIR }}" ]; then
+              cd ~/seoscan
+            else
+              cd "${{ env.DEPLOY_DIR }}"
+            fi
+            echo "Deploy dir: $(pwd)"
+            command -v git >/dev/null || { echo "::error::git が見つかりません"; exit 1; }
+            command -v npm >/dev/null || { echo "::error::npm が見つかりません（Node を PATH に載せてください）"; exit 1; }
             git fetch origin main && git reset --hard origin/main
             npm ci --omit=dev
-            pm2 restart seoscan 2>/dev/null || pm2 start server.js --name seoscan
-            pm2 save
+            if command -v pm2 >/dev/null 2>&1; then
+              pm2 restart seoscan 2>/dev/null || pm2 start server.js --name seoscan
+              pm2 save
+            elif [ -x "$HOME/.npm-global/bin/pm2" ]; then
+              "$HOME/.npm-global/bin/pm2" restart seoscan 2>/dev/null || "$HOME/.npm-global/bin/pm2" start server.js --name seoscan
+              "$HOME/.npm-global/bin/pm2" save
+            else
+              echo "::error::pm2 が見つかりません（グローバル install か PATH を確認してください）"
+              exit 1
+            fi
