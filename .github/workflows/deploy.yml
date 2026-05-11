@@ -3,7 +3,7 @@
 #   DEPLOY_HOST    - サーバーのホスト名 or IP
 #   DEPLOY_USER    - SSH ユーザー名
 #   DEPLOY_SSH_KEY - 秘密鍵（全文）
-#   DEPLOY_PATH    - デプロイ先パス（任意・デフォルト: ~/seoscan）
+#   DEPLOY_PATH    - デプロイ先の絶対パス（server.js があるディレクトリ）。未設定時は ~/seobydigitaleyes → ~/seoscan の順で存在する方へ cd
 #   DEPLOY_PORT    - SSH ポート（任意・デフォルト: 22）
 # 事前: サーバーで git clone し、.env を配置、pm2 をインストール
 # DNS: 公開ドメインの A レコードは DEPLOY_HOST（Elastic IP）を指すこと。
@@ -59,10 +59,16 @@ jobs:
             if [ -f "$HOME/.nvm/nvm.sh" ]; then
               . "$HOME/.nvm/nvm.sh"
             fi
-            if [ -z "${{ env.DEPLOY_DIR }}" ]; then
-              cd ~/seoscan
+            _d="${{ env.DEPLOY_DIR }}"
+            if [ -n "$_d" ]; then
+              cd "$_d" || { echo "ERROR: DEPLOY_PATH で指定したディレクトリに cd できません: $_d"; exit 1; }
+            elif [ -d "$HOME/seobydigitaleyes" ]; then
+              cd "$HOME/seobydigitaleyes"
+            elif [ -d "$HOME/seoscan" ]; then
+              cd "$HOME/seoscan"
             else
-              cd "${{ env.DEPLOY_DIR }}"
+              echo "ERROR: デプロイ先が見つかりません。EC2 で server.js があるパスを確認し、GitHub Secret DEPLOY_PATH に絶対パスで設定してください（例: /home/ubuntu/seobydigitaleyes）。"
+              exit 1
             fi
             echo "Deploy dir: $(pwd)"
             command -v git >/dev/null || { echo "ERROR: git が見つかりません"; exit 1; }
