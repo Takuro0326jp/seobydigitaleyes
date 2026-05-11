@@ -98,7 +98,7 @@ const LABEL_POINT_MAP = {
   "内部リンクやや少ない": 2,
   "PageRank低": 10,
   "PageRank中": 5,
-  "GSC順位圏外": 10,
+  "GSC順位圈外": 10,
   "GSC順位低い": 5,
   "CTRゼロ": 10,
   "CTR低い": 5,
@@ -510,7 +510,7 @@ async function handleStart(req, res) {
     return res.status(401).json({ error: "unauthorized" });
   }
   if (!canWrite(user)) {
-    return res.status(403).json({ error: "閲覧権限のみです。スキャン作成は管理者に依頼してください。" });
+    return res.status(403).json({ error: "魧覧権限のみです。スキャン作成は管理者に依頼してください。" });
   }
 
   const target_url = (
