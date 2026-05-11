@@ -74,8 +74,13 @@ app.get("/api/ping", (req, res) => {
   res.json({ ok: true, pid: process.pid, msg: "このサーバーが応答しています" });
 });
 
+app.get("/api/env-info", (req, res) => {
+  res.json({ env: process.env.VERCEL_ENV || "development" });
+});
+
 // DB接続・保存の診断（scans, scan_pages, scan_links の確認）
 app.get("/api/db-check", async (req, res) => {
+  const dbConfig = pool.__resolvedDbConfig || null;
   try {
     await pool.query("SELECT 1");
     const [[scanRow]] = await pool.query(
@@ -86,12 +91,13 @@ app.get("/api/db-check", async (req, res) => {
     res.json({
       ok: true,
       db: "connected",
+      db_config: dbConfig,
       latest_scan: scanRow || null,
       scan_pages_total: pageCount?.c ?? 0,
       scan_links_total: linkCount?.c ?? 0,
     });
   } catch (e) {
-    res.status(500).json({ ok: false, error: e?.message || "DB error" });
+    res.status(500).json({ ok: false, error: e?.message || "DB error", db_config: dbConfig });
   }
 });
 
@@ -952,4 +958,3 @@ if (!isVercel) {
 }
 
 module.exports = app;
-
