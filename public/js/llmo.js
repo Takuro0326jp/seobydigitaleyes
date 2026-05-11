@@ -148,12 +148,22 @@
 
   async function loadScanData() {
     try {
-      const res = await fetch(`/api/scans/result/${encodeURIComponent(scanId)}`, { credentials: "include" });
-      if (res.status === 401) { window.location.replace("/"); return; }
-      if (res.status === 404) { showError("スキャンが見つかりません。"); return; }
-      if (!res.ok) { showError(`エラー (${res.status})`); return; }
+      let data;
+      try {
+        if (typeof window.fetchScanResultBundle === "function") {
+          data = await window.fetchScanResultBundle(scanId);
+        } else {
+          const res = await fetch(`/api/scans/result/${encodeURIComponent(scanId)}`, { credentials: "include" });
+          if (res.status === 401) { window.location.replace("/"); return; }
+          if (res.status === 404) { showError("スキャンが見つかりません。"); return; }
+          if (!res.ok) { showError(`エラー (${res.status})`); return; }
+          data = await res.json();
+        }
+      } catch (e) {
+        if (e.status === 401) { window.location.replace("/"); return; }
+        throw e;
+      }
 
-      const data = await res.json();
       const pages = data.pages || [];
       const scan = data.scan || {};
 

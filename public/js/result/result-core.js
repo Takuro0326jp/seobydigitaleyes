@@ -72,7 +72,7 @@ async function initializeResultPage() {
 
     while (tries < maxTries) {
       const res = await fetch(
-        `/api/scans/result/${encodeURIComponent(scanId)}`,
+        `/api/scans/result/${encodeURIComponent(scanId)}?overview=1`,
         { credentials: "include" }
       );
 
@@ -102,11 +102,15 @@ async function initializeResultPage() {
       SEOState.scanHistory = data.history || [];
 
       const st = data.scan?.status;
+      const pageDisp =
+        typeof data.pageTotal === "number"
+          ? data.pageTotal
+          : SEOState.allCrawlData.length || 0;
       if (st === "queued" || st === "running") {
         showLoading(
           st === "queued"
             ? "キュー待ち… まもなくクロールを開始します"
-            : `クロール中… ${SEOState.allCrawlData.length} ページ取得済み`
+            : `クロール中… ${pageDisp} ページ取得済み`
         );
         await sleep(2000);
         tries++;
@@ -114,6 +118,49 @@ async function initializeResultPage() {
       }
 
       hideLoading();
+
+      try {
+        const full =
+          typeof window.fetchScanResultBundle === "function"
+            ? await window.fetchScanResultBundle(scanId)
+            : await (async () => {
+                const r2 = await fetch(
+                  `/api/scans/result/${encodeURIComponent(scanId)}`,
+                  { credentials: "include" }
+                );
+                if (r2.status === 401) {
+                  window.location.replace("/");
+                  return null;
+                }
+                if (r2.status === 404) {
+                  showErrorAndBack("スキャンが見つかりません。一覧から再度お試しください。");
+                  return null;
+                }
+                if (!r2.ok) {
+                  const er = await r2.json().catch(() => ({}));
+                  showErrorAndBack(er.error || `エラーが発生しました (${r2.status})`);
+                  return null;
+                }
+                return r2.json();
+              })();
+        if (full == null) return;
+
+        SEOState.scan = full.scan;
+        SEOState.scanInfo = {
+          ...full.scan,
+          target_url: full.scan.target_url,
+          status: full.scan.status,
+        };
+        SEOState.allCrawlData = full.pages || [];
+        SEOState.summary = full.summary || {};
+        SEOState.scanHistory = full.history || [];
+      } catch (e) {
+        if (e.status === 401) {
+          window.location.replace("/");
+          return;
+        }
+        throw e;
+      }
 
       if (typeof renderAiSummary === "function") renderAiSummary();
       else {

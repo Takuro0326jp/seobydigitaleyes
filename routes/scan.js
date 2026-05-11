@@ -188,6 +188,322 @@ function buildExecutiveSummary(summary) {
   return t;
 }
 
+/** 単一レスポンスで返すページ数の上限を超えるとチャンク取得に切り替え（転送タイムアウト回避） */
+const RESULT_PAGES_SINGLE_RESPONSE_CAP = Number(process.env.RESULT_PAGES_SINGLE_RESPONSE_CAP || 520);
+/** チャンク1回あたりの最大行数（本番関数の転送サイズにも効くように控えめ） */
+const RESULT_PAGES_CHUNK_SIZE = Math.min(
+  520,
+  Math.max(120, Number(process.env.RESULT_PAGES_CHUNK_SIZE || 380))
+);
+
+async function duplicateTitleLowerSet(scanId) {
+  const [rows] = await pool.query(
+    `SELECT LOWER(TRIM(title)) AS t FROM scan_pages
+     WHERE scan_id = ? AND title IS NOT NULL AND TRIM(title) <> ''
+     GROUP BY LOWER(TRIM(title)) HAVING COUNT(*) > 1`,
+    [scanId]
+  );
+  return new Set((rows || []).map((x) => x.t));
+}
+
+/** /pages が連打されても毎チャンクで GROUP BY を掛けない（共有RDS負荷・接続競合の緩和） */
+const dupTitleSetMemCache = new Map();
+const DUP_TITLE_CACHE_TTL_MS = 3 * 60 * 1000;
+const DUP_TITLE_CACHE_MAX_KEYS = 100;
+
+async function getDuplicateTitleLowerSetCached(scanId) {
+  const now = Date.now();
+  const row = dupTitleSetMemCache.get(scanId);
+  if (row && row.exp > now) return row.set;
+
+  const set = await duplicateTitleLowerSet(scanId);
+  dupTitleSetMemCache.set(scanId, { set, exp: now + DUP_TITLE_CACHE_TTL_MS });
+
+  if (dupTitleSetMemCache.size > DUP_TITLE_CACHE_MAX_KEYS) {
+    for (const [k, v] of dupTitleSetMemCache) {
+      if (v.exp <= now) dupTitleSetMemCache.delete(k);
+    }
+    if (dupTitleSetMemCache.size > DUP_TITLE_CACHE_MAX_KEYS) {
+      const oldest = [...dupTitleSetMemCache.entries()].sort((a, b) => a[1].exp - b[1].exp);
+      const drop = Math.ceil(dupTitleSetMemCache.size / 2);
+      for (let i = 0; i < drop && i < oldest.length; i++) {
+        dupTitleSetMemCache.delete(oldest[i][0]);
+      }
+    }
+  }
+  return set;
+}
+
+async function fetchScanHistoryRows(scanId) {
+  try {
+    const [h] = await pool.query(
+      `SELECT id, avg_score, page_count, critical_issues, recorded_at
+       FROM scan_history WHERE scan_id = ? ORDER BY recorded_at ASC`,
+      [scanId]
+    );
+    return (h || []).map((row) => ({
+      id: row.id,
+      avg_score: row.avg_score,
+      page_count: row.page_count,
+      critical_issues: row.critical_issues,
+      created_at: row.recorded_at,
+    }));
+  } catch {
+    return [];
+  }
+}
+
+async function aggregateSummaryLargeScan(scanId, scanRow) {
+  const [[cntRow]] = await pool.query(
+    `SELECT COUNT(*) AS n FROM scan_pages WHERE scan_id = ?`,
+    [scanId]
+  );
+  const pageCount = Number(cntRow?.n || 0);
+
+  let avgScore = scanRow.avg_score != null ? Number(scanRow.avg_score) : null;
+  if (avgScore == null || Number.isNaN(avgScore)) {
+    const [[aRow]] = await pool.query(
+      `SELECT ROUND(AVG(score)) AS a FROM scan_pages WHERE scan_id = ?`,
+      [scanId]
+    );
+    avgScore = aRow?.a != null ? Number(aRow.a) : null;
+  }
+
+  const [[critRow]] = await pool.query(
+    `
+    SELECT COUNT(*) AS c FROM scan_pages WHERE scan_id = ?
+    AND (
+      IFNULL(status_code, 0) >= 400
+      OR IFNULL(is_noindex, 0) <> 0
+      OR TRIM(IFNULL(title, '')) = ''
+      OR IFNULL(h1_count, 0) = 0
+      OR (LENGTH(TRIM(IFNULL(title, ''))) BETWEEN 1 AND 9)
+      OR (issues LIKE '%noindex%')
+    )
+    `,
+    [scanId]
+  );
+  const criticalIssues = Number(critRow?.c || 0);
+
+  const [[lossRow]] = await pool.query(
+    `
+    SELECT
+      CASE WHEN COUNT(*) = 0 THEN 0
+      ELSE ROUND(100 * SUM(IF(IFNULL(depth, 0) >= 4 AND IFNULL(internal_links, 0) <= 2, 1, 0)) / COUNT(*))
+      END AS lr
+    FROM scan_pages WHERE scan_id = ?
+    `,
+    [scanId]
+  );
+  const lossRate = Number(lossRow?.lr ?? 0);
+
+  const [[ixRow]] = await pool.query(
+    `
+    SELECT
+      SUM(IF(
+        IFNULL(is_noindex, 0) = 0
+        AND (
+          issues IS NULL
+          OR (issues NOT LIKE '%noindex%')
+        ),
+        1,
+        0
+      )) AS idxable,
+      SUM(IF(IFNULL(is_noindex, 0) <> 0 OR (issues LIKE '%noindex%'), 1, 0)) AS noidx,
+      SUM(IF(issues LIKE '%orphan%', 1, 0)) AS orphans
+    FROM scan_pages WHERE scan_id = ?
+    `,
+    [scanId]
+  );
+
+  const [[dupRow]] = await pool.query(
+    `
+    SELECT COUNT(*) AS c FROM scan_pages sp
+    INNER JOIN (
+      SELECT LOWER(TRIM(title)) AS t FROM scan_pages
+      WHERE scan_id = ? AND title IS NOT NULL AND TRIM(title) <> ''
+      GROUP BY LOWER(TRIM(title)) HAVING COUNT(*) > 1
+    ) d ON LOWER(TRIM(sp.title)) = d.t
+    WHERE sp.scan_id = ?
+    `,
+    [scanId, scanId]
+  );
+
+  const summary = {
+    pageCount,
+    avgScore,
+    criticalIssues,
+    lossRate,
+    indexablePages: Number(ixRow?.idxable || 0),
+    noindexPages: Number(ixRow?.noidx || 0),
+    duplicateTitlePages: Number(dupRow?.c || 0),
+    orphanPages: Number(ixRow?.orphans || 0),
+    executiveSummary: "",
+  };
+  summary.executiveSummary = buildExecutiveSummary(summary);
+  return summary;
+}
+
+async function fetchScanPageRows(scanId, offset, limit) {
+  const params = [scanId];
+  let paging = "";
+  if (limit != null && Number.isFinite(Number(limit))) {
+    paging = ` LIMIT ? OFFSET ?`;
+    params.push(Number(limit), Number(offset) || 0);
+  }
+
+  async function runFullSelect(selectSql, p) {
+    const [rows] = await pool.query(
+      `${selectSql} ORDER BY depth ASC, id ASC${paging}`,
+      p
+    );
+    return rows;
+  }
+
+  const baseSelectWide = `
+    SELECT url, depth, score, status_code, internal_links, external_links,
+           title, issues, h1_count, word_count, is_noindex, score_breakdown,
+           page_rank, inbound_link_count, outbound_link_count, juice_received, juice_sent, is_orphan
+    FROM scan_pages WHERE scan_id = ?`;
+
+  try {
+    return await runFullSelect(baseSelectWide, params);
+  } catch (e) {
+    if (e.message && /score_breakdown|page_rank|Unknown column/.test(e.message)) {
+      const baseSelectMedium = `
+        SELECT url, depth, score, status_code, internal_links, external_links,
+               title, issues, h1_count, word_count, is_noindex
+        FROM scan_pages WHERE scan_id = ?`;
+      try {
+        return await runFullSelect(baseSelectMedium, params);
+      } catch {
+        /* fallthrough */
+      }
+    }
+    const baseSelectThin = `
+      SELECT url, depth, score, status_code, internal_links, external_links
+      FROM scan_pages WHERE scan_id = ?`;
+    const rows = await runFullSelect(baseSelectThin, params);
+    return (rows || []).map((r) => ({
+      ...r,
+      title: null,
+      issues: null,
+      h1_count: 0,
+      word_count: 0,
+      is_noindex: 0,
+    }));
+  }
+}
+
+/** dupTitleLowerSet が渡されたときは一覧全体の dedup と整合する重複検出に使う */
+function mapScanRowsToPages(pagesRaw, dupTitleLowerSetOptional) {
+  const titleCount = dupTitleLowerSetOptional
+    ? null
+    : (() => {
+        const tc = {};
+        for (const r of pagesRaw) {
+          const t = ((r.title || "") + "").trim().toLowerCase();
+          if (t) tc[t] = (tc[t] || 0) + 1;
+        }
+        return tc;
+      })();
+
+  return pagesRaw.map((r) => {
+    let issues = parseIssues(r.issues);
+    const t = ((r.title || "") + "").trim().toLowerCase();
+    const dupTitle =
+      dupTitleLowerSetOptional != null ? dupTitleLowerSetOptional.has(t) : Boolean(t && titleCount[t] > 1);
+
+    if (dupTitle && t) {
+      if (!issues.some((i) => i.code === "dup_title")) {
+        issues = [...issues, { code: "dup_title", label: "タイトル重複" }];
+      }
+    }
+    const noindex = r.is_noindex || issues.some((i) => i.code === "noindex");
+
+    let scoreBreakdown = null;
+    try {
+      scoreBreakdown =
+        typeof r.score_breakdown === "string"
+          ? JSON.parse(r.score_breakdown)
+          : r.score_breakdown;
+    } catch {
+      /* ignore */
+    }
+    const titleStr = r.title || "";
+    const wordCountRaw = r.word_count ?? 0;
+    const wordCount = wordCountRaw > 0 ? wordCountRaw : titleStr.length || 0;
+
+    let deductions = reconstructDeductionsFromRow(r, titleCount || {}, issues);
+    deductions = deductions.map((d) => {
+      const v = Number(d.value);
+      if (Number.isFinite(v) && v !== 0) return d;
+      const pt = ISSUE_POINT_MAP[d.code] ?? LABEL_POINT_MAP[d.label] ?? 0;
+      return { ...d, value: -pt, reason: d.reason || d.label };
+    });
+    const deductionTotal = deductions.reduce((sum, d) => sum + Math.abs(Number(d.value) || 0), 0);
+    const scoreFromDeductions = Math.max(0, Math.min(100, Math.round(100 - deductionTotal)));
+
+    return {
+      url: r.url,
+      title: titleStr,
+      title_char_count: titleStr.length,
+      score: scoreFromDeductions,
+      score_breakdown: scoreBreakdown,
+      issues,
+      depth: r.depth,
+      status: r.status_code,
+      index_status: noindex ? "noindex" : "index",
+      h1_count: r.h1_count ?? 0,
+      word_count: wordCount,
+      internal_links: r.internal_links,
+      external_links: r.external_links,
+      deductions,
+      deduction_total: deductionTotal,
+      page_rank: r.page_rank != null ? Number(r.page_rank) : null,
+      inbound_link_count:
+        r.inbound_link_count != null ? Number(r.inbound_link_count) : null,
+      outbound_link_count:
+        r.outbound_link_count != null ? Number(r.outbound_link_count) : r.internal_links ?? null,
+      juice_received: r.juice_received != null ? Number(r.juice_received) : null,
+      juice_sent: r.juice_sent != null ? Number(r.juice_sent) : null,
+      crawl_depth: r.depth ?? null,
+      is_orphan: r.is_orphan ? true : false,
+    };
+  });
+}
+
+function buildSummaryFromPages(mappedPages, scanRow) {
+  const n = mappedPages.length;
+  const avgScore = n
+    ? Math.round(mappedPages.reduce((a, p) => a + (p.score || 0), 0) / n)
+    : scanRow.avg_score;
+
+  const criticalIssues = mappedPages.filter(pageIsCritical).length;
+  const structuralLoss = mappedPages.filter(
+    (p) => (p.depth || 0) >= 4 && (p.internal_links || 0) <= 2
+  ).length;
+  const lossRate = n ? Math.round((structuralLoss / n) * 100) : 0;
+
+  const summary = {
+    pageCount: n,
+    avgScore: avgScore ?? null,
+    criticalIssues,
+    lossRate,
+    indexablePages: mappedPages.filter((p) => p.index_status === "index").length,
+    noindexPages: mappedPages.filter((p) => p.index_status === "noindex").length,
+    duplicateTitlePages: mappedPages.filter((p) =>
+      p.issues.some((i) => i.code === "dup_title")
+    ).length,
+    orphanPages: mappedPages.filter((p) =>
+      p.issues.some((i) => i.code === "orphan")
+    ).length,
+    executiveSummary: "",
+  };
+  summary.executiveSummary = buildExecutiveSummary(summary);
+  return summary;
+}
+
 async function handleStart(req, res) {
   const user = await getUserWithContext(req);
   if (!user) {
@@ -375,169 +691,124 @@ async function handleResult(req, res) {
   }
 
   const scanRow = scans[0];
-  let pagesRaw = [];
-  try {
-    const [rows] = await pool.query(
-      `SELECT url, depth, score, status_code, internal_links, external_links,
-              title, issues, h1_count, word_count, is_noindex, score_breakdown,
-              page_rank, inbound_link_count, outbound_link_count, juice_received, juice_sent, is_orphan
-       FROM scan_pages WHERE scan_id = ? ORDER BY depth ASC, id ASC`,
-      [scanId]
-    );
-    pagesRaw = rows;
-  } catch (e) {
-    if (e.message && /score_breakdown|page_rank|Unknown column/.test(e.message)) {
-      const [rows] = await pool.query(
-        `SELECT url, depth, score, status_code, internal_links, external_links,
-                title, issues, h1_count, word_count, is_noindex
-         FROM scan_pages WHERE scan_id = ? ORDER BY depth ASC, id ASC`,
-        [scanId]
-      );
-      pagesRaw = rows;
-    } else {
-      const [rows] = await pool.query(
-        `SELECT url, depth, score, status_code, internal_links, external_links
-         FROM scan_pages WHERE scan_id = ? ORDER BY depth ASC, id ASC`,
-        [scanId]
-      );
-      pagesRaw = rows.map((r) => ({
-        ...r,
-        title: null,
-        issues: null,
-        h1_count: 0,
-        word_count: 0,
-        is_noindex: 0,
-      }));
-    }
-  }
 
-  const titleCount = {};
-  for (const r of pagesRaw) {
-    const t = ((r.title || "") + "").trim().toLowerCase();
-    if (t) titleCount[t] = (titleCount[t] || 0) + 1;
-  }
-
-  const pages = pagesRaw.map((r) => {
-    let issues = parseIssues(r.issues);
-    const t = ((r.title || "") + "").trim().toLowerCase();
-    if (t && titleCount[t] > 1) {
-      if (!issues.some((i) => i.code === "dup_title")) {
-        issues = [
-          ...issues,
-          { code: "dup_title", label: "タイトル重複" },
-        ];
-      }
-    }
-    const noindex = r.is_noindex || issues.some((i) => i.code === "noindex");
-    let scoreBreakdown = null;
-    try {
-      scoreBreakdown =
-        typeof r.score_breakdown === "string"
-          ? JSON.parse(r.score_breakdown)
-          : r.score_breakdown;
-    } catch {
-      /* ignore */
-    }
-    const titleStr = r.title || "";
-    const wordCountRaw = r.word_count ?? 0;
-    const wordCount = wordCountRaw > 0 ? wordCountRaw : (titleStr.length || 0);
-
-    let deductions = reconstructDeductionsFromRow(r, titleCount, issues);
-    deductions = deductions.map((d) => {
-      const v = Number(d.value);
-      if (Number.isFinite(v) && v !== 0) return d;
-      const pt = ISSUE_POINT_MAP[d.code] ?? LABEL_POINT_MAP[d.label] ?? 0;
-      return { ...d, value: -pt, reason: d.reason || d.label };
-    });
-    const deductionTotal = deductions.reduce((sum, d) => sum + Math.abs(Number(d.value) || 0), 0);
-    const scoreFromDeductions = Math.max(0, Math.min(100, Math.round(100 - deductionTotal)));
-
-    return {
-      url: r.url,
-      title: titleStr,
-      title_char_count: titleStr.length,
-      score: scoreFromDeductions,
-      score_breakdown: scoreBreakdown,
-      issues,
-      depth: r.depth,
-      status: r.status_code,
-      index_status: noindex ? "noindex" : "index",
-      h1_count: r.h1_count ?? 0,
-      word_count: wordCount,
-      internal_links: r.internal_links,
-      external_links: r.external_links,
-      deductions,
-      deduction_total: deductionTotal,
-      page_rank: r.page_rank != null ? Number(r.page_rank) : null,
-      inbound_link_count: r.inbound_link_count != null ? Number(r.inbound_link_count) : null,
-      outbound_link_count: r.outbound_link_count != null ? Number(r.outbound_link_count) : (r.internal_links ?? null),
-      juice_received: r.juice_received != null ? Number(r.juice_received) : null,
-      juice_sent: r.juice_sent != null ? Number(r.juice_sent) : null,
-      crawl_depth: r.depth ?? null,
-      is_orphan: r.is_orphan ? true : false,
-    };
-  });
-
-  const n = pages.length;
-  const avgScore = n
-    ? Math.round(pages.reduce((a, p) => a + (p.score || 0), 0) / n)
-    : scanRow.avg_score;
-  const criticalIssues = pages.filter(pageIsCritical).length;
-  const structuralLoss = pages.filter(
-    (p) => (p.depth || 0) >= 4 && (p.internal_links || 0) <= 2
-  ).length;
-  const lossRate = n ? Math.round((structuralLoss / n) * 100) : 0;
-
-  const summary = {
-    pageCount: n,
-    avgScore: avgScore ?? null,
-    criticalIssues,
-    lossRate,
-    indexablePages: pages.filter((p) => p.index_status === "index").length,
-    noindexPages: pages.filter((p) => p.index_status === "noindex").length,
-    duplicateTitlePages: pages.filter((p) =>
-      p.issues.some((i) => i.code === "dup_title")
-    ).length,
-    orphanPages: pages.filter((p) =>
-      p.issues.some((i) => i.code === "orphan")
-    ).length,
-    executiveSummary: "",
+  const scanPayload = {
+    id: scanRow.id,
+    domain:
+      canonicalDomainKey(scanRow.target_url) || domainFromTargetUrl(scanRow.target_url),
+    status: scanRow.status,
+    gsc_property_url: scanRow.gsc_property_url ?? null,
+    target_url: scanRow.target_url,
+    created_at: scanRow.created_at,
+    updated_at: scanRow.updated_at,
   };
-  summary.executiveSummary = buildExecutiveSummary(summary);
 
-  let history = [];
-  try {
-    const [h] = await pool.query(
-      `SELECT id, avg_score, page_count, critical_issues, recorded_at
-       FROM scan_history WHERE scan_id = ? ORDER BY recorded_at ASC`,
+  if (req.query.overview === "1") {
+    const [[cntRow]] = await pool.query(
+      `SELECT COUNT(*) AS cnt FROM scan_pages WHERE scan_id = ?`,
       [scanId]
     );
-    history = (h || []).map((row) => ({
-      id: row.id,
-      avg_score: row.avg_score,
-      page_count: row.page_count,
-      critical_issues: row.critical_issues,
-      created_at: row.recorded_at,
-    }));
-  } catch {
-    history = [];
+    const pageTotal = Number(cntRow?.cnt || 0);
+    const history = await fetchScanHistoryRows(scanId);
+    const executiveSummary =
+      scanRow.status === "queued"
+        ? "キュー待ちです。"
+        : pageTotal === 0
+          ? "まだページが取得されていません。"
+          : `クロール処理中です（取得済み ${pageTotal} ページ）。`;
+
+    return res.json({
+      scan: scanPayload,
+      overview: true,
+      pageTotal,
+      pages: [],
+      summary: {
+        pageCount: pageTotal,
+        avgScore: scanRow.avg_score != null ? Number(scanRow.avg_score) : null,
+        criticalIssues: 0,
+        lossRate: 0,
+        indexablePages: 0,
+        noindexPages: 0,
+        duplicateTitlePages: 0,
+        orphanPages: 0,
+        executiveSummary,
+      },
+      history,
+    });
   }
+
+  const [[totalRow]] = await pool.query(
+    `SELECT COUNT(*) AS c FROM scan_pages WHERE scan_id = ?`,
+    [scanId]
+  );
+  const totalPages = Number(totalRow?.c || 0);
+
+  const history = await fetchScanHistoryRows(scanId);
+
+  if (totalPages <= RESULT_PAGES_SINGLE_RESPONSE_CAP) {
+    const pagesRaw = await fetchScanPageRows(scanId, 0, null);
+    const pages = mapScanRowsToPages(pagesRaw, null);
+    const summary = buildSummaryFromPages(pages, scanRow);
+    return res.json({
+      scan: scanPayload,
+      pages,
+      summary,
+      history,
+    });
+  }
+
+  const dupSet = await getDuplicateTitleLowerSetCached(scanId);
+  const summary = await aggregateSummaryLargeScan(scanId, scanRow);
+  const pagesRawChunk = await fetchScanPageRows(scanId, 0, RESULT_PAGES_CHUNK_SIZE);
+  const pages = mapScanRowsToPages(pagesRawChunk, dupSet);
 
   return res.json({
-    scan: {
-      id: scanRow.id,
-      domain:
-        canonicalDomainKey(scanRow.target_url) ||
-        domainFromTargetUrl(scanRow.target_url),
-      status: scanRow.status,
-      gsc_property_url: scanRow.gsc_property_url ?? null,
-      target_url: scanRow.target_url,
-      created_at: scanRow.created_at,
-      updated_at: scanRow.updated_at,
-    },
+    scan: scanPayload,
     pages,
     summary,
     history,
+    pagination: {
+      chunked: true,
+      total: totalPages,
+      pageSize: RESULT_PAGES_CHUNK_SIZE,
+    },
+  });
+}
+
+async function handleResultPages(req, res) {
+  const user = await getUserWithContext(req);
+  if (!user) {
+    return res.status(401).json({ error: "unauthorized" });
+  }
+
+  const scanId = req.params.id;
+  const canAccess = await canAccessScan(user.id, user.company_id, user.role, scanId);
+  if (!canAccess) {
+    return res.status(404).json({ error: "not found" });
+  }
+
+  const [scans] = await pool.query(`SELECT id FROM scans WHERE id = ? LIMIT 1`, [scanId]);
+  if (!scans.length) {
+    return res.status(404).json({ error: "not found" });
+  }
+
+  let offset = parseInt(String(req.query.offset || "0"), 10);
+  if (!Number.isFinite(offset) || offset < 0) offset = 0;
+  let limit = parseInt(String(req.query.limit || RESULT_PAGES_CHUNK_SIZE), 10);
+  if (!Number.isFinite(limit) || limit < 1) limit = RESULT_PAGES_CHUNK_SIZE;
+  limit = Math.min(limit, RESULT_PAGES_CHUNK_SIZE);
+
+  const dupSet = await getDuplicateTitleLowerSetCached(scanId);
+  const pagesRaw = await fetchScanPageRows(scanId, offset, limit);
+  const pages = mapScanRowsToPages(pagesRaw, dupSet);
+
+  return res.json({
+    pages,
+    pagination: {
+      offset,
+      limit,
+      nextOffset: offset + pages.length,
+    },
   });
 }
 
@@ -648,5 +919,6 @@ router.get("/trends", handleTrends);
 module.exports = router;
 module.exports.handleStart = handleStart;
 module.exports.handleResult = handleResult;
+module.exports.handleResultPages = handleResultPages;
 module.exports.handleTrends = handleTrends;
 module.exports.handleSecurityCheck = handleSecurityCheck;

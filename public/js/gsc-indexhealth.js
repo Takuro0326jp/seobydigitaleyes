@@ -80,11 +80,15 @@
   async function loadData(noCache = false) {
     let scanData = { pages: [], scan: {} };
     try {
-      const scanRes = await fetch(`/api/scans/result/${encodeURIComponent(scanId)}`, {
-        credentials: "include",
-      });
-      if (scanRes.ok) {
-        scanData = await scanRes.json();
+      if (typeof window.fetchScanResultBundle === "function") {
+        scanData = await window.fetchScanResultBundle(scanId);
+      } else {
+        const scanRes = await fetch(`/api/scans/result/${encodeURIComponent(scanId)}`, {
+          credentials: "include",
+        });
+        if (scanRes.ok) {
+          scanData = await scanRes.json();
+        }
       }
     } catch (e) {
       console.warn("scan fetch failed", e);

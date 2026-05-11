@@ -286,7 +286,7 @@
   async function loadData(noCache = false) {
     let scanData = {};
     try {
-      const scanRes = await fetch(`/api/scans/result/${encodeURIComponent(scanId)}`, {
+      const scanRes = await fetch(`/api/scans/result/${encodeURIComponent(scanId)}?overview=1`, {
         credentials: "include",
       });
       if (scanRes.ok) {

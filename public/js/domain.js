@@ -571,25 +571,37 @@
 
   async function loadScanData() {
     try {
-      const res = await fetch(`/api/scans/result/${encodeURIComponent(scanId)}`, {
-        credentials: "include",
-      });
+      let data;
+      try {
+        if (typeof window.fetchScanResultBundle === "function") {
+          data = await window.fetchScanResultBundle(scanId);
+        } else {
+          const res = await fetch(`/api/scans/result/${encodeURIComponent(scanId)}`, {
+            credentials: "include",
+          });
+          if (res.status === 401) {
+            window.location.replace("/");
+            return;
+          }
+          if (res.status === 404) {
+            showError("スキャンが見つかりません。一覧から再度お試しください。");
+            return;
+          }
+          if (!res.ok) {
+            const errData = await res.json().catch(() => ({}));
+            showError(errData.error || `エラーが発生しました (${res.status})`);
+            return;
+          }
+          data = await res.json();
+        }
+      } catch (e) {
+        if (e.status === 401) {
+          window.location.replace("/");
+          return;
+        }
+        throw e;
+      }
 
-      if (res.status === 401) {
-        window.location.replace("/");
-        return;
-      }
-      if (res.status === 404) {
-        showError("スキャンが見つかりません。一覧から再度お試しください。");
-        return;
-      }
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        showError(errData.error || `エラーが発生しました (${res.status})`);
-        return;
-      }
-
-      const data = await res.json();
       const pages = data.pages || [];
       const scan = data.scan || {};
 

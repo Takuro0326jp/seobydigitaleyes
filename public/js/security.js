@@ -398,7 +398,9 @@
 
   async function loadScanData() {
     try {
-      const res = await fetch(`/api/scans/result/${encodeURIComponent(scanId)}`, { credentials: "include" });
+      const res = await fetch(`/api/scans/result/${encodeURIComponent(scanId)}?overview=1`, {
+        credentials: "include",
+      });
 
       if (res.status === 401) {
         window.location.replace("/");

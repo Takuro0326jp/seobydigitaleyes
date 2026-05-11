@@ -36,6 +36,7 @@ const sitemapRoutes = safeRequire("./routes/sitemap", "routes/sitemap") || {};
 const { handleSitemapLast, handleSubmitSitemap } = sitemapRoutes;
 const handleStart = scanModule?.handleStart;
 const handleResult = scanModule?.handleResult;
+const handleResultPages = scanModule?.handleResultPages;
 const handleTrends = scanModule?.handleTrends;
 const handleSecurityCheck = scanModule?.handleSecurityCheck;
 
@@ -288,6 +289,10 @@ app.post("/api/scan-start", scanStartLimiter, (req, res, next) => {
 app.get("/api/scans/result/:id/security-check", (req, res, next) => {
   if (!handleSecurityCheck) return res.status(503).json({ error: "scan handler unavailable" });
   return handleSecurityCheck(req, res).catch(next);
+});
+app.get("/api/scans/result/:id/pages", (req, res, next) => {
+  if (!handleResultPages) return res.status(503).json({ error: "scan handler unavailable" });
+  return handleResultPages(req, res).catch(next);
 });
 app.get("/api/scans/result/:id", (req, res, next) => {
   if (!handleResult) return res.status(503).json({ error: "scan handler unavailable" });

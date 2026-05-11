@@ -46,21 +46,40 @@
       return;
     }
 
-    const [res, edgesRes] = await Promise.all([
-      fetch(`/api/scans/result/${encodeURIComponent(scanId)}`, { credentials: "include" }),
-      fetch(`/api/scans/${encodeURIComponent(scanId)}/link-edges`, { credentials: "include" }),
-    ]);
-    if (res.status === 401) {
-      window.location.replace("/");
+    const edgesReq = fetch(`/api/scans/${encodeURIComponent(scanId)}/link-edges`, { credentials: "include" });
+    let data;
+    try {
+      data =
+        typeof window.fetchScanResultBundle === "function"
+          ? await window.fetchScanResultBundle(scanId)
+          : await (async () => {
+              const scanRes = await fetch(`/api/scans/result/${encodeURIComponent(scanId)}`, {
+                credentials: "include",
+              });
+              if (scanRes.status === 401) {
+                window.location.replace("/");
+                return null;
+              }
+              if (scanRes.status === 404 || !scanRes.ok) {
+                document.body.innerHTML =
+                  '<div class="p-12 text-center"><p class="text-slate-600 font-bold">スキャンが見つかりません</p><a href="/seo.html" class="inline-block mt-4 px-6 py-3 bg-indigo-600 text-white font-bold rounded-xl">一覧へ</a></div>';
+                return null;
+              }
+              return scanRes.json();
+            })();
+    } catch (e) {
+      if (e.status === 401) {
+        window.location.replace("/");
+        return;
+      }
+      document.body.innerHTML =
+        '<div class="p-12 text-center"><p class="text-slate-600 font-bold">スキャンが見つかりません</p><a href="/seo.html" class="inline-block mt-4 px-6 py-3 bg-indigo-600 text-white font-bold rounded-xl">一覧へ</a></div>';
       return;
     }
-    if (res.status === 404 || !res.ok) {
-      document.body.innerHTML = '<div class="p-12 text-center"><p class="text-slate-600 font-bold">スキャンが見つかりません</p><a href="/seo.html" class="inline-block mt-4 px-6 py-3 bg-indigo-600 text-white font-bold rounded-xl">一覧へ</a></div>';
-      return;
-    }
+    if (data == null) return;
 
-    const data = await res.json();
     allPages = data.pages || [];
+    const edgesRes = await edgesReq;
     const edgesData = edgesRes.ok ? await edgesRes.json() : { links: [] };
     linkEdges = edgesData.links || [];
     applyFilters();
