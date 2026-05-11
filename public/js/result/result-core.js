@@ -123,7 +123,7 @@ async function fetchFullScanResultForResultPage(scanId) {
   if (!pag || !pag.chunked) return data;
 
   const total = Number(pag.total) || 0;
-  const pageSize = Number(pag.pageSize) || 100;
+  const pageSize = Number(pag.pageSize) || 40;
   const pages = Array.isArray(data.pages) ? [...data.pages] : [];
   let loops = 0;
   while (pages.length < total && loops < 500) {

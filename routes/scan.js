@@ -191,12 +191,14 @@ function buildExecutiveSummary(summary) {
 }
 
 /** 単発JSONの行上限（ページあたりのJSONが肥大しやすいため控えめ。超えると chunk + /pages） */
-const RESULT_PAGES_SINGLE_RESPONSE_CAP = Number(process.env.RESULT_PAGES_SINGLE_RESPONSE_CAP || 100);
+const RESULT_PAGES_SINGLE_RESPONSE_CAP = Number(process.env.RESULT_PAGES_SINGLE_RESPONSE_CAP || 40);
 /** チャンク1回あたりの最大行（転送途切れ・関数ペイロード上限対策） */
 const RESULT_PAGES_CHUNK_SIZE = Math.min(
   300,
-  Math.max(40, Number(process.env.RESULT_PAGES_CHUNK_SIZE || 100))
+  Math.max(25, Number(process.env.RESULT_PAGES_CHUNK_SIZE || 40))
 );
+/** このバイト未満の JSON は Content-Length 付きで送る（プロキシが chunked を壊す場合の回避） */
+const RESULT_SMALL_JSON_BYTES = Number(process.env.RESULT_SMALL_JSON_BYTES || 98304);
 
 function scanResultApiNoCacheHeaders(res) {
   res.setHeader("Cache-Control", "private, no-store");
@@ -233,7 +235,7 @@ function scanResultSendJson(res, req, branch, payload, statusCode) {
   const buf = Buffer.from(json, "utf8");
   const bytes = buf.length;
   dbgScanResultLog({
-    hypothesisId: "H6,H7,H9",
+    hypothesisId: "H6,H7,H9,H10",
     location: "scanResultSendJson:beforeSend",
     message: branch,
     runId: process.env.SEO_DEBUG_RUN_ID || "post-fix",
@@ -244,14 +246,11 @@ function scanResultSendJson(res, req, branch, payload, statusCode) {
       pageRows: Array.isArray(payload.pages) ? payload.pages.length : -1,
       overview: !!payload.overview,
       chunked: !!(payload.pagination && payload.pagination.chunked),
-      transferEncoding: "chunked",
+      sendMode: bytes <= RESULT_SMALL_JSON_BYTES ? "content-length" : "chunked",
     },
   });
   res.status(code);
   res.setHeader("Content-Type", "application/json; charset=utf-8");
-  // Content-Length 固定だと nginx 等で本文切り詰め＋ブラウザ ERR_CONTENT_LENGTH_MISMATCH となる事例があるためチャンク転送にする
-  res.setHeader("Transfer-Encoding", "chunked");
-  res.removeHeader("Content-Length");
   res.on("finish", () => {
     dbgScanResultLog({
       hypothesisId: "H7",
@@ -272,6 +271,12 @@ function scanResultSendJson(res, req, branch, payload, statusCode) {
       });
     }
   });
+  if (bytes <= RESULT_SMALL_JSON_BYTES) {
+    res.removeHeader("Transfer-Encoding");
+    return res.send(buf);
+  }
+  res.setHeader("Transfer-Encoding", "chunked");
+  res.removeHeader("Content-Length");
   res.write(buf);
   res.end();
 }
@@ -839,14 +844,11 @@ async function handleResult(req, res) {
     });
   }
 
-  const dupSet = await getDuplicateTitleLowerSetCached(scanId);
   const summary = await aggregateSummaryLargeScan(scanId, scanRow);
-  const pagesRawChunk = await fetchScanPageRows(scanId, 0, RESULT_PAGES_CHUNK_SIZE);
-  const pages = mapScanRowsToPages(pagesRawChunk, dupSet);
-
+  // 初回は pages を載せない（JSON 肥大でプロキシ切り捨て→ERR_CONTENT_LENGTH_MISMATCH となりやすい）。以降は /pages のみ。
   return scanResultSendJson(res, req, "chunkedHead", {
     scan: scanPayload,
-    pages,
+    pages: [],
     summary,
     history,
     pagination: {
