@@ -199,6 +199,18 @@ const RESULT_PAGES_CHUNK_SIZE = Math.min(
 );
 /** このバイト未満の JSON は Content-Length 付きで送る（プロキシが chunked を壊す場合の回避） */
 const RESULT_SMALL_JSON_BYTES = Number(process.env.RESULT_SMALL_JSON_BYTES || 98304);
+/** 一覧APIで score_breakdown を送らない（deductions で表は成立、JSON 転送を縮小） */
+const RESULT_API_OMIT_SCORE_BREAKDOWN = process.env.RESULT_API_OMIT_SCORE_BREAKDOWN !== "0";
+
+function mapPagesForResultWire(pages) {
+  if (!RESULT_API_OMIT_SCORE_BREAKDOWN || !Array.isArray(pages)) return pages;
+  return pages.map((p) => {
+    if (!p || typeof p !== "object") return p;
+    const o = Object.assign({}, p);
+    delete o.score_breakdown;
+    return o;
+  });
+}
 
 function scanResultApiNoCacheHeaders(res) {
   res.setHeader("Cache-Control", "private, no-store");
@@ -838,7 +850,7 @@ async function handleResult(req, res) {
     const summary = buildSummaryFromPages(pages, scanRow);
     return scanResultSendJson(res, req, "single", {
       scan: scanPayload,
-      pages,
+      pages: mapPagesForResultWire(pages),
       summary,
       history,
     });
@@ -888,7 +900,7 @@ async function handleResultPages(req, res) {
   const pages = mapScanRowsToPages(pagesRaw, dupSet);
 
   return scanResultSendJson(res, req, "chunkPage", {
-    pages,
+    pages: mapPagesForResultWire(pages),
     pagination: {
       offset,
       limit,

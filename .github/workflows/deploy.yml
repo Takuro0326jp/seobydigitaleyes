@@ -8,6 +8,8 @@
 # 事前: サーバーで git clone し、.env を配置、pm2 をインストール
 # DNS: 公開ドメインの A レコードは DEPLOY_HOST（Elastic IP）を指すこと。
 #      別 IP（CDN のエッジのみ等）のままだと EC2 上のアプリに届かない。Route 53 なら scripts/route53-upsert-a.sh を参照。
+# nginx: 巨大 JSON が ERR_CONTENT_LENGTH_MISMATCH になるときは upstream 側へ
+#   proxy_buffering off; および proxy_buffers / proxy_busy_buffers を十分にすることを推奨。
 name: Deploy
 
 on:
@@ -62,3 +64,6 @@ jobs:
               echo "ERROR: pm2 が見つかりません（グローバル install か PATH を確認してください）"
               exit 1
             fi
+            _port="$(node -e 'require("dotenv").config({ path: ".env" }); process.stdout.write(String(process.env.PORT || "3000"));' 2>/dev/null || echo 3000)"
+            echo "Post-deploy ping: GET http://127.0.0.1:${_port}/api/ping"
+            curl -fsS --max-time 15 "http://127.0.0.1:${_port}/api/ping" >/dev/null
