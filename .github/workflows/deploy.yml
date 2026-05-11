@@ -27,9 +27,21 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # 「Secret 検証」を env で行うと、複数行の DEPLOY_SSH_KEY が環境により空になり偽の未設定となることがあるため、検証ステップは置かず appleboy が失敗したらログを見る運用とする。
-      # 設定場所：リポジトリ Settings → Secrets and variables → Actions（Environment 側だけに設定していると名前が異なり、この job には届かない）
-      # デプロイは SSH 先で npm ci のみ実行。Runner 側の npm ci は不要。
+      # DEPLOY_SSH_KEY は run スクリプトへ直書きしない（複数行で壊れる）。
+      # 「サーバーホストが見つかりません」= DEPLOY_HOST Secret が空（appleboy / drone-ssh の典型メッセージ）
+      # 設定場所：リポジトリ Settings → Secrets and variables → Actions（Environment だけではこの job には届かない）
+      # デプロイは SSH 先で npm ci のみ実行。
+
+      - name: Require DEPLOY_HOST and DEPLOY_USER
+        run: |
+          if [ -z "${{ secrets.DEPLOY_HOST }}" ]; then
+            echo "::error::DEPLOY_HOST が未設定または空です → appleboy は「サーバーホストが見つかりません」で失敗します。Settings → Secrets and variables → Actions に EC2 の IP または公開 DNS を登録してください。"
+            exit 1
+          fi
+          if [ -z "${{ secrets.DEPLOY_USER }}" ]; then
+            echo "::error::DEPLOY_USER が未設定または空です。"
+            exit 1
+          fi
 
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.2.4
