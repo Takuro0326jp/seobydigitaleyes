@@ -90,6 +90,14 @@ async function init() {
     return;
   }
 
+  try {
+    const { env } = await fetch("/api/env-info").then(r => r.json());
+    if (env !== "production") {
+      const badge = document.getElementById("env-badge");
+      if (badge) badge.innerHTML = `<span style="font-size:11px;color:#fff;background:#ef4444;padding:3px 10px;border-radius:999px;margin-right:8px;font-weight:600;">${env.toUpperCase()}</span>`;
+    }
+  } catch (_) {}
+
   window.addEventListener("hashchange", () => navigate(getRoute()));
   navigate(getRoute());
 }
