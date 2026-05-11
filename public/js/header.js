@@ -111,6 +111,10 @@
                     ? `<a href="admin.html"
 class="block px-4 py-3 text-[11px] font-bold text-slate-600 hover:bg-slate-50 hover:text-blue-600 transition-colors border-b border-slate-50">
 管理コンソール
+</a>
+<a href="system-architecture.html"
+class="block px-4 py-3 text-[11px] font-bold text-slate-600 hover:bg-slate-50 hover:text-blue-600 transition-colors border-b border-slate-50">
+システム構成図
 </a>`
                     : ""
                 }
@@ -239,6 +243,7 @@ class="block px-4 py-3 text-[11px] font-bold text-slate-600 hover:bg-slate-50 ho
       path.includes("index.html") ||
       path.includes("seo.html") ||
       path.includes("settings.html") ||
+      path.includes("system-architecture.html") ||
       path === "index";
 
     // Detect active main group
