@@ -35,6 +35,54 @@ function hideLoading() {
   if (o) o.classList.add("hidden");
 }
 
+/** result.html だけで完結: service worker／キャッシュで scan-result-fetch.js が無い場合でもチャンク結合する */
+async function fetchFullScanResultForResultPage(scanId) {
+  const enc = encodeURIComponent(scanId);
+  const cred = { credentials: "include" };
+  const res = await fetch(`/api/scans/result/${enc}`, cred);
+  if (res.status === 401) throw Object.assign(new Error("unauthorized"), { status: 401 });
+  if (res.status === 404) throw Object.assign(new Error("not found"), { status: 404 });
+  if (!res.ok) {
+    let body = {};
+    try {
+      body = await res.json();
+    } catch (_) {}
+    throw Object.assign(new Error(body.error || res.statusText || "request failed"), {
+      status: res.status,
+      body,
+    });
+  }
+  const data = await res.json();
+  const pag = data.pagination;
+  if (!pag || !pag.chunked) return data;
+
+  const total = Number(pag.total) || 0;
+  const pageSize = Number(pag.pageSize) || 220;
+  const pages = Array.isArray(data.pages) ? [...data.pages] : [];
+  let loops = 0;
+  while (pages.length < total && loops < 500) {
+    loops++;
+    const cr = await fetch(
+      `/api/scans/result/${enc}/pages?offset=${pages.length}&limit=${pageSize}`,
+      cred
+    );
+    if (!cr.ok) {
+      let bx = {};
+      try {
+        bx = await cr.json();
+      } catch (_) {}
+      throw Object.assign(new Error(bx.error || "chunk fetch failed"), { status: cr.status, body: bx });
+    }
+    const part = await cr.json();
+    const add = Array.isArray(part.pages) ? part.pages : [];
+    if (add.length === 0) break;
+    pages.push(...add);
+  }
+  delete data.pagination;
+  data.pages = pages;
+  return data;
+}
+
 document.addEventListener("DOMContentLoaded", () => {
   void initializeResultPage();
 });
@@ -119,31 +167,10 @@ async function initializeResultPage() {
 
       hideLoading();
 
+      let mergedSt = st;
       try {
-        const full =
-          typeof window.fetchScanResultBundle === "function"
-            ? await window.fetchScanResultBundle(scanId)
-            : await (async () => {
-                const r2 = await fetch(
-                  `/api/scans/result/${encodeURIComponent(scanId)}`,
-                  { credentials: "include" }
-                );
-                if (r2.status === 401) {
-                  window.location.replace("/");
-                  return null;
-                }
-                if (r2.status === 404) {
-                  showErrorAndBack("スキャンが見つかりません。一覧から再度お試しください。");
-                  return null;
-                }
-                if (!r2.ok) {
-                  const er = await r2.json().catch(() => ({}));
-                  showErrorAndBack(er.error || `エラーが発生しました (${r2.status})`);
-                  return null;
-                }
-                return r2.json();
-              })();
-        if (full == null) return;
+        const full = await fetchFullScanResultForResultPage(scanId);
+        mergedSt = full.scan?.status ?? mergedSt;
 
         SEOState.scan = full.scan;
         SEOState.scanInfo = {
@@ -172,7 +199,7 @@ async function initializeResultPage() {
 
       calculateMetrics();
       if (typeof renderAll === "function") renderAll();
-      if (st === "failed") {
+      if (mergedSt === "failed") {
         break;
       }
       SEOState.initialized = true;
@@ -184,8 +211,12 @@ async function initializeResultPage() {
       alert("スキャンがタイムアウトしました。一覧から再度開いてください。");
     }
   } catch (e) {
-    console.error(e);
-    showErrorAndBack("データの取得に失敗しました。");
+    console.error("[result-page]", e && e.message ? e.message : e, e && e.stack ? e.stack : "");
+    showErrorAndBack(
+      typeof e !== "undefined" && e && e.message
+        ? `データの取得に失敗しました。(${e.message})`
+        : "データの取得に失敗しました。"
+    );
   }
 }
 

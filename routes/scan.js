@@ -188,13 +188,17 @@ function buildExecutiveSummary(summary) {
   return t;
 }
 
-/** 単一レスポンスで返すページ数の上限を超えるとチャンク取得に切り替え（転送タイムアウト回避） */
-const RESULT_PAGES_SINGLE_RESPONSE_CAP = Number(process.env.RESULT_PAGES_SINGLE_RESPONSE_CAP || 520);
-/** チャンク1回あたりの最大行数（本番関数の転送サイズにも効くように控えめ） */
+/** 単発JSONの行上限（ページあたりのJSONが肥大しやすいため控えめ。超えると chunk + /pages） */
+const RESULT_PAGES_SINGLE_RESPONSE_CAP = Number(process.env.RESULT_PAGES_SINGLE_RESPONSE_CAP || 160);
+/** チャンク1回あたりの最大行（転送途切れ・関数ペイロード上限対策） */
 const RESULT_PAGES_CHUNK_SIZE = Math.min(
-  520,
-  Math.max(120, Number(process.env.RESULT_PAGES_CHUNK_SIZE || 380))
+  300,
+  Math.max(80, Number(process.env.RESULT_PAGES_CHUNK_SIZE || 220))
 );
+
+function scanResultApiNoCacheHeaders(res) {
+  res.setHeader("Cache-Control", "private, no-store");
+}
 
 async function duplicateTitleLowerSet(scanId) {
   const [rows] = await pool.query(
@@ -669,6 +673,7 @@ async function handleSecurityCheck(req, res) {
 }
 
 async function handleResult(req, res) {
+  scanResultApiNoCacheHeaders(res);
   const user = await getUserWithContext(req);
   if (!user) {
     return res.status(401).json({ error: "unauthorized" });
@@ -776,6 +781,7 @@ async function handleResult(req, res) {
 }
 
 async function handleResultPages(req, res) {
+  scanResultApiNoCacheHeaders(res);
   const user = await getUserWithContext(req);
   if (!user) {
     return res.status(401).json({ error: "unauthorized" });
