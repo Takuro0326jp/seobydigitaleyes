@@ -54,6 +54,23 @@
     return "その他";
   }
 
+  /** アクションの sourceTab（英語キー）を画面表示用の日本語に変換 */
+  function sourceTabLabelJa(sourceTab) {
+    if (!sourceTab) return "";
+    const raw = String(sourceTab).trim();
+    const norm = raw.replace(/\s+/g, " ").toUpperCase();
+    const table = {
+      TASK: "タスク",
+      SEO: "構造分析",
+      "INDEX HEALTH": "インデックス状態",
+      PERFORMANCE: "パフォーマンス",
+      OPPORTUNITIES: "改善機会",
+      TECHNICAL: "技術監査",
+      "LINK STRUCTURE": "リンク構造分析",
+    };
+    return table[norm] || raw;
+  }
+
   function getSourceTabUrl(sourceTab, scanId) {
     if (!sourceTab || !scanId) return null;
     const suffix = "?scan=" + encodeURIComponent(scanId);
@@ -532,7 +549,7 @@
                     <span class="text-[10px] text-slate-400 dark:text-slate-500">${escapeHtml(item.source)}</span>
                     ${(function () {
                       const u = getSourceTabUrl(item.sourceTab, scanId);
-                      const lbl = item.sourceTab ? `→ ${escapeHtml(item.sourceTab)}で確認` : "";
+                      const lbl = item.sourceTab ? `→ ${escapeHtml(sourceTabLabelJa(item.sourceTab))}で確認` : "";
                       return u ? `<a href="${escapeHtml(u)}" class="text-[10px] text-indigo-600 dark:text-indigo-400 hover:underline">${lbl}</a>` : lbl ? `<span class="text-[10px] text-indigo-600 dark:text-indigo-400">${lbl}</span>` : "";
                     })()}
                     <button type="button" class="text-[10px] font-medium px-2 py-1 rounded-lg bg-emerald-500 text-white hover:bg-emerald-600 cursor-pointer border-none" data-confirm-complete-id="${item.id}">完了</button>
@@ -592,7 +609,7 @@
                 (item) => {
                   const opacity = animatingOut.has(String(item.id)) ? "opacity-0 transition-opacity duration-500" : "";
                   const tabUrl = getSourceTabUrl(item.sourceTab, scanId);
-                  const tabLabel = item.sourceTab ? `→ ${escapeHtml(item.sourceTab)}で確認` : "";
+                  const tabLabel = item.sourceTab ? `→ ${escapeHtml(sourceTabLabelJa(item.sourceTab))}で確認` : "";
                   const tabHtml = tabUrl
                     ? `<a href="${escapeHtml(tabUrl)}" class="text-[10px] text-indigo-600 dark:text-indigo-400 hover:underline">${tabLabel}</a>`
                     : tabLabel ? `<span class="text-[10px] text-indigo-600 dark:text-indigo-400">${tabLabel}</span>` : "";

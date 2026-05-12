@@ -19,20 +19,6 @@
     alert(`${tabName} タブは準備中です。`);
   };
 
-  function updateNavLinks() {
-    const suffix = "?scan=" + encodeURIComponent(scanId);
-    const links = {
-      "nav-performance": "gsc.html",
-      "nav-indexHealth": "gsc-indexhealth.html",
-      "nav-technical": "gsc-technical.html",
-      "nav-monitoring": "gsc-monitoring.html",
-    };
-    Object.entries(links).forEach(([id, base]) => {
-      const el = document.getElementById(id);
-      if (el) el.setAttribute("href", base + suffix);
-    });
-  }
-
   function showEmptyState(message) {
     ["totalClicks", "totalImpressions", "avgCtr", "avgPosition"].forEach((id) => {
       const el = document.getElementById(id);
@@ -302,7 +288,6 @@
   };
 
   window.addEventListener("DOMContentLoaded", () => {
-    updateNavLinks();
     void loadData(30);
 
     const btn30 = document.getElementById("btn-30d");

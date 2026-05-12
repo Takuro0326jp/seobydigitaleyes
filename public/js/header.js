@@ -261,7 +261,7 @@ class="block px-4 py-3 text-[11px] font-bold text-slate-600 hover:bg-slate-50 ho
 
     const subTab = (pageKey, label, href) => {
       const active = path.includes(pageKey);
-      return `<a href="${href}${urlSuffix}" class="sub-tab-btn pb-4 text-xs font-black tracking-widest uppercase transition-colors whitespace-nowrap border-b-2 ${active ? "border-indigo-600 text-indigo-600" : "border-transparent text-slate-400 hover:text-slate-600"}">${label}</a>`;
+      return `<a href="${href}${urlSuffix}" class="sub-tab-btn pb-4 text-xs font-bold tracking-wide transition-colors whitespace-nowrap border-b-2 ${active ? "border-indigo-600 text-indigo-600" : "border-transparent text-slate-400 hover:text-slate-600"}">${label}</a>`;
     };
 
     const subNavWrapper = (content) => `
@@ -273,18 +273,19 @@ class="block px-4 py-3 text-[11px] font-bold text-slate-600 hover:bg-slate-50 ho
 
     // Secondary nav: SEO subtabs
     const seoSubNav = activeGroup === "seo" ? subNavWrapper(`
-          ${subTab("result.html",        "Structure",      "result.html")}
-          ${subTab("link-structure.html","Link Structure",  "link-structure.html")}
-          ${subTab("mobile.html",        "Mobile Friendly", "mobile.html")}
-          ${subTab("llmo.html",          "LLMO Analysis",   "llmo.html")}
+          ${subTab("result.html",        "構造分析",          "result.html")}
+          ${subTab("link-structure.html","リンク構造分析",    "link-structure.html")}
+          ${subTab("mobile.html",        "モバイルフレンドリー診断", "mobile.html")}
+          ${subTab("llmo.html",          "LLMO 分析",         "llmo.html")}
     `) : "";
 
     // Secondary nav: Search Console subtabs
     const gscSubNav = activeGroup === "gsc" ? subNavWrapper(`
-          ${subTab("gsc.html",              "Performance",  "gsc.html")}
-          ${subTab("gsc-indexhealth.html",  "Index Health", "gsc-indexhealth.html")}
-          ${subTab("gsc-technical.html",    "Technical",    "gsc-technical.html")}
-          ${subTab("gsc-opportunities.html","Opportunities","gsc-opportunities.html")}
+          ${subTab("gsc.html",               "パフォーマンス",   "gsc.html")}
+          ${subTab("gsc-indexhealth.html",   "インデックス状態", "gsc-indexhealth.html")}
+          ${subTab("gsc-technical.html",     "技術監査",         "gsc-technical.html")}
+          ${subTab("gsc-opportunities.html", "改善機会",         "gsc-opportunities.html")}
+          ${subTab("gsc-monitoring.html",    "モニタリング",     "gsc-monitoring.html")}
     `) : "";
 
     container.innerHTML = `
@@ -312,14 +313,14 @@ class="block px-4 py-3 text-[11px] font-bold text-slate-600 hover:bg-slate-50 ho
         </div>
         <div class="px-3 sm:px-8 flex items-center bg-white overflow-x-auto ${isHideNavPage ? "hidden" : ""}" style="scrollbar-gutter:stable;-webkit-overflow-scrolling:touch">
             <div class="flex items-center gap-3 sm:gap-6 pt-3 sm:pt-4" style="padding-bottom:1px">
-                ${mainTab("task",     "TASK",             "gsc-task.html")}
-                ${mainTab("seo",      "SEO",                 "result.html")}
-                ${mainTab("gsc",      "Search Console",      "gsc.html")}
-                ${mainTab("domain",   "Domain Authority",    "domain.html")}
-                ${mainTab("security", "Security",            "security.html")}
-                ${mainTab("strategy", "SEO Strategy",        "strategy.html")}
-                ${mainTab("ads",      "ADs",                 "ads.html")}
-                ${mainTab("heatmap", "Heatmap",             "heatmap.html")}
+                ${mainTab("task",     "タスク",               "gsc-task.html")}
+                ${mainTab("seo",      "SEO",                  "result.html")}
+                ${mainTab("gsc",      "サーチコンソール",      "gsc.html")}
+                ${mainTab("domain",   "ドメインオーソリティ",  "domain.html")}
+                ${mainTab("security", "セキュリティ",          "security.html")}
+                ${mainTab("strategy", "SEO戦略",              "strategy.html")}
+                ${mainTab("ads",      "広告",                 "ads.html")}
+                ${mainTab("heatmap",  "ヒートマップ",          "heatmap.html")}
             </div>
         </div>
         ${seoSubNav}
@@ -339,6 +340,7 @@ class="block px-4 py-3 text-[11px] font-bold text-slate-600 hover:bg-slate-50 ho
       "gsc-indexhealth.html",
       "gsc-technical.html",
       "gsc-opportunities.html",
+      "gsc-monitoring.html",
       "domain.html",
       "security.html",
       "strategy.html",
