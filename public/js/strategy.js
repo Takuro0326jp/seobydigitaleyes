@@ -804,9 +804,10 @@
     }
     let propertyUrl = null;
     try {
-      const res = await fetch(`/api/scans/result/${encodeURIComponent(strategyScanId)}`, {
-        credentials: "include",
-      });
+      const res = await fetch(
+        `/api/scans/result/${encodeURIComponent(strategyScanId)}?overview=1`,
+        { credentials: "include" }
+      );
       if (res.ok) {
         const data = await res.json();
         propertyUrl = data.scan?.gsc_property_url || null;

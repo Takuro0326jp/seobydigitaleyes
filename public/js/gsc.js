@@ -339,7 +339,7 @@
     let propertyUrl = null;
 
     try {
-      const res = await fetch(`/api/scans/result/${encodeURIComponent(scanId)}`, {
+      const res = await fetch(`/api/scans/result/${encodeURIComponent(scanId)}?overview=1`, {
         credentials: "include",
       });
 
@@ -349,7 +349,7 @@
       }
       if (res.ok) {
         const data = await res.json();
-        scanTargetUrl = data.scan?.target_url || data.pages?.[0]?.url || "";
+        scanTargetUrl = data.scan?.target_url || "";
         propertyUrl = data.scan?.gsc_property_url || null;
       }
     } catch (e) {

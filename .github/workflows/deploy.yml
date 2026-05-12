@@ -3,11 +3,13 @@
 #   DEPLOY_HOST    - サーバーのホスト名 or IP
 #   DEPLOY_USER    - SSH ユーザー名
 #   DEPLOY_SSH_KEY - 秘密鍵（全文）
-#   DEPLOY_PATH    - デプロイ先パス（任意・デフォルト: ~/seoscan）
+#   DEPLOY_PATH    - デプロイ先の絶対パス（server.js があるディレクトリ）。未設定時は ~/seobydigitaleyes → ~/seoscan の順で存在する方へ cd
 #   DEPLOY_PORT    - SSH ポート（任意・デフォルト: 22）
 # 事前: サーバーで git clone し、.env を配置、pm2 をインストール
 # DNS: 公開ドメインの A レコードは DEPLOY_HOST（Elastic IP）を指すこと。
 #      別 IP（CDN のエッジのみ等）のままだと EC2 上のアプリに届かない。Route 53 なら scripts/route53-upsert-a.sh を参照。
+# nginx: 巨大 JSON が ERR_CONTENT_LENGTH_MISMATCH になるときは upstream 側へ
+#   proxy_buffering off; および proxy_buffers / proxy_busy_buffers を十分にすることを推奨。
 name: Deploy
 
 on:
@@ -18,30 +20,83 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    env:
+      SSH_PORT: ${{ secrets.DEPLOY_PORT }}
+      DEPLOY_DIR: ${{ secrets.DEPLOY_PATH }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-          cache: "npm"
+      # DEPLOY_SSH_KEY は run スクリプトへ直書きしない（複数行で壊れる）。
+      # 「サーバーホストが見つかりません」= DEPLOY_HOST Secret が空（appleboy / drone-ssh の典型メッセージ）
+      # 設定場所：このワークフローが走るリポジトリの Settings → Secrets and variables → Actions → Repository secrets
+      # （フォークに push している場合は「フォーク側」、本家に push している場合は「本家側」に同じ名前で必要）
+      # Environment のみに Secret があるとこの job には届かない（workflow に environment: が無いため）
+      # デプロイは SSH 先で npm ci のみ実行。
 
-      - name: Install dependencies
-        run: npm ci
+      - name: Require DEPLOY_HOST and DEPLOY_USER
+        env:
+          _CHECK_HOST: ${{ secrets.DEPLOY_HOST }}
+          _CHECK_USER: ${{ secrets.DEPLOY_USER }}
+        run: |
+          echo "Running in repository: $GITHUB_REPOSITORY"
+          if [ -z "$_CHECK_HOST" ] || [ -z "$_CHECK_USER" ]; then
+            echo "::error::DEPLOY_HOST または DEPLOY_USER が、このリポジトリの Actions から参照できていません（空です）。"
+            echo "::error::上記 Running in repository と同じ URL の Settings → Secrets and variables → Actions で、名前を正確に DEPLOY_HOST / DEPLOY_USER / DEPLOY_SSH_KEY として登録してください。"
+            exit 1
+          fi
 
       - name: Deploy via SSH
-        uses: appleboy/ssh-action@v1.0.3
+        uses: appleboy/ssh-action@v1.2.4
         with:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
-          port: ${{ secrets.DEPLOY_PORT || 22 }}
+          port: ${{ env.SSH_PORT || '22' }}
+          command_timeout: 30m
           script: |
             set -e
-            cd ${{ secrets.DEPLOY_PATH || '~/seoscan' }}
+            if [ -f "$HOME/.nvm/nvm.sh" ]; then
+              . "$HOME/.nvm/nvm.sh"
+            fi
+            _d="${{ env.DEPLOY_DIR }}"
+            if [ -n "$_d" ]; then
+              cd "$_d" || { echo "ERROR: DEPLOY_PATH で指定したディレクトリに cd できません: $_d"; exit 1; }
+            elif [ -d "$HOME/seobydigitaleyes" ]; then
+              cd "$HOME/seobydigitaleyes"
+            elif [ -d "$HOME/seoscan" ]; then
+              cd "$HOME/seoscan"
+            else
+              echo "ERROR: デプロイ先が見つかりません。EC2 で server.js があるパスを確認し、GitHub Secret DEPLOY_PATH に絶対パスで設定してください（例: /home/ubuntu/seobydigitaleyes）。"
+              exit 1
+            fi
+            echo "Deploy dir: $(pwd)"
+            echo "=== df -h (before deploy steps) ==="
+            df -h || true
+            command -v git >/dev/null || { echo "ERROR: git が見つかりません"; exit 1; }
+            command -v npm >/dev/null || { echo "ERROR: npm が見つかりません（Node を PATH に載せてください）"; exit 1; }
+            # ENOSPC 緩和: git fetch / npm pack の前にキャッシュ系のみ掃除（アプリ本体は触らない）
+            npm cache clean --force 2>/dev/null || true
+            if command -v sudo >/dev/null 2>&1; then
+              sudo apt-get clean 2>/dev/null || true
+              sudo journalctl --vacuum-time=3d 2>/dev/null || true
+            fi
             git fetch origin main && git reset --hard origin/main
+            # npm ci は lock に従い node_modules を作り直す（package-lock.json 必須）。ディスク極小時は手動で node_modules 削除が必要なこともある
+            rm -rf node_modules
             npm ci --omit=dev
-            pm2 restart seoscan 2>/dev/null || pm2 start server.js --name seoscan
-            pm2 save
+            if command -v pm2 >/dev/null 2>&1; then
+              pm2 restart seoscan 2>/dev/null || pm2 start server.js --name seoscan
+              pm2 save
+            elif [ -x "$HOME/.npm-global/bin/pm2" ]; then
+              "$HOME/.npm-global/bin/pm2" restart seoscan 2>/dev/null || "$HOME/.npm-global/bin/pm2" start server.js --name seoscan
+              "$HOME/.npm-global/bin/pm2" save
+            else
+              echo "ERROR: pm2 が見つかりません（グローバル install か PATH を確認してください）"
+              exit 1
+            fi
+            _port="$(node -e 'require("dotenv").config({ path: ".env" }); process.stdout.write(String(process.env.PORT || "3000"));' 2>/dev/null || echo 3000)"
+            echo "Post-deploy ping: GET http://127.0.0.1:${_port}/api/ping"
+            curl -fsS --max-time 15 "http://127.0.0.1:${_port}/api/ping" >/dev/null
+            echo "=== df -h (after npm ci) ==="
+            df -h || true

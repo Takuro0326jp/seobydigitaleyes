@@ -54,7 +54,7 @@
   async function loadData(noCache = false) {
     let propertyUrl = null;
     try {
-      const res = await fetch(`/api/scans/result/${encodeURIComponent(scanId)}`, {
+      const res = await fetch(`/api/scans/result/${encodeURIComponent(scanId)}?overview=1`, {
         credentials: "include",
       });
       if (res.ok) {

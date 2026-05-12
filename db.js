@@ -16,6 +16,18 @@ if (!DB_USER) {
   );
 }
 
+function resolveConnectionLimit() {
+  const raw = process.env.DB_CONNECTION_LIMIT;
+  if (raw !== undefined && raw !== "") {
+    const n = Number(raw);
+    if (Number.isFinite(n)) return Math.max(2, Math.min(48, Math.floor(n)));
+  }
+  // サーバレスはインスタンス数×プールがRDS max_connections に乗りやすい。
+  // 本番+staging が同一 RDS のとき staging 側は DB_CONNECTION_LIMIT=4 など小さめ推奨。
+  if (process.env.VERCEL === "1") return 6;
+  return 10;
+}
+
 const pool = mysql.createPool({
   host: DB_HOST,
   user: DB_USER,
@@ -23,11 +35,11 @@ const pool = mysql.createPool({
   database: DB_NAME,
   port: DB_PORT ? Number(DB_PORT) : 3306,
   waitForConnections: true,
-  connectionLimit: 10,
+  connectionLimit: resolveConnectionLimit(),
   queueLimit: 0,
   enableKeepAlive: true,
   keepAliveInitialDelay: 10000,
-  connectTimeout: 15000,
+  connectTimeout: 20000,
 });
 pool.__resolvedDbConfig = {
   hostValue: DB_HOST || null,
