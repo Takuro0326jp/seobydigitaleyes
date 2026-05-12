@@ -71,9 +71,19 @@ jobs:
               exit 1
             fi
             echo "Deploy dir: $(pwd)"
+            echo "=== df -h (before deploy steps) ==="
+            df -h || true
             command -v git >/dev/null || { echo "ERROR: git が見つかりません"; exit 1; }
             command -v npm >/dev/null || { echo "ERROR: npm が見つかりません（Node を PATH に載せてください）"; exit 1; }
+            # ENOSPC 緩和: git fetch / npm pack の前にキャッシュ系のみ掃除（アプリ本体は触らない）
+            npm cache clean --force 2>/dev/null || true
+            if command -v sudo >/dev/null 2>&1; then
+              sudo apt-get clean 2>/dev/null || true
+              sudo journalctl --vacuum-time=3d 2>/dev/null || true
+            fi
             git fetch origin main && git reset --hard origin/main
+            # npm ci は lock に従い node_modules を作り直す（package-lock.json 必須）。ディスク極小時は手動で node_modules 削除が必要なこともある
+            rm -rf node_modules
             npm ci --omit=dev
             if command -v pm2 >/dev/null 2>&1; then
               pm2 restart seoscan 2>/dev/null || pm2 start server.js --name seoscan
@@ -88,3 +98,5 @@ jobs:
             _port="$(node -e 'require("dotenv").config({ path: ".env" }); process.stdout.write(String(process.env.PORT || "3000"));' 2>/dev/null || echo 3000)"
             echo "Post-deploy ping: GET http://127.0.0.1:${_port}/api/ping"
             curl -fsS --max-time 15 "http://127.0.0.1:${_port}/api/ping" >/dev/null
+            echo "=== df -h (after npm ci) ==="
+            df -h || true
