@@ -229,11 +229,135 @@ class="block px-4 py-3 text-[11px] font-bold text-slate-600 hover:bg-slate-50 ho
     document.head.appendChild(s);
   }
 
+  /** 2段ナビ（nav-main / nav-sub・セグメント）仕様用スタイル ※見た目のみ */
+  function injectDeNavSpecStyles() {
+    if (document.getElementById("de-nav-spec-css")) return;
+    const s = document.createElement("style");
+    s.id = "de-nav-spec-css";
+    s.textContent = `
+      .de-app-header { position: relative; z-index: 40; }
+      .de-header-topbar {
+        position: sticky; top: 0; z-index: 100;
+        min-height: 48px; height: 48px;
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 0 12px;
+        background: #ffffff;
+        border-bottom: 1px solid #e5e7eb;
+        box-sizing: border-box;
+      }
+      @media (min-width: 640px) {
+        .de-header-topbar { padding: 0 32px; }
+      }
+      .de-header-topbar .ai-mode-badge { margin-top: 0; }
+      .de-header-nav-wrap {
+        position: sticky; top: 48px; z-index: 90;
+        background: #ffffff;
+        border-bottom: 1px solid #e5e7eb;
+      }
+      .nav-main {
+        display: flex; align-items: center;
+        height: 44px; min-height: 44px; max-height: 44px;
+        padding: 0 20px;
+        margin: 0;
+        background: #ffffff;
+        box-sizing: border-box;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-gutter: stable;
+      }
+      .nav-main-label {
+        flex-shrink: 0;
+        font-weight: 700;
+        font-size: 14px;
+        line-height: 1.25;
+        color: #111827;
+        padding-right: 16px;
+        margin-right: 16px;
+        border-right: 1px solid #e5e7eb;
+        white-space: nowrap;
+      }
+      .nav-main-items {
+        display: flex; align-items: center; gap: 20px;
+        flex: 1;
+        min-width: min-content;
+        height: 100%;
+      }
+      .nav-main-item {
+        flex-shrink: 0;
+        position: relative;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        height: 100%;
+        padding: 0 2px;
+        font-size: 14px;
+        font-weight: 500;
+        color: #6b7280;
+        text-decoration: none;
+        white-space: nowrap;
+        border: none;
+        transition: color 0.15s ease;
+      }
+      .nav-main-item:hover { color: #111827; }
+      .nav-main-item.active { color: #4f46e5; font-weight: 600; }
+      .nav-main-item.active::after {
+        content: "";
+        position: absolute;
+        left: 0; right: 0; bottom: 0;
+        height: 2px;
+        background: #4f46e5;
+      }
+      .nav-sub {
+        background: #ffffff;
+        padding: 7px 20px;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+      }
+      .seg {
+        display: inline-flex;
+        flex-wrap: nowrap;
+        align-items: center;
+        gap: 2px;
+        padding: 3px;
+        background: #f3f4f6;
+        border-radius: 8px;
+        min-width: min-content;
+      }
+      .seg-item {
+        flex-shrink: 0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 8px 14px;
+        font-size: 12px;
+        font-weight: 500;
+        color: #6b7280;
+        text-decoration: none;
+        white-space: nowrap;
+        border-radius: 6px;
+        border: 1px solid transparent;
+        background: transparent;
+        box-sizing: border-box;
+        transition: color 0.15s ease, background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+      }
+      .seg-item:hover { color: #111827; }
+      .seg-item.active {
+        background: #ffffff;
+        color: #4f46e5;
+        font-weight: 600;
+        border: 1px solid #c7d2fe;
+        box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+      }
+    `;
+    document.head.appendChild(s);
+  }
+
   function loadCommonHeader() {
     const container = document.getElementById("header-container");
     if (!container) return;
 
     injectAiBadgeStyles();
+    injectDeNavSpecStyles();
     persistScanIdFromCurrentUrl();
 
     const path = window.location.pathname.split("/").pop() || "index.html";
@@ -259,27 +383,33 @@ class="block px-4 py-3 text-[11px] font-bold text-slate-600 hover:bg-slate-50 ho
       return "";
     })();
 
+    const SECTION_LABELS = {
+      task: "タスク",
+      seo: "SEO",
+      gsc: "サーチコンソール",
+      domain: "ドメインオーソリティ",
+      security: "セキュリティ",
+      strategy: "SEO戦略",
+      ads: "広告",
+      heatmap: "ヒートマップ",
+    };
+    const sectionLabel = SECTION_LABELS[activeGroup] || "メニュー";
+
     const mainTab = (group, label, href) => {
       const active = activeGroup === group;
-      return `<a href="${href}${urlSuffix}" class="tab-btn pb-2.5 text-sm font-bold border-b-2 transition-colors whitespace-nowrap ${active ? "border-blue-600 text-blue-600" : "border-transparent text-slate-400 hover:text-slate-600"}">${label}</a>`;
+      const cls = active ? "nav-main-item active" : "nav-main-item";
+      return `<a href="${href}${urlSuffix}" class="${cls}">${label}</a>`;
     };
 
-    /** 一段下は「タブ」ではなく pill ボタンで、一段目のタブと役割が区別しやすいようにする */
     const subTab = (pageKey, label, href) => {
       const active = path.includes(pageKey);
-      const base =
-        "inline-flex items-center justify-center py-2.5 px-4 sm:py-3 sm:px-5 min-h-[44px] rounded-full text-xs font-bold leading-snug transition whitespace-nowrap border shrink-0 ";
-      const activeCls = "bg-indigo-600 border-indigo-600 text-white shadow-sm hover:bg-indigo-700 hover:border-indigo-700";
-      const idleCls =
-        "bg-white border-slate-200 text-slate-600 hover:bg-slate-50 hover:border-slate-300 hover:text-slate-900";
-      return `<a href="${href}${urlSuffix}" class="${base}${active ? activeCls : idleCls}">${label}</a>`;
+      const cls = active ? "seg-item active" : "seg-item";
+      return `<a href="${href}${urlSuffix}" class="${cls}">${label}</a>`;
     };
 
     const subNavWrapper = (ariaLabel, content) => `
-      <div class="px-3 sm:px-8 flex items-center bg-slate-50 border-t border-slate-100 overflow-x-auto ${isHideNavPage ? "hidden" : ""}" style="-webkit-overflow-scrolling:touch" role="navigation" aria-label="${ariaLabel}">
-        <div class="flex flex-wrap sm:flex-nowrap items-center gap-2 py-2 sm:py-2.5 w-full min-h-[44px]">
-          ${content}
-        </div>
+      <div class="nav-sub" role="navigation" aria-label="${ariaLabel}">
+        <div class="seg">${content}</div>
       </div>`;
 
     // Secondary nav: SEO subtabs
@@ -299,10 +429,29 @@ class="block px-4 py-3 text-[11px] font-bold text-slate-600 hover:bg-slate-50 ho
           ${subTab("gsc-monitoring.html",    "モニタリング",     "gsc-monitoring.html")}
     `) : "";
 
+    const navWrapHtml = !isHideNavPage
+      ? `<div class="de-header-nav-wrap">
+    <nav class="nav-main de-header-main-nav-scroll" aria-label="メイン">
+      <span class="nav-main-label">${sectionLabel}</span>
+      <div class="nav-main-items">
+                ${mainTab("task",     "タスク",               "gsc-task.html")}
+                ${mainTab("seo",      "SEO",                  "result.html")}
+                ${mainTab("gsc",      "サーチコンソール",      "gsc.html")}
+                ${mainTab("domain",   "ドメインオーソリティ",  "domain.html")}
+                ${mainTab("security", "セキュリティ",          "security.html")}
+                ${mainTab("strategy", "SEO戦略",              "strategy.html")}
+                ${mainTab("ads",      "広告",                 "ads.html")}
+                ${mainTab("heatmap",  "ヒートマップ",          "heatmap.html")}
+      </div>
+    </nav>
+    ${seoSubNav}${gscSubNav}
+  </div>`
+      : "";
+
     container.innerHTML = `
-    <header class="bg-white border-b border-slate-200 sticky top-0 z-40">
-        <div class="flex items-center justify-between px-3 sm:px-8 border-b border-slate-100" style="min-height:56px">
-           <div class="flex items-center gap-2 sm:gap-6 min-w-0">
+    <header class="de-app-header bg-white">
+        <div class="de-header-topbar">
+           <div class="flex items-center gap-2 sm:gap-6 min-w-0 flex-1">
     <div class="flex items-center gap-2 shrink-0">
     <a href="seo.html" class="flex items-center gap-2 hover:opacity-80 transition-opacity">
         <img src="/img/d_logo.png" alt="Logo" style="width:28px;height:28px;max-width:28px;max-height:28px" class="sm:!w-8 sm:!h-8" onerror="this.style.display='none'">
@@ -322,20 +471,7 @@ class="block px-4 py-3 text-[11px] font-bold text-slate-600 hover:bg-slate-50 ho
                 <div id="header-user-nav" class="flex items-center gap-2 sm:gap-4"></div>
             </div>
         </div>
-        <div class="px-3 sm:px-8 py-2.5 sm:py-3 flex items-stretch bg-white overflow-x-auto ${isHideNavPage ? "hidden" : ""}" style="scrollbar-gutter:stable;-webkit-overflow-scrolling:touch">
-            <div class="flex min-h-[52px] sm:min-h-[58px] flex-1 items-end gap-3 sm:gap-6">
-                ${mainTab("task",     "タスク",               "gsc-task.html")}
-                ${mainTab("seo",      "SEO",                  "result.html")}
-                ${mainTab("gsc",      "サーチコンソール",      "gsc.html")}
-                ${mainTab("domain",   "ドメインオーソリティ",  "domain.html")}
-                ${mainTab("security", "セキュリティ",          "security.html")}
-                ${mainTab("strategy", "SEO戦略",              "strategy.html")}
-                ${mainTab("ads",      "広告",                 "ads.html")}
-                ${mainTab("heatmap",  "ヒートマップ",          "heatmap.html")}
-            </div>
-        </div>
-        ${seoSubNav}
-        ${gscSubNav}
+        ${navWrapHtml}
     </header>
     `;
 
@@ -583,7 +719,7 @@ class="block px-4 py-3 text-[11px] font-bold text-slate-600 hover:bg-slate-50 ho
     document.head.appendChild(s);
 
     // ヘッダーのメインタブをモバイルで非表示（ボトムナビに移行）
-    const headerTabs = document.querySelector("header .overflow-x-auto");
+    const headerTabs = document.querySelector("header .de-header-main-nav-scroll");
     if (headerTabs && !isHideNavPage) {
       headerTabs.style.cssText += ";display:none";
       // サブナビは残す
