@@ -14,18 +14,6 @@
         .scrollbar-thin::-webkit-scrollbar { width: 6px; }
         .scrollbar-thin::-webkit-scrollbar-track { background: #f1f5f9; }
         .scrollbar-thin::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
-        .tech-page-bubble::before {
-            content: '';
-            position: absolute;
-            left: -10px;
-            bottom: 14px;
-            width: 0;
-            height: 0;
-            border-top: 9px solid transparent;
-            border-bottom: 9px solid transparent;
-            border-right: 10px solid #fff;
-            filter: drop-shadow(-1px 0 0 rgb(226 232 240));
-        }
     </style>
   <link rel="manifest" href="/manifest.json">
   <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
@@ -37,14 +25,9 @@
 
     <main class="flex-grow max-w-[1400px] mx-auto w-full px-4 sm:px-6 lg:px-8 py-6 lg:py-8 space-y-8">
 
-        <!-- ページ説明（マスコット吹き出し） -->
-        <div class="flex flex-col sm:flex-row sm:items-end gap-3 sm:gap-4">
-            <div class="flex shrink-0 justify-center sm:justify-start sm:pb-0.5" aria-hidden="true">
-                <img src="/img/mascot-tech-audit.png" alt="" width="240" height="96" class="h-16 sm:h-20 md:h-24 w-auto max-w-[min(280px,72vw)] object-contain object-bottom select-none pointer-events-none" loading="lazy" decoding="async" onerror="this.parentElement.style.display='none'">
-            </div>
-            <div class="relative tech-page-bubble flex-1 min-w-0 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
-                <p class="text-sm text-slate-600 leading-relaxed">クロール・表示速度・構造など技術的な問題を分析</p>
-            </div>
+        <!-- ページ説明 -->
+        <div>
+            <p class="text-sm text-slate-600">クロール・表示速度・構造など技術的な問題を分析</p>
         </div>
 
         <!-- 更新ボタン -->
