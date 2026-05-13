@@ -317,6 +317,8 @@ class="block px-4 py-3 text-[11px] font-bold text-slate-600 hover:bg-slate-50 ho
         display: inline-flex;
         align-items: center;
         justify-content: center;
+        min-height: 36px;
+        line-height: 1.25;
         padding: 8px 14px;
         font-size: 12px;
         font-weight: 500;

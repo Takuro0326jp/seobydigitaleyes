@@ -95,6 +95,8 @@
   window.renderActionItemList = function (container, scanId) {
     if (!container || !scanId) return;
 
+    const subnavSlot = document.getElementById("task-subnav-slot");
+
     let isRegenerating = false;
     let items = [];
 
@@ -375,6 +377,7 @@
       const errMsg = hasError ? window.__actionItemListError : "";
       if (hasError) delete window.__actionItemListError;
       if (isLoading) {
+        if (subnavSlot) subnavSlot.innerHTML = "";
         container.innerHTML = `
           <div class="mb-4">
             <div class="flex items-center justify-between mb-2">
@@ -407,24 +410,29 @@
         ...allCategories.filter((c) => usedCategories.has(c) || alwaysShowCategories.includes(c)),
       ];
 
-      const categoryFilterHtml =
+      const categorySegButtons =
         categoryOptions.length > 1
-          ? `
-        <div class="nav-sub mb-3 -mx-1 sm:mx-0" role="toolbar" aria-label="カテゴリで絞り込み">
-          <div class="seg">
-          ${categoryOptions
-            .map(
-              (cat) => `
+          ? categoryOptions
+              .map(
+                (cat) => `
             <button type="button" class="seg-item${selectedCategory === cat ? " active" : ""}" data-category="${escapeHtml(cat)}">
               ${cat || "すべて"}
             </button>
           `
-            )
-            .join("")}
-          </div>
-        </div>
-      `
+              )
+              .join("")
           : "";
+
+      const categoryFilterHtml =
+        categorySegButtons
+          ? `<div class="nav-sub" role="toolbar" aria-label="カテゴリで絞り込み"><div class="seg">${categorySegButtons}</div></div>`
+          : "";
+
+      if (subnavSlot) {
+        subnavSlot.innerHTML = categoryFilterHtml;
+      }
+
+      const categoryFilterInMain = !subnavSlot && categoryFilterHtml ? categoryFilterHtml : "";
 
       const useCategoryApi = selectedCategory && CATEGORY_API_MAP[selectedCategory];
       let filteredItems = useCategoryApi ? categoryItems : filterByCategory(items);
@@ -668,7 +676,7 @@
       container.innerHTML = `
         <div class="mb-4">
           ${progressCardHtml}
-          ${categoryFilterHtml}
+          ${categoryFilterInMain}
           <div class="flex items-center justify-between mb-2">
             <span class="text-[11px] font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">今週やるべきこと</span>
             <span class="text-[11px] text-slate-400 dark:text-slate-500">${totalVerifying}件確認中 / ${totalCompleted}件完了 / 候補 ${totalPending + totalVerifying + totalCompleted}件</span>
@@ -699,7 +707,9 @@
         autoCheckResults = {};
         runAutoCheck();
       });
-      container.querySelectorAll("[data-category]").forEach((btn) => {
+      [subnavSlot, container].forEach((root) => {
+        if (!root) return;
+        root.querySelectorAll("[data-category]").forEach((btn) => {
         btn.addEventListener("click", () => {
           selectedCategory = (btn.dataset.category || "").trim();
           const apiKey = CATEGORY_API_MAP[selectedCategory];
@@ -730,6 +740,7 @@
           }
         });
       });
+    });
     }
 
     render();
@@ -742,6 +753,8 @@
     const sp = new URLSearchParams(window.location.search);
     const scanId = sp.get("scan") || sp.get("scanId");
     if (!scanId) {
+      const slot = document.getElementById("task-subnav-slot");
+      if (slot) slot.innerHTML = "";
       container.innerHTML = `<div class="p-5 text-center rounded-xl bg-amber-50 border border-amber-200"><div class="text-sm text-amber-800">スキャンID（?scan= または ?scanId=）が必要です。</div><a href="seo.html" class="inline-block mt-3 text-indigo-600 font-bold text-xs">診断一覧へ</a></div>`;
       return;
     }

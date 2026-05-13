@@ -91,6 +91,17 @@
             padding: 14px 12px !important;
           }
         }
+        /* タスクのカテゴリ帯をヘッダー内下段と同じスタック位置に（全幅・sticky） */
+        .task-subnav-slot {
+          position: sticky;
+          top: calc(48px + 44px);
+          z-index: 89;
+          background: #ffffff;
+          border-bottom: 1px solid #e5e7eb;
+        }
+        .task-subnav-slot:empty {
+          display: none;
+        }
     </style>
   <link rel="manifest" href="/manifest.json">
   <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
@@ -99,6 +110,7 @@
 <body class="text-slate-900 antialiased bg-slate-50/30 min-h-screen flex flex-col">
 
     <div id="header-container"></div>
+    <div id="task-subnav-slot" class="task-subnav-slot" aria-live="polite"></div>
 
     <main class="flex-grow max-w-[1400px] mx-auto w-full px-4 sm:px-6 lg:px-8 py-6 lg:py-8 space-y-8">
 
@@ -108,8 +120,8 @@
         </div>
     </main>
 
-    <script src="/js/header.js?v=16"></script>
-    <script src="/js/action-item-list.js?v=2"></script>
+    <script src="/js/header.js?v=17"></script>
+    <script src="/js/action-item-list.js?v=3"></script>
     <script src="/js/gsc-task.js"></script>
 <script>if("serviceWorker"in navigator)navigator.serviceWorker.register("/sw.js").catch(()=>{});</script>
 </body>
