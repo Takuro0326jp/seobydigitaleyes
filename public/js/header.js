@@ -268,7 +268,7 @@ class="block px-4 py-3 text-[11px] font-bold text-slate-600 hover:bg-slate-50 ho
     const subTab = (pageKey, label, href) => {
       const active = path.includes(pageKey);
       const base =
-        "inline-flex items-center justify-center py-2.5 px-4 sm:py-3 sm:px-4 min-h-[44px] rounded-lg text-xs font-bold leading-snug transition whitespace-nowrap border shrink-0 ";
+        "inline-flex items-center justify-center py-2.5 px-4 sm:py-3 sm:px-5 min-h-[44px] rounded-full text-xs font-bold leading-snug transition whitespace-nowrap border shrink-0 ";
       const activeCls = "bg-indigo-600 border-indigo-600 text-white shadow-sm hover:bg-indigo-700 hover:border-indigo-700";
       const idleCls =
         "bg-white border-slate-200 text-slate-600 hover:bg-slate-50 hover:border-slate-300 hover:text-slate-900";
@@ -322,8 +322,8 @@ class="block px-4 py-3 text-[11px] font-bold text-slate-600 hover:bg-slate-50 ho
                 <div id="header-user-nav" class="flex items-center gap-2 sm:gap-4"></div>
             </div>
         </div>
-        <div class="px-3 sm:px-8 flex items-stretch bg-white overflow-x-auto ${isHideNavPage ? "hidden" : ""}" style="scrollbar-gutter:stable;-webkit-overflow-scrolling:touch">
-            <div class="flex min-h-[48px] sm:min-h-[52px] flex-1 items-end gap-3 sm:gap-6">
+        <div class="px-3 sm:px-8 py-2.5 sm:py-3 flex items-stretch bg-white overflow-x-auto ${isHideNavPage ? "hidden" : ""}" style="scrollbar-gutter:stable;-webkit-overflow-scrolling:touch">
+            <div class="flex min-h-[52px] sm:min-h-[58px] flex-1 items-end gap-3 sm:gap-6">
                 ${mainTab("task",     "タスク",               "gsc-task.html")}
                 ${mainTab("seo",      "SEO",                  "result.html")}
                 ${mainTab("gsc",      "サーチコンソール",      "gsc.html")}
