@@ -264,20 +264,26 @@ class="block px-4 py-3 text-[11px] font-bold text-slate-600 hover:bg-slate-50 ho
       return `<a href="${href}${urlSuffix}" class="tab-btn pb-4 text-sm font-bold border-b-2 transition-colors whitespace-nowrap ${active ? "border-blue-600 text-blue-600" : "border-transparent text-slate-400 hover:text-slate-600"}">${label}</a>`;
     };
 
+    /** 一段下は「タブ」ではなく pill ボタンで、一段目のタブと役割が区別しやすいようにする */
     const subTab = (pageKey, label, href) => {
       const active = path.includes(pageKey);
-      return `<a href="${href}${urlSuffix}" class="sub-tab-btn pb-4 text-xs font-bold tracking-wide transition-colors whitespace-nowrap border-b-2 ${active ? "border-indigo-600 text-indigo-600" : "border-transparent text-slate-400 hover:text-slate-600"}">${label}</a>`;
+      const base =
+        "inline-flex items-center justify-center min-h-[36px] px-3 sm:px-3.5 rounded-lg text-xs font-bold transition whitespace-nowrap border shrink-0 ";
+      const activeCls = "bg-indigo-600 border-indigo-600 text-white shadow-sm hover:bg-indigo-700 hover:border-indigo-700";
+      const idleCls =
+        "bg-white border-slate-200 text-slate-600 hover:bg-slate-50 hover:border-slate-300 hover:text-slate-900";
+      return `<a href="${href}${urlSuffix}" class="${base}${active ? activeCls : idleCls}">${label}</a>`;
     };
 
-    const subNavWrapper = (content) => `
-      <div class="px-3 sm:px-8 flex items-center bg-slate-50 border-t border-slate-100 overflow-x-auto ${isHideNavPage ? "hidden" : ""}" style="min-height:44px;-webkit-overflow-scrolling:touch">
-        <div class="flex items-center gap-4 sm:gap-6 pt-3 sm:pt-4">
+    const subNavWrapper = (ariaLabel, content) => `
+      <div class="px-3 sm:px-8 flex items-center bg-slate-50 border-t border-slate-100 overflow-x-auto ${isHideNavPage ? "hidden" : ""}" style="-webkit-overflow-scrolling:touch" role="navigation" aria-label="${ariaLabel}">
+        <div class="flex flex-wrap sm:flex-nowrap items-center gap-2 py-2 sm:py-2.5 w-full min-h-[44px]">
           ${content}
         </div>
       </div>`;
 
     // Secondary nav: SEO subtabs
-    const seoSubNav = activeGroup === "seo" ? subNavWrapper(`
+    const seoSubNav = activeGroup === "seo" ? subNavWrapper("SEO の画面切替", `
           ${subTab("result.html",        "構造分析",          "result.html")}
           ${subTab("link-structure.html","リンク構造分析",    "link-structure.html")}
           ${subTab("mobile.html",        "モバイルフレンドリー診断", "mobile.html")}
@@ -285,7 +291,7 @@ class="block px-4 py-3 text-[11px] font-bold text-slate-600 hover:bg-slate-50 ho
     `) : "";
 
     // Secondary nav: Search Console subtabs
-    const gscSubNav = activeGroup === "gsc" ? subNavWrapper(`
+    const gscSubNav = activeGroup === "gsc" ? subNavWrapper("サーチコンソールの画面切替", `
           ${subTab("gsc.html",               "パフォーマンス",   "gsc.html")}
           ${subTab("gsc-indexhealth.html",   "インデックス状態", "gsc-indexhealth.html")}
           ${subTab("gsc-technical.html",     "技術監査",         "gsc-technical.html")}
