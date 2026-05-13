@@ -102,6 +102,10 @@
         .task-subnav-slot:empty {
           display: none;
         }
+        /* メインタブ直下のグレー線が二重にならないよう、スロット表示時は nav-wrap 側の下線を外す（SEO/GSC と同様に一段目〜セグメント間は無地） */
+        #header-container:has(+ #task-subnav-slot:not(:empty)) .de-header-nav-wrap {
+          border-bottom: none;
+        }
     </style>
   <link rel="manifest" href="/manifest.json">
   <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
@@ -120,8 +124,8 @@
         </div>
     </main>
 
-    <script src="/js/header.js?v=17"></script>
-    <script src="/js/action-item-list.js?v=3"></script>
+    <script src="/js/header.js?v=18"></script>
+    <script src="/js/action-item-list.js?v=4"></script>
     <script src="/js/gsc-task.js"></script>
 <script>if("serviceWorker"in navigator)navigator.serviceWorker.register("/sw.js").catch(()=>{});</script>
 </body>
