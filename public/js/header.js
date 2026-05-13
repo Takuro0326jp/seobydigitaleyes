@@ -261,14 +261,14 @@ class="block px-4 py-3 text-[11px] font-bold text-slate-600 hover:bg-slate-50 ho
 
     const mainTab = (group, label, href) => {
       const active = activeGroup === group;
-      return `<a href="${href}${urlSuffix}" class="tab-btn pb-4 text-sm font-bold border-b-2 transition-colors whitespace-nowrap ${active ? "border-blue-600 text-blue-600" : "border-transparent text-slate-400 hover:text-slate-600"}">${label}</a>`;
+      return `<a href="${href}${urlSuffix}" class="tab-btn pb-2.5 text-sm font-bold border-b-2 transition-colors whitespace-nowrap ${active ? "border-blue-600 text-blue-600" : "border-transparent text-slate-400 hover:text-slate-600"}">${label}</a>`;
     };
 
     /** 一段下は「タブ」ではなく pill ボタンで、一段目のタブと役割が区別しやすいようにする */
     const subTab = (pageKey, label, href) => {
       const active = path.includes(pageKey);
       const base =
-        "inline-flex items-center justify-center min-h-[36px] px-3 sm:px-3.5 rounded-lg text-xs font-bold transition whitespace-nowrap border shrink-0 ";
+        "inline-flex items-center justify-center py-2.5 px-4 sm:py-3 sm:px-4 min-h-[44px] rounded-lg text-xs font-bold leading-snug transition whitespace-nowrap border shrink-0 ";
       const activeCls = "bg-indigo-600 border-indigo-600 text-white shadow-sm hover:bg-indigo-700 hover:border-indigo-700";
       const idleCls =
         "bg-white border-slate-200 text-slate-600 hover:bg-slate-50 hover:border-slate-300 hover:text-slate-900";
@@ -322,8 +322,8 @@ class="block px-4 py-3 text-[11px] font-bold text-slate-600 hover:bg-slate-50 ho
                 <div id="header-user-nav" class="flex items-center gap-2 sm:gap-4"></div>
             </div>
         </div>
-        <div class="px-3 sm:px-8 flex items-center bg-white overflow-x-auto ${isHideNavPage ? "hidden" : ""}" style="scrollbar-gutter:stable;-webkit-overflow-scrolling:touch">
-            <div class="flex items-center gap-3 sm:gap-6 pt-3 sm:pt-4" style="padding-bottom:1px">
+        <div class="px-3 sm:px-8 flex items-stretch bg-white overflow-x-auto ${isHideNavPage ? "hidden" : ""}" style="scrollbar-gutter:stable;-webkit-overflow-scrolling:touch">
+            <div class="flex min-h-[48px] sm:min-h-[52px] flex-1 items-end gap-3 sm:gap-6">
                 ${mainTab("task",     "タスク",               "gsc-task.html")}
                 ${mainTab("seo",      "SEO",                  "result.html")}
                 ${mainTab("gsc",      "サーチコンソール",      "gsc.html")}
