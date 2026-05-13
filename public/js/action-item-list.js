@@ -410,20 +410,18 @@
       const categoryFilterHtml =
         categoryOptions.length > 1
           ? `
-        <div class="flex flex-wrap gap-1.5 mb-3 overflow-x-auto py-1 -mx-1">
+        <div class="nav-sub mb-3 -mx-1 sm:mx-0" role="toolbar" aria-label="カテゴリで絞り込み">
+          <div class="seg">
           ${categoryOptions
             .map(
               (cat) => `
-            <button type="button" class="px-3 py-1.5 rounded-full text-xs font-bold shrink-0 transition-colors cursor-pointer border ${
-              selectedCategory === cat
-                ? "bg-indigo-600 text-white border-indigo-600"
-                : "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-700/50"
-            }" data-category="${escapeHtml(cat)}">
+            <button type="button" class="seg-item${selectedCategory === cat ? " active" : ""}" data-category="${escapeHtml(cat)}">
               ${cat || "すべて"}
             </button>
           `
             )
             .join("")}
+          </div>
         </div>
       `
           : "";

@@ -265,17 +265,6 @@ class="block px-4 py-3 text-[11px] font-bold text-slate-600 hover:bg-slate-50 ho
         -webkit-overflow-scrolling: touch;
         scrollbar-gutter: stable;
       }
-      .nav-main-label {
-        flex-shrink: 0;
-        font-weight: 700;
-        font-size: 14px;
-        line-height: 1.25;
-        color: #111827;
-        padding-right: 16px;
-        margin-right: 16px;
-        border-right: 1px solid #e5e7eb;
-        white-space: nowrap;
-      }
       .nav-main-items {
         display: flex; align-items: center; gap: 20px;
         flex: 1;
@@ -331,6 +320,7 @@ class="block px-4 py-3 text-[11px] font-bold text-slate-600 hover:bg-slate-50 ho
         padding: 8px 14px;
         font-size: 12px;
         font-weight: 500;
+        font-family: inherit;
         color: #6b7280;
         text-decoration: none;
         white-space: nowrap;
@@ -338,7 +328,12 @@ class="block px-4 py-3 text-[11px] font-bold text-slate-600 hover:bg-slate-50 ho
         border: 1px solid transparent;
         background: transparent;
         box-sizing: border-box;
+        cursor: pointer;
         transition: color 0.15s ease, background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+      }
+      .seg-item:focus-visible {
+        outline: 2px solid #4f46e5;
+        outline-offset: 2px;
       }
       .seg-item:hover { color: #111827; }
       .seg-item.active {
@@ -383,18 +378,6 @@ class="block px-4 py-3 text-[11px] font-bold text-slate-600 hover:bg-slate-50 ho
       return "";
     })();
 
-    const SECTION_LABELS = {
-      task: "タスク",
-      seo: "SEO",
-      gsc: "サーチコンソール",
-      domain: "ドメインオーソリティ",
-      security: "セキュリティ",
-      strategy: "SEO戦略",
-      ads: "広告",
-      heatmap: "ヒートマップ",
-    };
-    const sectionLabel = SECTION_LABELS[activeGroup] || "メニュー";
-
     const mainTab = (group, label, href) => {
       const active = activeGroup === group;
       const cls = active ? "nav-main-item active" : "nav-main-item";
@@ -432,7 +415,6 @@ class="block px-4 py-3 text-[11px] font-bold text-slate-600 hover:bg-slate-50 ho
     const navWrapHtml = !isHideNavPage
       ? `<div class="de-header-nav-wrap">
     <nav class="nav-main de-header-main-nav-scroll" aria-label="メイン">
-      <span class="nav-main-label">${sectionLabel}</span>
       <div class="nav-main-items">
                 ${mainTab("task",     "タスク",               "gsc-task.html")}
                 ${mainTab("seo",      "SEO",                  "result.html")}
@@ -440,7 +422,6 @@ class="block px-4 py-3 text-[11px] font-bold text-slate-600 hover:bg-slate-50 ho
                 ${mainTab("domain",   "ドメインオーソリティ",  "domain.html")}
                 ${mainTab("security", "セキュリティ",          "security.html")}
                 ${mainTab("strategy", "SEO戦略",              "strategy.html")}
-                ${mainTab("ads",      "広告",                 "ads.html")}
                 ${mainTab("heatmap",  "ヒートマップ",          "heatmap.html")}
       </div>
     </nav>
@@ -632,7 +613,6 @@ class="block px-4 py-3 text-[11px] font-bold text-slate-600 hover:bg-slate-50 ho
       { id: "task", icon: "✓", label: "タスク", href: "gsc-task.html" + urlSuffix },
       { id: "seo", icon: "◉", label: "SEO", href: "result.html" + urlSuffix },
       { id: "gsc", icon: "◎", label: "GSC", href: "gsc.html" + urlSuffix },
-      { id: "ads", icon: "▣", label: "広告", href: "ads.html" + urlSuffix },
       { id: "more", icon: "⋯", label: "その他", href: "#" },
     ];
 
