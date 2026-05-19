@@ -659,10 +659,10 @@ window.renderCrawlDepthDistribution = function (pages) {
   if (crawlDepthChartInstance) crawlDepthChartInstance.destroy();
 
   const labels = [
-    ["深さ 1", "1クリックで到達"],
-    ["深さ 2", "2クリックで到達"],
-    ["深さ 3", "3クリックで到達"],
-    ["深さ 4以上", "要注意"],
+    "深さ１（1クリックで到達）",
+    "深さ２（2クリックで到達）",
+    "深さ３（3クリックで到達）",
+    "深さ４以上（要注意）",
   ];
   const values = [depthCounts[1] || 0, depthCounts[2] || 0, depthCounts[3] || 0, depthCounts[4] || 0];
   const colors = ["#6366F1", "#818CF8", "#A5B4FC", "#E53E3E"];
@@ -707,7 +707,7 @@ window.renderCrawlDepthDistribution = function (pages) {
           borderWidth: 0,
           borderRadius: 6,
           borderSkipped: false,
-          barThickness: 28,
+          barThickness: 22,
         },
       ],
     },
@@ -715,7 +715,7 @@ window.renderCrawlDepthDistribution = function (pages) {
       indexAxis: "y",
       responsive: true,
       maintainAspectRatio: false,
-      layout: { padding: { left: 4, right: 12, top: 4, bottom: 0 } },
+      layout: { padding: { left: 0, right: 8, top: 4, bottom: 0 } },
       plugins: {
         legend: { display: false },
         tooltip: {
@@ -748,10 +748,10 @@ window.renderCrawlDepthDistribution = function (pages) {
           grid: { display: false },
           border: { display: false },
           ticks: {
-            padding: 10,
+            padding: 6,
             autoSkip: false,
             color: (ctx) => (ctx.index === 3 ? "#dc2626" : "#64748b"),
-            font: { size: 11, lineHeight: 1.4 },
+            font: { size: 11 },
           },
         },
       },
@@ -772,7 +772,7 @@ function renderDirectoryHealth(pages) {
           ? `<span class="px-2 py-1 rounded-md bg-red-50 text-red-500 text-[11px] font-bold">${s.issues}</span>`
           : `<span class="px-2 py-1 rounded-md bg-slate-50 text-slate-400 text-[11px] font-bold">0</span>`;
       return `<tr class="hover:bg-slate-50 transition">
-        <td class="px-6 py-4 font-semibold text-slate-800">${s.dir}</td>
+        <td class="px-6 py-4 font-semibold text-slate-800 dir-health-dir-cell">${escapeHtmlForResult(s.dir)}</td>
         <td class="px-4 py-4 text-center text-slate-600 font-medium">${s.pages}</td>
         <td class="px-4 py-4 text-center font-extrabold ${scoreColor}">${s.avgScore}</td>
         <td class="px-4 py-4 text-center">${issuesBtn}</td>

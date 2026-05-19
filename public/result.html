@@ -23,8 +23,8 @@ body{font-family:Inter,sans-serif}
     #pageQualityTableSection #searchInput { width: 100% !important; }
     .flex.justify-end.gap-3 { flex-wrap: wrap; justify-content: center !important; }
     .flex.justify-end.gap-3 button { flex: 1 1 auto; min-width: 0; }
-    .flex.justify-between.items-end.border-b { flex-direction: column; gap: 1rem; }
-    #dirHealthSearch { width: 100% !important; }
+    #directoryHealthSection .dir-health-header { flex-direction: column; align-items: stretch; gap: 1rem; }
+    #directoryHealthSection #dirHealthSearch { width: 100% !important; }
     .flex.justify-between.items-center.mb-8 { flex-direction: column; align-items: flex-start; gap: 1rem; }
 }
 /* 重要ページ Top10 */
@@ -238,27 +238,18 @@ body{font-family:Inter,sans-serif}
     margin: 0;
     line-height: 1.4;
 }
-#crawlDepthDistributionSection .depth-chart-title-sub {
-    font-weight: 400;
-    color: #64748b;
-    font-size: 13px;
-}
-#crawlDepthDistributionSection .depth-chart-meta {
-    margin-top: 8px;
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-}
-#crawlDepthDistributionSection .depth-chart-def {
+#crawlDepthDistributionSection .depth-chart-sub {
     font-size: 12px;
     color: #64748b;
-    margin: 0;
+    margin: 6px 0 0;
+    line-height: 1.5;
 }
 #crawlDepthDistributionSection .depth-chart-legend {
     display: flex;
-    gap: 12px;
+    gap: 16px;
     flex-wrap: wrap;
     align-items: center;
+    margin-top: 8px;
 }
 #crawlDepthDistributionSection .depth-chart-legend-item {
     display: flex;
@@ -279,7 +270,7 @@ body{font-family:Inter,sans-serif}
     background: #f8fafc;
 }
 #crawlDepthDistributionSection .depth-chart-canvas {
-    height: 240px;
+    height: 200px;
     position: relative;
 }
 #crawlDepthDistributionSection .depth-chart-canvas canvas {
@@ -309,6 +300,93 @@ body{font-family:Inter,sans-serif}
     content: ' ↓';
     opacity: 1;
     color: #6366f1;
+}
+/* ディレクトリ構造 × SEO健全性 */
+#directoryHealthSection .dir-health-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+#directoryHealthSection .dir-health-title {
+    font-size: 20px;
+    font-weight: 700;
+    color: #0f172a;
+    margin: 0;
+    line-height: 1.3;
+}
+#directoryHealthSection .dir-health-desc {
+    font-size: 14px;
+    color: #94a3b8;
+    margin: 8px 0 0;
+    font-weight: 500;
+}
+#directoryHealthSection #dirHealthSearch {
+    font-size: 14px;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 8px 16px;
+    width: 224px;
+    flex-shrink: 0;
+}
+#directoryHealthSection #dirHealthSearch:focus {
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+}
+#directoryHealthSection .dir-health-scroll {
+    height: 450px;
+    overflow: auto;
+}
+#directoryHealthSection .dir-health-table {
+    width: 100%;
+    table-layout: fixed;
+    min-width: 600px;
+    font-size: 12px;
+}
+#directoryHealthSection .dir-health-table thead {
+    background: #f8fafc;
+    color: #94a3b8;
+    border-bottom: 1px solid #e2e8f0;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+}
+#directoryHealthSection .dir-health-table th {
+    padding: 12px 16px;
+    font-weight: 700;
+    background: #f8fafc;
+}
+#directoryHealthSection .dir-health-table th:nth-child(1) { width: 50%; text-align: left; }
+#directoryHealthSection .dir-health-table th:nth-child(2) { width: 10%; text-align: center; }
+#directoryHealthSection .dir-health-table th:nth-child(3) { width: 13%; text-align: center; }
+#directoryHealthSection .dir-health-table th:nth-child(4) { width: 13%; text-align: center; }
+#directoryHealthSection .dir-health-table th:nth-child(5) { width: 14%; text-align: center; }
+#directoryHealthSection .dir-health-dir-cell {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 0;
+}
+#directoryHealthSection .dir-health-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 24px;
+    font-size: 11px;
+    color: #94a3b8;
+    padding: 16px;
+    border-top: 1px solid #f1f5f9;
+    background: #f8fafc;
+}
+#directoryHealthSection .dir-health-legend strong {
+    color: #64748b;
+    font-weight: 600;
+}
+#directoryHealthSection .dir-health-footer {
+    display: flex;
+    justify-content: flex-end;
+    padding: 16px;
+    border-top: 1px solid #f1f5f9;
 }
 </style>
   <link rel="manifest" href="/manifest.json">
@@ -657,20 +735,15 @@ body{font-family:Inter,sans-serif}
         <div class="p-4 border-b border-slate-100">
             <div class="depth-chart-header">
                 <div>
-                    <h2 class="depth-chart-title">
-                        クロールの深さ別ページ分布
-                        <span class="depth-chart-title-sub">ー深いページほどGoogleに見つかりにくい</span>
-                    </h2>
-                    <div class="depth-chart-meta">
-                        <p class="depth-chart-def">深さ＝トップページから何クリックで到達できるか</p>
-                        <div class="depth-chart-legend">
-                            <span class="depth-chart-legend-item">
-                                <span class="depth-chart-legend-dot" style="background:#6366f1"></span>深さ1～3（↓浅いほど良い）
-                            </span>
-                            <span class="depth-chart-legend-item">
-                                <span class="depth-chart-legend-dot" style="background:#e53e3e"></span>深さ4以上（Googleに見つかりにくい）
-                            </span>
-                        </div>
+                    <h2 class="depth-chart-title">クロールの深さ別ページ分布</h2>
+                    <p class="depth-chart-sub">深いページ程Googleに見つかりにくい（深さ＝トップページから何クリックで到達できるか）</p>
+                    <div class="depth-chart-legend">
+                        <span class="depth-chart-legend-item">
+                            <span class="depth-chart-legend-dot" style="background:#6366f1"></span>深さ1～3（↓浅いほど良い）
+                        </span>
+                        <span class="depth-chart-legend-item">
+                            <span class="depth-chart-legend-dot" style="background:#e53e3e"></span>深さ4以上（Googleに見つかりにくい）
+                        </span>
                     </div>
                 </div>
                 <span id="depth4Badge" class="hidden text-sm font-bold text-red-600 whitespace-nowrap">深さ4以上：0件</span>
@@ -683,81 +756,41 @@ body{font-family:Inter,sans-serif}
         </div>
     </section>
 
-    <!-- ========================= -->
     <!-- Directory Health -->
-    <!-- ========================= -->
-    
-    <!-- タイトル -->
-<div class="flex justify-between items-end border-b border-slate-100 pb-4 px-6 pt-6">
-    <div>
-        <h2 class="text-xl font-bold text-slate-900">ディレクトリ構造 × SEO健全性</h2>
-        <p class="text-sm text-slate-400 font-medium">ディレクトリ単位でページ品質とSEO問題を分析</p>
-    </div>
-<input
-id="dirHealthSearch"
-type="text"
-placeholder="ディレクトリ検索..."
-class="text-sm border border-slate-200 rounded-lg px-4 py-2 w-56
-focus:outline-none focus:ring-2 focus:ring-blue-500/20"
->
-</div>
-<div class="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
-<div style="height:450px;overflow-y:auto;overflow-x:auto;" class="scroll-area">
-<table class="w-full text-xs table-fixed" style="min-width:600px;">
-<thead class="bg-slate-50 text-slate-400 border-b border-slate-200 sticky top-0 z-10">
+    <section id="directoryHealthSection" class="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+        <div class="dir-health-header p-4 md:p-6 border-b border-slate-100">
+            <div>
+                <h2 class="dir-health-title">ディレクトリ構造 × SEO健全性</h2>
+                <p class="dir-health-desc">ディレクトリ単位でページ品質とSEO問題を分析</p>
+            </div>
+            <input id="dirHealthSearch" type="text" placeholder="ディレクトリ検索...">
+        </div>
+        <div class="dir-health-scroll scroll-area">
+            <table class="dir-health-table">
+                <thead>
                     <tr>
-                        <th class="bg-slate-50 px-6 py-3 text-left font-bold w-[50%]">ディレクトリ</th>
-                        <th class="bg-slate-50 px-4 py-3 text-center font-bold w-[10%]">ページ数</th>
-                        <th class="bg-slate-50 px-4 py-3 text-center font-bold w-[13%]">スコア</th>
-                        <th class="bg-slate-50 px-4 py-3 text-center font-bold w-[13%]">問題数</th>
-                        <th class="bg-slate-50 px-4 py-3 text-center font-bold w-[14%]">インデックス</th>
+                        <th>ディレクトリ</th>
+                        <th>ページ数</th>
+                        <th>スコア</th>
+                        <th>問題数</th>
+                        <th>インデックス</th>
                     </tr>
                 </thead>
-                <tbody
-                    id="directory-health-body"
-                    class="divide-y divide-slate-100 text-slate-700 bg-white"
-                >
-                </tbody>
+                <tbody id="directory-health-body" class="divide-y divide-slate-100 text-slate-700 bg-white"></tbody>
             </table>
         </div>
-    </div>
-
-<!-- legend -->
-<div class="flex flex-wrap gap-6 text-[11px] text-slate-400 p-4 border-t border-slate-100 bg-slate-50">
-    <div class="flex items-center gap-2">
-        <span class="font-semibold text-slate-500">スコア</span>
-        <span>= ページSEOスコア平均</span>
-    </div>
-
-    <div class="flex items-center gap-2">
-        <span class="font-semibold text-slate-500">問題数</span>
-        <span>= SEO問題ページ数</span>
-    </div>
-
-    <div class="flex items-center gap-2">
-        <span class="font-semibold text-slate-500">インデックス</span>
-        <span>= index可能ページ割合</span>
-    </div>
-</div>
-
-<!-- Excel button -->
-<div class="flex justify-end pt-4 pb-10">
-    <button id="exportDirectoryExcelBtn"
-        class="bg-emerald-600 text-white font-bold py-2.5 px-6 rounded-lg text-xs hover:bg-emerald-700 transition shadow-lg flex items-center gap-2">
-
-        <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-            <path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/>
-        </svg>
-
-        ディレクトリエクセル出力 (.xlsx)
-
-    </button>
-</div>
-
-    </div>
-
-
-    <!-- Directory Healthここまで -->
+        <div class="dir-health-legend">
+            <span><strong>スコア</strong> = ページSEOスコア平均</span>
+            <span><strong>問題数</strong> = SEO問題ページ数</span>
+            <span><strong>インデックス</strong> = index可能ページ割合</span>
+        </div>
+        <div class="dir-health-footer">
+            <button id="exportDirectoryExcelBtn" class="bg-emerald-600 text-white font-bold py-2.5 px-6 rounded-lg text-xs hover:bg-emerald-700 transition shadow-lg flex items-center gap-2">
+                <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg>
+                ディレクトリエクセル出力 (.xlsx)
+            </button>
+        </div>
+    </section>
 
     <div id="pageQualityTableSection" class="flex flex-col md:flex-row md:items-end md:justify-between gap-4 border-b border-slate-100 pb-4">
         <div>
@@ -854,8 +887,6 @@ class="bg-slate-900 text-white font-bold py-2.5 px-8 rounded-lg text-xs hover:bg
 再診断を開始する
 </button>
     </div>
-    
-</div>
 
     <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 sm:p-8 mt-8 sm:mt-12">
         <div class="flex justify-between items-center mb-8">
