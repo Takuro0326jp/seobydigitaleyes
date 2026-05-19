@@ -184,29 +184,35 @@ function countCriticalRow(p) {
     noindex ||
     !title ||
     h1c === 0 ||
-    title.length < 10
+    title.length < 15
   );
 }
 
+/** title タグの適正文字数（SEO一般的目安） */
+const TITLE_LEN_MIN_OK = 15;
+const TITLE_LEN_MAX_OK = 60;
+
 /**
- * ① OnPage 減点（文字数=title文字数、H1、title、meta description、キーワード一致）
+ * ① OnPage 減点（title文字数、H1、meta description、キーワード一致）
  * score = 100 - 合計減点
  */
 function calcOnPageDeductions(title, titleCharCount, h1Count, h1Text, metaDesc, bodyText, url) {
   const deductions = [];
 
-  // 文字数（title文字数）: 0=-15, 1-199=-10, 200-499=-5, 500+=0（仕様表準拠）
+  // title: 0=-15, 1-14=-10（短い）, 15-60=0（適正）, 61+=長いは別減点
   const len = titleCharCount ?? (title || "").length;
   if (len === 0) deductions.push({ label: "タイトル文字数不足", value: -15, reason: "0文字（タイトルなし）" });
-  else if (len < 200) deductions.push({ label: "タイトル文字数不足", value: -10, reason: `${len}文字（1〜199文字）` });
-  else if (len < 500) deductions.push({ label: "タイトル文字数不足", value: -5, reason: `${len}文字（200〜499文字）` });
+  else if (len < TITLE_LEN_MIN_OK) {
+    deductions.push({ label: "タイトル文字数不足", value: -10, reason: `${len}文字（${TITLE_LEN_MIN_OK}文字未満）` });
+  }
 
   // H1: なし=-10, 複数=-5, 1つ=0
   if (h1Count === 0) deductions.push({ label: "H1未設定", value: -10, reason: "H1タグなし" });
   else if (h1Count > 1) deductions.push({ label: "H1複数", value: -5, reason: `${h1Count}個のH1タグ` });
 
-  // title: なしは文字数0でカバー, 重複=-5(別途), 長すぎ=-3, 適正=0
-  if (title && title.length >= 60) deductions.push({ label: "タイトルが長い", value: -3, reason: `${title.length}文字（60字以上）` });
+  if (title && title.length > TITLE_LEN_MAX_OK) {
+    deductions.push({ label: "タイトルが長い", value: -3, reason: `${title.length}文字（${TITLE_LEN_MAX_OK}文字超）` });
+  }
 
   // meta description: なし=-5, 短すぎ(50未満)=-3, 適正=0
   const descLen = (metaDesc || "").length;
@@ -301,7 +307,7 @@ async function fetchAndParse(url, depth) {
 
       if (!title) issues.push({ code: "no_title", label: "タイトル未設定" });
       if (h1Count === 0) issues.push({ code: "no_h1", label: "H1未設定" });
-      if (title && title.length < 10) issues.push({ code: "short_title", label: "タイトルが短い" });
+      if (title && title.length < TITLE_LEN_MIN_OK) issues.push({ code: "short_title", label: "タイトルが短い" });
       if (depth > 4) issues.push({ code: "deep", label: "階層が深い" });
       if (noindex) issues.push({ code: "noindex", label: "noindex" });
 

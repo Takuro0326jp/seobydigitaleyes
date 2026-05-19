@@ -131,13 +131,12 @@ function reconstructDeductionsFromRow(r, titleCount, issues) {
   const statusCode = r.status_code ?? 0;
 
   if (titleLen === 0) deductions.push({ label: "タイトル文字数不足", value: -15, reason: "0文字（タイトルなし）" });
-  else if (titleLen < 200) deductions.push({ label: "タイトル文字数不足", value: -10, reason: `${titleLen}文字（200文字未満）` });
-  else if (titleLen < 500) deductions.push({ label: "タイトル文字数不足", value: -5, reason: `${titleLen}文字（200〜499文字）` });
+  else if (titleLen < 15) deductions.push({ label: "タイトル文字数不足", value: -10, reason: `${titleLen}文字（15文字未満）` });
 
   if (h1Count === 0) deductions.push({ label: "H1未設定", value: -10, reason: "H1タグなし" });
   else if (h1Count > 1) deductions.push({ label: "H1複数", value: -5, reason: `${h1Count}個のH1タグ` });
 
-  if (title && title.length >= 60) deductions.push({ label: "タイトルが長い", value: -3, reason: `${title.length}文字（60字以上）` });
+  if (title && title.length > 60) deductions.push({ label: "タイトルが長い", value: -3, reason: `${title.length}文字（60文字超）` });
 
   if (internalLinks === 0) deductions.push({ label: "内部リンクなし", value: -10, reason: "0本" });
   else if (internalLinks <= 3) deductions.push({ label: "内部リンク少ない", value: -5, reason: `${internalLinks}本` });
@@ -173,7 +172,7 @@ function pageIsCritical(p) {
     idx === "noindex" ||
     !title ||
     h1 === 0 ||
-    title.length < 10
+    title.length < 15
   );
 }
 

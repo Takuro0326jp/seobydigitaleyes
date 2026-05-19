@@ -89,7 +89,7 @@ async function recoverStuckScanWithPages(scanId) {
   try {
     const [[stats]] = await pool.query(
       `SELECT ROUND(AVG(score)) AS avg_score, COUNT(*) AS page_count,
-       SUM(CASE WHEN status_code >= 400 OR is_noindex = 1 OR COALESCE(title,'') = '' OR COALESCE(h1_count,0) = 0 OR CHAR_LENGTH(COALESCE(title,'')) < 10 THEN 1 ELSE 0 END) AS critical
+       SUM(CASE WHEN status_code >= 400 OR is_noindex = 1 OR COALESCE(title,'') = '' OR COALESCE(h1_count,0) = 0 OR CHAR_LENGTH(COALESCE(title,'')) < 15 THEN 1 ELSE 0 END) AS critical
        FROM scan_pages WHERE scan_id = ?`,
       [scanId]
     );

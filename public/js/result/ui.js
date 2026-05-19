@@ -217,6 +217,7 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 let criticalFilterActive = false;
+window.criticalFilterActive = false;
 
 document.addEventListener("DOMContentLoaded", () => {
 
@@ -228,24 +229,26 @@ document.addEventListener("DOMContentLoaded", () => {
   card.addEventListener("click", () => {
 
     criticalFilterActive = !criticalFilterActive;
+    window.criticalFilterActive = criticalFilterActive;
 
     if(criticalFilterActive){
-
-      const criticalPages =
-        (SEOState.allCrawlData || []).filter(p => isCritical(p));
-
-      renderTable(criticalPages);
 
       badge.classList.remove("hidden");
       card.classList.add("ring-2","ring-red-500");
 
     }else{
 
-      renderTable(SEOState.allCrawlData);
-
       badge.classList.add("hidden");
       card.classList.remove("ring-2","ring-red-500");
 
+    }
+
+    if (typeof filterAndRenderTable === "function") {
+      filterAndRenderTable();
+    } else if (criticalFilterActive) {
+      renderTable((SEOState.allCrawlData || []).filter((p) => isCritical(p)));
+    } else {
+      renderTable(SEOState.allCrawlData);
     }
 
     const table = document.getElementById("tableBody");

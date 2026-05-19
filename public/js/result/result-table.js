@@ -63,7 +63,12 @@ return keywordMatch && dirMatch;
 
 });
 
-renderTable(filtered);
+const rows =
+  window.criticalFilterActive
+    ? filtered.filter((p) => typeof isCritical === "function" && isCritical(p))
+    : filtered;
+
+renderTable(rows);
 
 };
 
@@ -82,6 +87,66 @@ menu.classList.toggle("hidden");
 // -----------------------------
 
 let urlIndexMap = new Map();
+let pageTableSortKey = "page_rank";
+let pageTableSortAsc = false;
+
+const PAGE_TABLE_STRING_SORT_KEYS = new Set(["url", "title", "index_status"]);
+
+function getPageSortValue(page, key) {
+  switch (key) {
+    case "url":
+      return (page.url || "").toLowerCase();
+    case "title":
+      return (page.title || "").toLowerCase();
+    case "index_status":
+      return (page.index_status || "").toLowerCase();
+    case "depth":
+      return Number(page.depth ?? page.crawl_depth) || 0;
+    case "status":
+      return Number(page.status) || 0;
+    case "word_count":
+      return Number(page.word_count) || 0;
+    case "h1_count":
+      return Number(page.h1_count) || 0;
+    case "internal_links":
+      return Number(page.internal_links) || 0;
+    case "score":
+      return Number(page.score) || 0;
+    case "page_rank":
+      return page.page_rank != null ? Number(page.page_rank) : -1;
+    case "inbound_link_count":
+      return page.inbound_link_count != null ? Number(page.inbound_link_count) : -1;
+    case "outbound_link_count":
+      if (page.outbound_link_count != null) return Number(page.outbound_link_count);
+      return Number(page.internal_links) || 0;
+    case "priority":
+      return typeof isCritical === "function" && isCritical(page) ? 1 : 0;
+    default:
+      return 0;
+  }
+}
+
+function sortPageRows(pages) {
+  const key = pageTableSortKey;
+  const asc = pageTableSortAsc;
+  return [...pages].sort((a, b) => {
+    const va = getPageSortValue(a, key);
+    const vb = getPageSortValue(b, key);
+    if (typeof va === "string") {
+      return asc ? va.localeCompare(vb, "ja") : vb.localeCompare(va, "ja");
+    }
+    return asc ? va - vb : vb - va;
+  });
+}
+
+function updatePageTableSortHeaderUI() {
+  document.querySelectorAll("#pageQualityTableSection thead th[data-sort]").forEach((th) => {
+    th.classList.remove("sort-asc", "sort-desc");
+    if (th.dataset.sort === pageTableSortKey) {
+      th.classList.add(pageTableSortAsc ? "sort-asc" : "sort-desc");
+    }
+  });
+}
 
 function buildUrlIndexMap(){
 
@@ -121,15 +186,13 @@ window.renderTable = function (data) {
         return;
     }
 
-    // PageRank 降順ソート（page_rank が存在する場合）
     const hasPageRank = pages.some((p) => p.page_rank != null);
-    const sorted = hasPageRank
-      ? [...pages].sort((a, b) => {
-          const pa = Number(a.page_rank) ?? 0;
-          const pb = Number(b.page_rank) ?? 0;
-          return pb - pa;
-        })
-      : pages;
+    if (pageTableSortKey === "page_rank" && !hasPageRank) {
+      pageTableSortKey = "score";
+      pageTableSortAsc = false;
+    }
+    const sorted = sortPageRows(pages);
+    updatePageTableSortHeaderUI();
 
     const scanId = (typeof getScanIdFromURL === "function" ? getScanIdFromURL() : null) || (window.SEOState?.scanId || "");
     const linkBase = scanId ? `link-structure.html?scan=${encodeURIComponent(scanId)}` : "link-structure.html";
@@ -1279,6 +1342,25 @@ document.addEventListener("DOMContentLoaded", () => {
 
   if(dirExcelBtn){
     dirExcelBtn.addEventListener("click", exportDirectoryExcel);
+  }
+
+  const pageQualityTable = document.querySelector("#pageQualityTableSection table");
+  if (pageQualityTable && !pageQualityTable.dataset.sortBound) {
+    pageQualityTable.dataset.sortBound = "1";
+    pageQualityTable.addEventListener("click", (e) => {
+      const th = e.target.closest("th[data-sort]");
+      if (!th) return;
+      const key = th.dataset.sort;
+      if (key === pageTableSortKey) {
+        pageTableSortAsc = !pageTableSortAsc;
+      } else {
+        pageTableSortKey = key;
+        pageTableSortAsc = PAGE_TABLE_STRING_SORT_KEYS.has(key);
+      }
+      updatePageTableSortHeaderUI();
+      if (typeof filterAndRenderTable === "function") filterAndRenderTable();
+    });
+    updatePageTableSortHeaderUI();
   }
 
 });

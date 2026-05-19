@@ -223,6 +223,93 @@ body{font-family:Inter,sans-serif}
         flex-wrap: wrap;
     }
 }
+/* 深さ別ページ分布 */
+#crawlDepthDistributionSection .depth-chart-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+#crawlDepthDistributionSection .depth-chart-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: #1e293b;
+    margin: 0;
+    line-height: 1.4;
+}
+#crawlDepthDistributionSection .depth-chart-title-sub {
+    font-weight: 400;
+    color: #64748b;
+    font-size: 13px;
+}
+#crawlDepthDistributionSection .depth-chart-meta {
+    margin-top: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+#crawlDepthDistributionSection .depth-chart-def {
+    font-size: 12px;
+    color: #64748b;
+    margin: 0;
+}
+#crawlDepthDistributionSection .depth-chart-legend {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    align-items: center;
+}
+#crawlDepthDistributionSection .depth-chart-legend-item {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11px;
+    color: #64748b;
+    white-space: nowrap;
+}
+#crawlDepthDistributionSection .depth-chart-legend-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+#crawlDepthDistributionSection .depth-chart-wrap {
+    padding: 16px 20px 20px;
+    background: #f8fafc;
+}
+#crawlDepthDistributionSection .depth-chart-canvas {
+    height: 240px;
+    position: relative;
+}
+#crawlDepthDistributionSection .depth-chart-canvas canvas {
+    display: block;
+    width: 100% !important;
+    height: 100% !important;
+}
+/* サイト構造 × ページ品質テーブル ソート */
+#pageQualityTableSection thead th[data-sort] {
+    cursor: pointer;
+    user-select: none;
+}
+#pageQualityTableSection thead th[data-sort]:hover {
+    color: #475569;
+}
+#pageQualityTableSection thead th[data-sort]:after {
+    content: ' ↕';
+    opacity: 0.35;
+    font-size: 10px;
+}
+#pageQualityTableSection thead th.sort-asc:after {
+    content: ' ↑';
+    opacity: 1;
+    color: #6366f1;
+}
+#pageQualityTableSection thead th.sort-desc:after {
+    content: ' ↓';
+    opacity: 1;
+    color: #6366f1;
+}
 </style>
   <link rel="manifest" href="/manifest.json">
   <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
@@ -567,12 +654,32 @@ body{font-family:Inter,sans-serif}
 
     <!-- 1-B: 深さ別ページ分布 -->
     <section class="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm" id="crawlDepthDistributionSection">
-        <div class="p-4 border-b border-slate-100 flex justify-between items-center">
-            <h2 class="text-lg font-bold text-slate-800">深さ別ページ分布</h2>
-            <span id="depth4Badge" class="hidden px-3 py-1 text-xs font-bold rounded-full bg-red-100 text-red-700">深さ4以上: 0件</span>
+        <div class="p-4 border-b border-slate-100">
+            <div class="depth-chart-header">
+                <div>
+                    <h2 class="depth-chart-title">
+                        クロールの深さ別ページ分布
+                        <span class="depth-chart-title-sub">ー深いページほどGoogleに見つかりにくい</span>
+                    </h2>
+                    <div class="depth-chart-meta">
+                        <p class="depth-chart-def">深さ＝トップページから何クリックで到達できるか</p>
+                        <div class="depth-chart-legend">
+                            <span class="depth-chart-legend-item">
+                                <span class="depth-chart-legend-dot" style="background:#6366f1"></span>深さ1～3（↓浅いほど良い）
+                            </span>
+                            <span class="depth-chart-legend-item">
+                                <span class="depth-chart-legend-dot" style="background:#e53e3e"></span>深さ4以上（Googleに見つかりにくい）
+                            </span>
+                        </div>
+                    </div>
+                </div>
+                <span id="depth4Badge" class="hidden text-sm font-bold text-red-600 whitespace-nowrap">深さ4以上：0件</span>
+            </div>
         </div>
-        <div class="p-6" style="height: 200px;">
-            <canvas id="crawlDepthChart"></canvas>
+        <div class="depth-chart-wrap">
+            <div class="depth-chart-canvas">
+                <canvas id="crawlDepthChart"></canvas>
+            </div>
         </div>
     </section>
 
@@ -687,19 +794,19 @@ focus:outline-none focus:ring-2 focus:ring-blue-500/20"
                 <thead class="bg-slate-50 shadow-sm sticky top-0 z-10">
                     <tr class="text-[10px] uppercase tracking-wider text-slate-400 border-b border-slate-200">
                         <th class="py-4 px-2 font-bold text-center" style="width:50px">No.</th>
-                        <th class="py-4 px-2 font-bold text-left truncate" style="width:250px">URL</th>
-                        <th class="py-4 px-2 font-bold text-center" style="width:50px">階層</th>
-                        <th class="py-4 px-2 font-bold text-center" style="width:60px">Status</th>
-                        <th class="py-4 px-2 font-bold text-center" style="width:55px">Index</th>
-                        <th class="py-4 px-2 font-bold text-left truncate" style="width:290px">タイトル内容</th>
-                        <th class="py-4 px-2 font-bold text-center" style="width:55px">文字数</th>
-                        <th class="py-4 px-2 font-bold text-center" style="width:50px">H1</th>
-                        <th class="py-4 px-2 font-bold text-center" style="width:60px">内リンク</th>
-                        <th class="py-4 px-2 font-bold text-center" style="width:60px">Score</th>
-                        <th class="py-4 px-2 font-bold text-center" style="width:70px">PageRank</th>
-                        <th class="py-4 px-2 font-bold text-center" style="width:60px">被リンク</th>
-                        <th class="py-4 px-2 font-bold text-center" style="width:60px">発リンク</th>
-                        <th class="py-4 px-2 font-bold text-center" style="width:80px">優先度</th>
+                        <th class="py-4 px-2 font-bold text-left truncate" style="width:250px" data-sort="url">URL</th>
+                        <th class="py-4 px-2 font-bold text-center" style="width:50px" data-sort="depth">階層</th>
+                        <th class="py-4 px-2 font-bold text-center" style="width:60px" data-sort="status">Status</th>
+                        <th class="py-4 px-2 font-bold text-center" style="width:55px" data-sort="index_status">Index</th>
+                        <th class="py-4 px-2 font-bold text-left truncate" style="width:290px" data-sort="title">タイトル内容</th>
+                        <th class="py-4 px-2 font-bold text-center" style="width:55px" data-sort="word_count">文字数</th>
+                        <th class="py-4 px-2 font-bold text-center" style="width:50px" data-sort="h1_count">H1</th>
+                        <th class="py-4 px-2 font-bold text-center" style="width:60px" data-sort="internal_links">内リンク</th>
+                        <th class="py-4 px-2 font-bold text-center" style="width:60px" data-sort="score">Score</th>
+                        <th class="py-4 px-2 font-bold text-center sort-desc" style="width:70px" data-sort="page_rank">PageRank</th>
+                        <th class="py-4 px-2 font-bold text-center" style="width:60px" data-sort="inbound_link_count">被リンク</th>
+                        <th class="py-4 px-2 font-bold text-center" style="width:60px" data-sort="outbound_link_count">発リンク</th>
+                        <th class="py-4 px-2 font-bold text-center" style="width:80px" data-sort="priority">優先度</th>
                         <th class="py-4 px-2 font-bold text-center" style="width:45px">詳細</th>
                     </tr>
                 </thead>

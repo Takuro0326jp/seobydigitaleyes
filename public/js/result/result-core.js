@@ -422,7 +422,7 @@ window.isCritical = function (p) {
     p.index_status === "noindex" ||
     !(p.title || "").trim() ||
     (p.h1_count || 0) === 0 ||
-    ((p.title || "").length > 0 && (p.title || "").length < 10)
+    ((p.title || "").length > 0 && (p.title || "").length < 15)
   );
 };
 
@@ -649,7 +649,7 @@ window.renderCrawlDepthDistribution = function (pages) {
 
   const depth4Count = depthCounts[4] || 0;
   if (badge) {
-    badge.textContent = `深さ4以上: ${depth4Count}件`;
+    badge.textContent = `深さ4以上：${depth4Count}件`;
     badge.classList.toggle("hidden", depth4Count === 0);
   }
 
@@ -658,9 +658,42 @@ window.renderCrawlDepthDistribution = function (pages) {
 
   if (crawlDepthChartInstance) crawlDepthChartInstance.destroy();
 
-  const labels = ["深さ1", "深さ2", "深さ3", "深さ4以上"];
+  const labels = [
+    ["深さ 1", "1クリックで到達"],
+    ["深さ 2", "2クリックで到達"],
+    ["深さ 3", "3クリックで到達"],
+    ["深さ 4以上", "要注意"],
+  ];
   const values = [depthCounts[1] || 0, depthCounts[2] || 0, depthCounts[3] || 0, depthCounts[4] || 0];
   const colors = ["#6366F1", "#818CF8", "#A5B4FC", "#E53E3E"];
+  const maxVal = Math.max(...values, 1);
+  const suggestedMax = Math.ceil((maxVal * 1.1) / 10) * 10 || 10;
+
+  const barValuePlugin = {
+    id: "crawlDepthBarValues",
+    afterDatasetsDraw(chart) {
+      const { ctx } = chart;
+      const meta = chart.getDatasetMeta(0);
+      meta.data.forEach((bar, i) => {
+        const v = values[i];
+        const { x, y, base } = bar.getProps(["x", "y", "base"], true);
+        const barWidth = Math.abs(x - base);
+        ctx.save();
+        ctx.font = "600 12px Inter, sans-serif";
+        ctx.textBaseline = "middle";
+        if (barWidth > 32) {
+          ctx.fillStyle = "#ffffff";
+          ctx.textAlign = "left";
+          ctx.fillText(String(v), Math.min(base, x) + 8, y);
+        } else {
+          ctx.fillStyle = i === 3 ? "#dc2626" : "#6366f1";
+          ctx.textAlign = "left";
+          ctx.fillText(String(v), Math.max(base, x) + 6, y);
+        }
+        ctx.restore();
+      });
+    },
+  };
 
   crawlDepthChartInstance = new Chart(ctx, {
     type: "bar",
@@ -670,8 +703,11 @@ window.renderCrawlDepthDistribution = function (pages) {
         {
           data: values,
           backgroundColor: colors,
-          borderColor: colors.map((c) => c),
-          borderWidth: 1,
+          borderColor: colors,
+          borderWidth: 0,
+          borderRadius: 6,
+          borderSkipped: false,
+          barThickness: 28,
         },
       ],
     },
@@ -679,6 +715,7 @@ window.renderCrawlDepthDistribution = function (pages) {
       indexAxis: "y",
       responsive: true,
       maintainAspectRatio: false,
+      layout: { padding: { left: 4, right: 12, top: 4, bottom: 0 } },
       plugins: {
         legend: { display: false },
         tooltip: {
@@ -694,10 +731,32 @@ window.renderCrawlDepthDistribution = function (pages) {
         },
       },
       scales: {
-        x: { beginAtZero: true, title: { display: true, text: "ページ数" } },
-        y: { title: { display: true, text: "クロール深さ" } },
+        x: {
+          beginAtZero: true,
+          suggestedMax,
+          grid: { color: "#e2e8f0", drawBorder: false },
+          border: { display: false },
+          ticks: { color: "#94a3b8", font: { size: 11 } },
+          title: {
+            display: true,
+            text: "ページ数",
+            color: "#64748b",
+            font: { size: 12, weight: "500" },
+          },
+        },
+        y: {
+          grid: { display: false },
+          border: { display: false },
+          ticks: {
+            padding: 10,
+            autoSkip: false,
+            color: (ctx) => (ctx.index === 3 ? "#dc2626" : "#64748b"),
+            font: { size: 11, lineHeight: 1.4 },
+          },
+        },
       },
     },
+    plugins: [barValuePlugin],
   });
 };
 
