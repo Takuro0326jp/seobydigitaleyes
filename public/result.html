@@ -332,21 +332,39 @@ body{font-family:Inter,sans-serif}
     </div>
     <!-- AIサマリーここまで -->
 
-    <!-- 1-C: 重要ページ Top10 -->
+    <!-- 1-C: PageRank順 ページ一覧 -->
     <section class="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm" id="topImportantPagesSection">
-        <div class="p-4 border-b border-slate-100 flex justify-between items-center flex-wrap gap-2">
-            <h2 class="text-lg font-bold text-slate-800">重要ページ Top10</h2>
-            <div class="flex items-center gap-2">
-                <label class="text-xs font-bold text-slate-500">並び替え:</label>
-                <select id="topPagesSortSelect" class="text-xs border border-slate-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500/20">
-                    <option value="page_rank">PageRank順</option>
-                    <option value="inbound_link_count">被リンク数順</option>
-                    <option value="outbound_link_count">発リンク数順</option>
-                </select>
-                <a href="#" id="topPagesViewAllLink" class="text-xs font-bold text-blue-600 hover:underline">全ページ表示 →</a>
+        <div class="p-4 border-b border-slate-100">
+            <div class="flex items-start justify-between gap-4 flex-wrap mb-2">
+                <h2 class="text-base font-semibold text-slate-800">PageRank順 ページ一覧</h2>
+                <div class="flex items-center gap-2 flex-shrink-0">
+                    <label for="topPagesSortSelect" class="text-xs text-slate-500">並び替え：</label>
+                    <select id="topPagesSortSelect" class="text-xs border border-slate-200 rounded-md px-2 py-1 bg-white text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20">
+                        <option value="page_rank">PageRank順</option>
+                        <option value="inbound_link_count">被リンク順</option>
+                        <option value="outbound_link_count">発リンク順</option>
+                    </select>
+                    <a href="#" id="topPagesViewAllLink" class="text-xs text-blue-600 hover:underline">全ページ表示 →</a>
+                </div>
+            </div>
+            <div class="flex items-baseline gap-4 flex-wrap">
+                <p class="text-xs text-slate-500">被リンク＝他ページから張られたリンク数　発リンク＝このページから張るリンク数</p>
+                <div class="flex items-center gap-2.5 flex-wrap">
+                    <span class="flex items-center gap-1.5 text-[11px] text-slate-500 whitespace-nowrap">
+                        <span class="w-1.5 h-1.5 rounded-full bg-blue-600 shrink-0"></span>PageRank（↑高いほど良い）
+                    </span>
+                    <span class="w-px h-3.5 bg-slate-200"></span>
+                    <span class="flex items-center gap-1.5 text-[11px] text-slate-500 whitespace-nowrap">
+                        <span class="w-1.5 h-1.5 rounded-full bg-green-700 shrink-0"></span>被リンク（↑増やす）
+                    </span>
+                    <span class="w-px h-3.5 bg-slate-200"></span>
+                    <span class="flex items-center gap-1.5 text-[11px] text-slate-500 whitespace-nowrap">
+                        <span class="w-1.5 h-1.5 rounded-full bg-amber-700 shrink-0"></span>発リンク（↓絞る）
+                    </span>
+                </div>
             </div>
         </div>
-        <div id="topImportantPagesBody" class="p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 min-h-[120px]">
+        <div id="topImportantPagesBody" class="p-4 grid grid-cols-1 md:grid-cols-2 gap-1.5 min-h-[120px]">
             <p class="text-slate-400 text-sm col-span-full">データ読み込み中...</p>
         </div>
     </section>

@@ -536,7 +536,7 @@ function getScoreColor(score) {
   return "text-red-500";
 }
 
-/** 1-C: 重要ページ Top10 */
+/** 1-C: PageRank順 ページ一覧 */
 window.renderTopImportantPages = function (pages) {
   const body = document.getElementById("topImportantPagesBody");
   const sortSelect = document.getElementById("topPagesSortSelect");
@@ -558,12 +558,9 @@ window.renderTopImportantPages = function (pages) {
   });
   const top10 = sorted.slice(0, 10);
 
-  const getRankBadge = (rank) => {
-    if (rank === 1) return "bg-amber-400 text-amber-900";
-    if (rank === 2) return "bg-slate-300 text-slate-700";
-    if (rank === 3) return "bg-amber-600 text-amber-100";
-    return "bg-slate-100 text-slate-600";
-  };
+  const maxPr = Math.max(...top10.map((p) => Number(p.page_rank) || 0), 0.0001);
+  const metricValClass = (val, colorClass) =>
+    val > 0 ? `text-[13px] font-semibold leading-none ${colorClass}` : "text-[13px] font-semibold leading-none text-slate-300";
 
   const scanId = getScanIdFromURL ? getScanIdFromURL() : (SEOState?.scanId || "");
   const params = scanId ? `?scan=${encodeURIComponent(scanId)}` : "";
@@ -572,24 +569,34 @@ window.renderTopImportantPages = function (pages) {
     .map((p, i) => {
       const rank = i + 1;
       const pr = Number(p.page_rank) ?? 0;
-      const prPct = Math.min(100, Math.round(pr * 100));
-      const inbound = p.inbound_link_count ?? 0;
-      const outbound = p.outbound_link_count ?? p.internal_links ?? 0;
+      const prPct = pr > 0 ? Math.min(100, Math.round((pr / maxPr) * 100)) : 0;
+      const inbound = Number(p.inbound_link_count) || 0;
+      const outbound = Number(p.outbound_link_count ?? p.internal_links) || 0;
       const detailUrl = `link-structure.html${params}${params ? "&" : "?"}focus=${encodeURIComponent(p.url || "")}`;
       return `
-        <div class="bg-slate-50 rounded-xl p-4 border border-slate-100 hover:border-indigo-200 transition">
-          <div class="flex items-start gap-3">
-            <span class="flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-xs font-black ${getRankBadge(rank)}">${rank}</span>
-            <div class="flex-grow min-w-0">
-              <a href="${detailUrl}" class="text-blue-600 hover:underline font-bold text-xs truncate block">${escapeHtmlForResult(p.url || "-")}</a>
-              <p class="text-[11px] text-slate-500 truncate mt-1" title="${escapeHtmlForResult(p.title || "")}">${escapeHtmlForResult(p.title || "-")}</p>
-              <div class="mt-2 flex items-center gap-2">
-                <div class="flex-1 h-1.5 bg-slate-200 rounded overflow-hidden">
-                  <div class="h-full bg-indigo-500 rounded" style="width:${prPct}%"></div>
-                </div>
-                <span class="text-[10px] font-bold text-slate-500">${pr.toFixed(2)}</span>
+        <div class="bg-white border border-slate-200 rounded-xl px-3.5 py-3 grid grid-cols-[22px_1fr_auto] gap-x-2.5 items-center hover:border-indigo-200 transition">
+          <span class="text-xs font-semibold text-slate-400">${rank}</span>
+          <div class="min-w-0">
+            <a href="${detailUrl}" class="text-xs font-medium text-blue-600 hover:underline block truncate mb-px" title="${escapeHtmlForResult(p.url || "")}">${escapeHtmlForResult(p.url || "-")}</a>
+            <span class="text-[10px] text-slate-400 block truncate" title="${escapeHtmlForResult(p.title || "")}">${escapeHtmlForResult(p.title || "-")}</span>
+          </div>
+          <div class="flex gap-1.5 items-center shrink-0">
+            <div class="flex flex-col items-end min-w-[52px]">
+              <span class="${pr > 0 ? "text-[13px] font-semibold text-slate-900 leading-none" : "text-[13px] font-semibold text-slate-300 leading-none"}">${pr.toFixed(2)}</span>
+              <div class="w-[52px] h-[3px] bg-slate-100 rounded-full overflow-hidden mt-0.5">
+                <div class="h-full bg-blue-600 rounded-full" style="width:${prPct}%"></div>
               </div>
-              <p class="text-[10px] text-slate-400 mt-1">被: ${inbound} / 発: ${outbound}</p>
+              <span class="text-[10px] text-slate-400 mt-0.5">PageRank</span>
+            </div>
+            <div class="w-px h-7 bg-slate-200 shrink-0"></div>
+            <div class="flex flex-col items-end min-w-[40px]">
+              <span class="${metricValClass(inbound, "text-green-700")}">${inbound}</span>
+              <span class="text-[10px] text-slate-400 mt-0.5">被リンク</span>
+            </div>
+            <div class="w-px h-7 bg-slate-200 shrink-0"></div>
+            <div class="flex flex-col items-end min-w-[40px]">
+              <span class="${metricValClass(outbound, "text-amber-700")}">${outbound}</span>
+              <span class="text-[10px] text-slate-400 mt-0.5">発リンク</span>
             </div>
           </div>
         </div>
