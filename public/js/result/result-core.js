@@ -536,7 +536,7 @@ function getScoreColor(score) {
   return "text-red-500";
 }
 
-/** 1-C: PageRank順 ページ一覧 */
+/** 1-C: 重要ページ Top10 */
 window.renderTopImportantPages = function (pages) {
   const body = document.getElementById("topImportantPagesBody");
   const sortSelect = document.getElementById("topPagesSortSelect");

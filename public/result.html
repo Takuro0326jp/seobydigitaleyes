@@ -27,7 +27,7 @@ body{font-family:Inter,sans-serif}
     #dirHealthSearch { width: 100% !important; }
     .flex.justify-between.items-center.mb-8 { flex-direction: column; align-items: flex-start; gap: 1rem; }
 }
-/* PageRank順 ページ一覧 */
+/* 重要ページ Top10 */
 #topImportantPagesSection .pr-pages-header-top {
     display: flex;
     align-items: flex-start;
@@ -65,14 +65,14 @@ body{font-family:Inter,sans-serif}
 #topImportantPagesSection .pr-pages-sort-row a:hover { text-decoration: underline; }
 #topImportantPagesSection .pr-pages-desc-row {
     display: flex;
-    align-items: baseline;
-    gap: 16px;
-    flex-wrap: wrap;
+    flex-direction: column;
+    gap: 6px;
 }
 #topImportantPagesSection .pr-pages-desc {
     font-size: 12px;
     color: #64748b;
     margin: 0;
+    line-height: 1.6;
 }
 #topImportantPagesSection .pr-pages-legend {
     display: flex;
@@ -528,11 +528,11 @@ body{font-family:Inter,sans-serif}
     </div>
     <!-- AIサマリーここまで -->
 
-    <!-- 1-C: PageRank順 ページ一覧 -->
+    <!-- 1-C: 重要ページ Top10 -->
     <section class="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm" id="topImportantPagesSection">
         <div class="p-4 border-b border-slate-100">
             <div class="pr-pages-header-top">
-                <h2 class="pr-pages-title">PageRank順 ページ一覧</h2>
+                <h2 class="pr-pages-title">重要ページ Top10</h2>
                 <div class="pr-pages-sort-row">
                     <label for="topPagesSortSelect">並び替え：</label>
                     <select id="topPagesSortSelect">
