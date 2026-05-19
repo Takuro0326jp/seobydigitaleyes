@@ -27,6 +27,202 @@ body{font-family:Inter,sans-serif}
     #dirHealthSearch { width: 100% !important; }
     .flex.justify-between.items-center.mb-8 { flex-direction: column; align-items: flex-start; gap: 1rem; }
 }
+/* PageRank順 ページ一覧 */
+#topImportantPagesSection .pr-pages-header-top {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 8px;
+    flex-wrap: wrap;
+}
+#topImportantPagesSection .pr-pages-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: #1e293b;
+    margin: 0;
+}
+#topImportantPagesSection .pr-pages-sort-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+}
+#topImportantPagesSection .pr-pages-sort-row label { font-size: 12px; color: #64748b; }
+#topImportantPagesSection .pr-pages-sort-row select {
+    font-size: 12px;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    padding: 4px 8px;
+    background: #fff;
+    color: #1e293b;
+}
+#topImportantPagesSection .pr-pages-sort-row a {
+    font-size: 12px;
+    color: #2563eb;
+    text-decoration: none;
+}
+#topImportantPagesSection .pr-pages-sort-row a:hover { text-decoration: underline; }
+#topImportantPagesSection .pr-pages-desc-row {
+    display: flex;
+    align-items: baseline;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+#topImportantPagesSection .pr-pages-desc {
+    font-size: 12px;
+    color: #64748b;
+    margin: 0;
+}
+#topImportantPagesSection .pr-pages-legend {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+#topImportantPagesSection .pr-pages-legend-item {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11px;
+    color: #64748b;
+    white-space: nowrap;
+}
+#topImportantPagesSection .pr-pages-legend-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+#topImportantPagesSection .pr-pages-legend-sep {
+    width: 1px;
+    height: 14px;
+    background: #e2e8f0;
+}
+#topImportantPagesBody.pr-pages-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+}
+@media (max-width: 900px) {
+    #topImportantPagesBody.pr-pages-grid { grid-template-columns: 1fr; }
+}
+#topImportantPagesBody .pr-pages-card {
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 12px 14px;
+    display: grid;
+    grid-template-columns: 22px minmax(0, 1fr) auto;
+    column-gap: 10px;
+    align-items: center;
+    transition: border-color 0.15s;
+}
+#topImportantPagesBody .pr-pages-card:hover { border-color: #c7d2fe; }
+#topImportantPagesBody .pr-pages-rank {
+    font-size: 12px;
+    font-weight: 600;
+    color: #94a3b8;
+}
+#topImportantPagesBody .pr-pages-main { min-width: 0; }
+#topImportantPagesBody .pr-pages-url {
+    font-size: 12px;
+    font-weight: 500;
+    color: #2563eb;
+    display: block;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-bottom: 1px;
+    text-decoration: none;
+}
+#topImportantPagesBody .pr-pages-url:hover { text-decoration: underline; }
+#topImportantPagesBody .pr-pages-desc-text {
+    font-size: 10px;
+    color: #94a3b8;
+    display: block;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+#topImportantPagesBody .pr-pages-metrics {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    flex-shrink: 0;
+}
+#topImportantPagesBody .pr-pages-pr-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    min-width: 52px;
+}
+#topImportantPagesBody .pr-pages-pr-val {
+    font-size: 13px;
+    font-weight: 600;
+    color: #0f172a;
+    line-height: 1;
+}
+#topImportantPagesBody .pr-pages-pr-val-zero {
+    font-size: 13px;
+    font-weight: 600;
+    color: #d1d5db;
+    line-height: 1;
+}
+#topImportantPagesBody .pr-pages-pr-bar-outer {
+    width: 52px;
+    height: 3px;
+    background: #f1f5f9;
+    border-radius: 99px;
+    overflow: hidden;
+    margin-top: 3px;
+}
+#topImportantPagesBody .pr-pages-pr-bar-inner {
+    height: 100%;
+    border-radius: 99px;
+    background: #2563eb;
+}
+#topImportantPagesBody .pr-pages-metric-name {
+    font-size: 10px;
+    color: #94a3b8;
+    margin-top: 2px;
+}
+#topImportantPagesBody .pr-pages-metric-sep {
+    width: 1px;
+    height: 28px;
+    background: #e2e8f0;
+    flex-shrink: 0;
+}
+#topImportantPagesBody .pr-pages-metric {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    min-width: 40px;
+}
+#topImportantPagesBody .pr-pages-metric-val {
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1;
+}
+#topImportantPagesBody .pr-pages-metric-val-zero {
+    font-size: 13px;
+    font-weight: 600;
+    color: #d1d5db;
+    line-height: 1;
+}
+#topImportantPagesBody .pr-pages-metric-val-inbound { color: #15803d; }
+#topImportantPagesBody .pr-pages-metric-val-outbound { color: #b45309; }
+@media (max-width: 640px) {
+    #topImportantPagesBody .pr-pages-card {
+        grid-template-columns: 22px minmax(0, 1fr);
+        row-gap: 8px;
+    }
+    #topImportantPagesBody .pr-pages-metrics {
+        grid-column: 2 / -1;
+        justify-content: flex-end;
+        flex-wrap: wrap;
+    }
+}
 </style>
   <link rel="manifest" href="/manifest.json">
   <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
@@ -335,37 +531,37 @@ body{font-family:Inter,sans-serif}
     <!-- 1-C: PageRank順 ページ一覧 -->
     <section class="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm" id="topImportantPagesSection">
         <div class="p-4 border-b border-slate-100">
-            <div class="flex items-start justify-between gap-4 flex-wrap mb-2">
-                <h2 class="text-base font-semibold text-slate-800">PageRank順 ページ一覧</h2>
-                <div class="flex items-center gap-2 flex-shrink-0">
-                    <label for="topPagesSortSelect" class="text-xs text-slate-500">並び替え：</label>
-                    <select id="topPagesSortSelect" class="text-xs border border-slate-200 rounded-md px-2 py-1 bg-white text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20">
+            <div class="pr-pages-header-top">
+                <h2 class="pr-pages-title">PageRank順 ページ一覧</h2>
+                <div class="pr-pages-sort-row">
+                    <label for="topPagesSortSelect">並び替え：</label>
+                    <select id="topPagesSortSelect">
                         <option value="page_rank">PageRank順</option>
                         <option value="inbound_link_count">被リンク順</option>
                         <option value="outbound_link_count">発リンク順</option>
                     </select>
-                    <a href="#" id="topPagesViewAllLink" class="text-xs text-blue-600 hover:underline">全ページ表示 →</a>
+                    <a href="#" id="topPagesViewAllLink">全ページ表示 →</a>
                 </div>
             </div>
-            <div class="flex items-baseline gap-4 flex-wrap">
-                <p class="text-xs text-slate-500">被リンク＝他ページから張られたリンク数　発リンク＝このページから張るリンク数</p>
-                <div class="flex items-center gap-2.5 flex-wrap">
-                    <span class="flex items-center gap-1.5 text-[11px] text-slate-500 whitespace-nowrap">
-                        <span class="w-1.5 h-1.5 rounded-full bg-blue-600 shrink-0"></span>PageRank（↑高いほど良い）
+            <div class="pr-pages-desc-row">
+                <p class="pr-pages-desc">被リンク＝他ページから張られたリンク数　発リンク＝このページから張るリンク数</p>
+                <div class="pr-pages-legend">
+                    <span class="pr-pages-legend-item">
+                        <span class="pr-pages-legend-dot" style="background:#2563eb"></span>PageRank（↑高いほど良い）
                     </span>
-                    <span class="w-px h-3.5 bg-slate-200"></span>
-                    <span class="flex items-center gap-1.5 text-[11px] text-slate-500 whitespace-nowrap">
-                        <span class="w-1.5 h-1.5 rounded-full bg-green-700 shrink-0"></span>被リンク（↑増やす）
+                    <span class="pr-pages-legend-sep"></span>
+                    <span class="pr-pages-legend-item">
+                        <span class="pr-pages-legend-dot" style="background:#15803d"></span>被リンク（↑増やす）
                     </span>
-                    <span class="w-px h-3.5 bg-slate-200"></span>
-                    <span class="flex items-center gap-1.5 text-[11px] text-slate-500 whitespace-nowrap">
-                        <span class="w-1.5 h-1.5 rounded-full bg-amber-700 shrink-0"></span>発リンク（↓絞る）
+                    <span class="pr-pages-legend-sep"></span>
+                    <span class="pr-pages-legend-item">
+                        <span class="pr-pages-legend-dot" style="background:#b45309"></span>発リンク（↓絞る）
                     </span>
                 </div>
             </div>
         </div>
-        <div id="topImportantPagesBody" class="p-4 grid grid-cols-1 md:grid-cols-2 gap-1.5 min-h-[120px]">
-            <p class="text-slate-400 text-sm col-span-full">データ読み込み中...</p>
+        <div id="topImportantPagesBody" class="pr-pages-grid p-4 min-h-[120px]">
+            <p class="text-slate-400 text-sm" style="grid-column:1/-1">データ読み込み中...</p>
         </div>
     </section>
 

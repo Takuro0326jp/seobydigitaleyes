@@ -546,9 +546,11 @@ window.renderTopImportantPages = function (pages) {
   const data = pages || SEOState?.allCrawlData || [];
   const hasPageRank = data.some((p) => p.page_rank != null);
   if (!hasPageRank || data.length === 0) {
-    body.innerHTML = "<p class=\"text-slate-400 text-sm col-span-full\">PageRank データがありません。再スキャンしてください。</p>";
+    body.innerHTML = "<p class=\"text-slate-400 text-sm\" style=\"grid-column:1/-1\">PageRank データがありません。再スキャンしてください。</p>";
+    body.classList.add("pr-pages-grid");
     return;
   }
+  body.classList.add("pr-pages-grid");
 
   const sortKey = sortSelect?.value || "page_rank";
   const sorted = [...data].sort((a, b) => {
@@ -559,8 +561,8 @@ window.renderTopImportantPages = function (pages) {
   const top10 = sorted.slice(0, 10);
 
   const maxPr = Math.max(...top10.map((p) => Number(p.page_rank) || 0), 0.0001);
-  const metricValClass = (val, colorClass) =>
-    val > 0 ? `text-[13px] font-semibold leading-none ${colorClass}` : "text-[13px] font-semibold leading-none text-slate-300";
+  const metricValClass = (val, activeClass) =>
+    val > 0 ? `pr-pages-metric-val ${activeClass}` : "pr-pages-metric-val-zero";
 
   const scanId = getScanIdFromURL ? getScanIdFromURL() : (SEOState?.scanId || "");
   const params = scanId ? `?scan=${encodeURIComponent(scanId)}` : "";
@@ -574,29 +576,29 @@ window.renderTopImportantPages = function (pages) {
       const outbound = Number(p.outbound_link_count ?? p.internal_links) || 0;
       const detailUrl = `link-structure.html${params}${params ? "&" : "?"}focus=${encodeURIComponent(p.url || "")}`;
       return `
-        <div class="bg-white border border-slate-200 rounded-xl px-3.5 py-3 grid grid-cols-[22px_1fr_auto] gap-x-2.5 items-center hover:border-indigo-200 transition">
-          <span class="text-xs font-semibold text-slate-400">${rank}</span>
-          <div class="min-w-0">
-            <a href="${detailUrl}" class="text-xs font-medium text-blue-600 hover:underline block truncate mb-px" title="${escapeHtmlForResult(p.url || "")}">${escapeHtmlForResult(p.url || "-")}</a>
-            <span class="text-[10px] text-slate-400 block truncate" title="${escapeHtmlForResult(p.title || "")}">${escapeHtmlForResult(p.title || "-")}</span>
+        <div class="pr-pages-card">
+          <span class="pr-pages-rank">${rank}</span>
+          <div class="pr-pages-main">
+            <a href="${detailUrl}" class="pr-pages-url" title="${escapeHtmlForResult(p.url || "")}">${escapeHtmlForResult(p.url || "-")}</a>
+            <span class="pr-pages-desc-text" title="${escapeHtmlForResult(p.title || "")}">${escapeHtmlForResult(p.title || "-")}</span>
           </div>
-          <div class="flex gap-1.5 items-center shrink-0">
-            <div class="flex flex-col items-end min-w-[52px]">
-              <span class="${pr > 0 ? "text-[13px] font-semibold text-slate-900 leading-none" : "text-[13px] font-semibold text-slate-300 leading-none"}">${pr.toFixed(2)}</span>
-              <div class="w-[52px] h-[3px] bg-slate-100 rounded-full overflow-hidden mt-0.5">
-                <div class="h-full bg-blue-600 rounded-full" style="width:${prPct}%"></div>
+          <div class="pr-pages-metrics">
+            <div class="pr-pages-pr-wrap">
+              <span class="${pr > 0 ? "pr-pages-pr-val" : "pr-pages-pr-val-zero"}">${pr.toFixed(2)}</span>
+              <div class="pr-pages-pr-bar-outer">
+                <div class="pr-pages-pr-bar-inner" style="width:${prPct}%"></div>
               </div>
-              <span class="text-[10px] text-slate-400 mt-0.5">PageRank</span>
+              <span class="pr-pages-metric-name">PageRank</span>
             </div>
-            <div class="w-px h-7 bg-slate-200 shrink-0"></div>
-            <div class="flex flex-col items-end min-w-[40px]">
-              <span class="${metricValClass(inbound, "text-green-700")}">${inbound}</span>
-              <span class="text-[10px] text-slate-400 mt-0.5">被リンク</span>
+            <div class="pr-pages-metric-sep"></div>
+            <div class="pr-pages-metric">
+              <span class="${metricValClass(inbound, "pr-pages-metric-val-inbound")}">${inbound}</span>
+              <span class="pr-pages-metric-name">被リンク</span>
             </div>
-            <div class="w-px h-7 bg-slate-200 shrink-0"></div>
-            <div class="flex flex-col items-end min-w-[40px]">
-              <span class="${metricValClass(outbound, "text-amber-700")}">${outbound}</span>
-              <span class="text-[10px] text-slate-400 mt-0.5">発リンク</span>
+            <div class="pr-pages-metric-sep"></div>
+            <div class="pr-pages-metric">
+              <span class="${metricValClass(outbound, "pr-pages-metric-val-outbound")}">${outbound}</span>
+              <span class="pr-pages-metric-name">発リンク</span>
             </div>
           </div>
         </div>
